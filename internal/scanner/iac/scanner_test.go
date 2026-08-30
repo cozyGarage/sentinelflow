@@ -263,6 +263,21 @@ func TestIaCFrameworkAndSkipRules(t *testing.T) {
 	}
 }
 
+func TestSupportsDockerfileSuffix(t *testing.T) {
+	cfg := config.Default()
+	s := NewScanner(cfg)
+	if !s.Supports("app.dockerfile") {
+		t.Fatal("expected *.dockerfile to be supported")
+	}
+	if !s.Supports("Dockerfile") {
+		t.Fatal("expected Dockerfile to be supported")
+	}
+	if !s.Supports("Dockerfile.prod") {
+		t.Fatal("expected Dockerfile.* to be supported")
+	}
+}
+
+
 func TestKubernetesMultiDocAndInitContainer(t *testing.T) {
 	dir := t.TempDir()
 	manifest := `

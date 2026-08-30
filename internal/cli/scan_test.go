@@ -59,6 +59,50 @@ func TestShouldFailChecksAllGates(t *testing.T) {
 	}
 }
 
+func TestApplyScanFlagsSelectiveDisablesPolicy(t *testing.T) {
+	prevAll := scanAll
+	prevSecrets := scanSecrets
+	prevIaC := scanIaC
+	prevDeps := scanDependencies
+	prevSAST := scanSAST
+	prevContainer := scanContainer
+	prevLicense := scanLicense
+	t.Cleanup(func() {
+		scanAll = prevAll
+		scanSecrets = prevSecrets
+		scanIaC = prevIaC
+		scanDependencies = prevDeps
+		scanSAST = prevSAST
+		scanContainer = prevContainer
+		scanLicense = prevLicense
+	})
+
+	scanAll = false
+	scanSecrets = true
+	scanIaC = false
+	scanDependencies = false
+	scanSAST = false
+	scanContainer = false
+	scanLicense = false
+
+	cfg := config.Default()
+	if !cfg.Policies.Enabled {
+		t.Fatal("precondition: defaults enable policy")
+	}
+	if err := applyScanFlags(cfg); err != nil {
+		t.Fatalf("applyScanFlags: %v", err)
+	}
+	if !cfg.Scanners.Secrets.Enabled {
+		t.Fatal("expected --secrets to enable secrets")
+	}
+	if cfg.Scanners.IaC.Enabled || cfg.Scanners.SAST.Enabled {
+		t.Fatal("expected other scanners disabled")
+	}
+	if cfg.Policies.Enabled {
+		t.Fatal("expected selective flags to disable policy scanner")
+	}
+}
+
 func TestApplyScanFlagsAllPreservesOverrides(t *testing.T) {
 	prevAll := scanAll
 	prevFailOn := failOnSeverity

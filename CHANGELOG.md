@@ -9,12 +9,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Selective CLI flags (`--secrets`, `--iac`, …) disable the policy scanner so OPA no longer runs unexpectedly
+- Shared `filter.ShouldSkip` no longer hard-skips `*_test.go` (defaults / `scanners.exclude` / secrets allowlist handle it; `**` globs match correctly)
+- Secrets finding IDs include a path token; `.sentinelflow/patterns.yaml` loads from the scan root
+- Secrets git history depth honors `scanners.secrets.max_history_depth` when that feature enables history
+- GitHub PAT vs App token patterns no longer double-match the same token
+- IaC recognizes `*.dockerfile`; unknown `scanners.iac.frameworks` values fail validation
+- Dependencies `Supports`/`Pipfile` Detect match implemented parsers (no Pipfile-alone false green)
+- Text report severity headers no longer print a stray space (`(%d)`)
+
+### Changed
+
+- Document `scan_staged_only` as not implemented; clarify secrets `patterns` are regexes
+
+### Fixed (prior)
+
 - SAST `cmd-inject-shell` alternation no longer matches bare `"bash"` / `"cmd"` strings
 - SAST `sqli-format` no longer matches English `fmt.Sprintf("Update …")` remediation text
 - SAST `xss-eval` matches lowercase `eval(` only (avoids Go `query.Eval`)
 - Bump Go to `1.25.13` and `golang.org/x/crypto` to `v0.55.0` so `govulncheck` / deps stay green
 
-### Changed
+### Changed (prior)
 
 - SAST rules load from embedded `rules.yaml`; removed SAST self-scan path excludes for scanner/policy/deps/container sources
 - SAST honors `scanners.sast.severity` and `skip_rules`; finding IDs include a path token to avoid cross-file collisions

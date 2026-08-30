@@ -52,11 +52,17 @@ func (s *Scanner) Supports(path string) bool {
 		return s.frameworkEnabled("kubernetes")
 	}
 
-	if ext != ".go" && (base == "dockerfile" || strings.HasPrefix(base, "dockerfile.")) {
+	if ext != ".go" && isDockerfileName(base) {
 		return s.frameworkEnabled("dockerfile")
 	}
 
 	return false
+}
+
+func isDockerfileName(base string) bool {
+	return base == "dockerfile" ||
+		strings.HasPrefix(base, "dockerfile.") ||
+		strings.HasSuffix(base, ".dockerfile")
 }
 
 func (s *Scanner) frameworkEnabled(name string) bool {
@@ -139,7 +145,7 @@ func (s *Scanner) scanFile(ctx context.Context, filePath, basePath string) []api
 		return s.terraform.ScanFile(ctx, filePath, basePath)
 	}
 
-	if ext != ".go" && (base == "dockerfile" || strings.HasPrefix(base, "dockerfile.")) && s.frameworkEnabled("dockerfile") {
+	if ext != ".go" && isDockerfileName(base) && s.frameworkEnabled("dockerfile") {
 		return s.docker.ScanFile(ctx, filePath, basePath)
 	}
 

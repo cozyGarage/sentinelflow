@@ -1,6 +1,7 @@
 package config
 
 import (
+	"strings"
 	"testing"
 	"time"
 )
@@ -73,5 +74,14 @@ func TestDependenciesFailOnErrorDefault(t *testing.T) {
 	cfg.Scanners.Dependencies.FailOnError = &on
 	if !cfg.DependenciesFailOnError() {
 		t.Fatal("expected fail_on_error=true to stay strict")
+	}
+}
+
+func TestValidateRejectsUnknownIaCFramework(t *testing.T) {
+	cfg := Default()
+	cfg.Scanners.IaC.Frameworks = []string{"terraform", "cloudformation"}
+	err := cfg.Validate()
+	if err == nil || !strings.Contains(err.Error(), "cloudformation") {
+		t.Fatalf("expected cloudformation rejection, got %v", err)
 	}
 }

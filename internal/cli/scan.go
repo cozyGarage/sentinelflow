@@ -196,7 +196,8 @@ func applyScanFlags(cfg *config.Config) error {
 		// AI scanner is not registered in v1.0
 		cfg.Scanners.AI.Enabled = false
 	} else if scanSecrets || scanIaC || scanDependencies || scanSAST || scanContainer || scanLicense {
-		// If specific flags are set, only enable those
+		// If specific flags are set, only enable those (including disabling policy —
+		// defaults leave policies.enabled=true and would otherwise still run OPA).
 		cfg.Scanners.Secrets.Enabled = scanSecrets
 		cfg.Scanners.IaC.Enabled = scanIaC
 		cfg.Scanners.Dependencies.Enabled = scanDependencies
@@ -204,6 +205,7 @@ func applyScanFlags(cfg *config.Config) error {
 		cfg.Scanners.SAST.Enabled = scanSAST
 		cfg.Scanners.Container.Enabled = scanContainer
 		cfg.Scanners.License.Enabled = scanLicense
+		cfg.Policies.Enabled = false
 	}
 
 	if containerImage != "" {

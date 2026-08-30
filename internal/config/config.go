@@ -181,6 +181,8 @@ func Default() *Config {
 			Exclude: []string{
 				"test/**",
 				"**/testdata/**",
+				"**/*_test.go",
+				"**/*_bench_test.go",
 			},
 			Secrets: SecretsConfig{
 				Enabled:          true,
@@ -321,6 +323,19 @@ func (c *Config) Validate() error {
 	}
 	if _, err := c.ScanTimeoutDuration(); err != nil {
 		return err
+	}
+
+	knownFrameworks := map[string]bool{
+		"terraform": true, "kubernetes": true, "dockerfile": true,
+	}
+	for _, fw := range c.Scanners.IaC.Frameworks {
+		name := strings.ToLower(strings.TrimSpace(fw))
+		if name == "" {
+			continue
+		}
+		if !knownFrameworks[name] {
+			return fmt.Errorf("unsupported scanners.iac.frameworks value %q (supported: terraform, kubernetes, dockerfile)", fw)
+		}
 	}
 
 	return nil
