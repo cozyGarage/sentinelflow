@@ -16,7 +16,7 @@ inputs:
     required: false
     default: sentinelflow/sentinelflow:latest
   scan-all:
-    description: Enable secrets/iac/deps/sast/license (does not enable container). Individual scan-*: false inputs opt out.
+    description: "Enable secrets/iac/deps/sast/license (does not enable container). Individual scan-*: false inputs opt out."
     required: false
     default: 'true'
   scan-secrets:
