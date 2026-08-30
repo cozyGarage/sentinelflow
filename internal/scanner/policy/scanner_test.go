@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/cozygarage/sentinelflow/internal/config"
@@ -71,5 +72,27 @@ spec:
 	}
 	if !found {
 		t.Fatalf("expected policy violation finding, got %+v", result.Findings)
+	}
+}
+
+func TestBrokenCustomPolicySurfacesError(t *testing.T) {
+	root := t.TempDir()
+	policyDir := filepath.Join(root, ".sentinelflow", "policies")
+	if err := os.MkdirAll(policyDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	// Invalid Rego — must not be silently ignored when builtins also load.
+	if err := os.WriteFile(filepath.Join(policyDir, "broken.rego"), []byte("package broken\n{ this is not rego }\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	cfg := config.Default()
+	cfg.Policies.Enabled = true
+	cfg.Policies.Builtin = []string{"no-privileged-containers"}
+	_, err := NewScanner(cfg).Scan(context.Background(), root, nil)
+	if err == nil {
+		t.Fatal("expected broken custom policy to fail the policy scanner")
+	}
+	if !strings.Contains(err.Error(), "failed to load policies") {
+		t.Fatalf("expected load failure message, got %v", err)
 	}
 }

@@ -32,6 +32,21 @@ func TestShouldSkipGlobSuffix(t *testing.T) {
 	}
 }
 
+func TestShouldSkipMultiStarStar(t *testing.T) {
+	if !ShouldSkip("internal/scanner/sast/testdata/vuln.go", []string{"**/testdata/**"}) {
+		t.Fatal("expected **/testdata/** to match nested testdata file")
+	}
+	if !ShouldSkip("vendor/github.com/foo/bar.go", []string{"**/vendor/**"}) {
+		t.Fatal("expected **/vendor/** to match")
+	}
+	if ShouldSkip("internal/scanner/sast/scanner.go", []string{"**/testdata/**"}) {
+		t.Fatal("**/testdata/** must not match unrelated paths")
+	}
+	if !ShouldSkip("docs/guide.md", []string{"docs/**"}) {
+		t.Fatal("expected docs/** prefix match")
+	}
+}
+
 func TestIsBundledSampleDirScoped(t *testing.T) {
 	root := "/repo"
 	if !IsBundledSampleDir(root, "/repo/test/fixtures") {

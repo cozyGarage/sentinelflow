@@ -89,7 +89,7 @@ func (s *TerraformScanner) scanLineRules(ctx context.Context, fileContent, relPa
 				continue
 			}
 			findings = append(findings, api.Finding{
-				ID:          fmt.Sprintf("IAC-TF-%s-%d", rule.ID, lineNum),
+				ID:          fmt.Sprintf("IAC-TF-%s-%s-%d", rule.ID, pathToken(relPath), lineNum),
 				Type:        api.FindingTypeMisconfiguration,
 				Severity:    rule.Severity,
 				Title:       rule.Name,
@@ -282,7 +282,7 @@ func tfFinding(ruleID string, line int, file string, res tfResource, title, desc
 		line = 1
 	}
 	return api.Finding{
-		ID:          fmt.Sprintf("IAC-TF-%s-%s-%d", ruleID, res.Name, line),
+		ID:          fmt.Sprintf("IAC-TF-%s-%s-%s-%d", ruleID, res.Name, pathToken(file), line),
 		Type:        api.FindingTypeMisconfiguration,
 		Severity:    sev,
 		Title:       title,

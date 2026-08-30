@@ -287,7 +287,7 @@ func (s *KubernetesScanner) getPodSpec(manifest map[string]interface{}) map[stri
 
 func k8sFinding(id, ruleID, title, desc string, sev api.Severity, file, snippet, remediation string) api.Finding {
 	return api.Finding{
-		ID:          id,
+		ID:          fmt.Sprintf("%s-%s", id, pathToken(file)),
 		Type:        api.FindingTypeMisconfiguration,
 		Severity:    sev,
 		Title:       title,

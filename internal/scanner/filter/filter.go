@@ -1,4 +1,3 @@
-// Package filter provides shared file skip logic for scanners.
 package filter
 
 import (
@@ -60,39 +59,59 @@ func matchPattern(path, base, pattern string) bool {
 	if matched, _ := filepath.Match(pattern, base); matched {
 		return true
 	}
-
 	if strings.Contains(pattern, "**") {
-		parts := strings.Split(pattern, "**")
-		if len(parts) == 2 {
-			prefix := strings.TrimSuffix(parts[0], "/")
-			suffix := strings.TrimPrefix(parts[1], "/")
+		return matchDoublestar(path, pattern)
+	}
+	return false
+}
 
-			if prefix != "" && !strings.HasPrefix(path, prefix+"/") && path != prefix {
-				return false
-			}
-			if suffix == "" {
-				return true
-			}
-			if strings.HasSuffix(path, suffix) || strings.Contains(path, "/"+suffix) {
-				return true
-			}
-			// Support globs in the suffix (e.g. **/*_test.go).
-			if matched, _ := filepath.Match(suffix, base); matched {
-				return true
-			}
-			if matched, _ := filepath.Match(suffix, path); matched {
-				return true
-			}
-			// Match suffix against any path segment suffix (a/b/*_test.go style).
-			if strings.Contains(suffix, "*") {
-				for _, seg := range strings.Split(path, "/") {
-					if matched, _ := filepath.Match(suffix, seg); matched {
-						return true
-					}
-				}
-			}
-		}
+// matchDoublestar implements a small subset of doublestar globs used in config:
+//   **/*_test.go, **/testdata/**, docs/**, foo/**/bar
+func matchDoublestar(path, pattern string) bool {
+	path = strings.Trim(filepath.ToSlash(path), "/")
+	pattern = strings.Trim(filepath.ToSlash(pattern), "/")
+	if pattern == "**" || pattern == "" {
+		return true
 	}
 
-	return false
+	pathParts := splitPath(path)
+	patParts := splitPath(pattern)
+	return matchParts(pathParts, patParts)
+}
+
+func splitPath(p string) []string {
+	if p == "" {
+		return nil
+	}
+	return strings.Split(p, "/")
+}
+
+func matchParts(pathParts, patParts []string) bool {
+	i, j := 0, 0
+	for i < len(pathParts) || j < len(patParts) {
+		if j < len(patParts) && patParts[j] == "**" {
+			// Trailing ** matches the rest
+			if j == len(patParts)-1 {
+				return true
+			}
+			// Try consuming zero or more path segments until the remainder matches
+			restPat := patParts[j+1:]
+			for k := i; k <= len(pathParts); k++ {
+				if matchParts(pathParts[k:], restPat) {
+					return true
+				}
+			}
+			return false
+		}
+		if i >= len(pathParts) || j >= len(patParts) {
+			// Allow trailing empty only via ** (handled above)
+			return i >= len(pathParts) && j >= len(patParts)
+		}
+		if matched, _ := filepath.Match(patParts[j], pathParts[i]); !matched {
+			return false
+		}
+		i++
+		j++
+	}
+	return i == len(pathParts) && j == len(patParts)
 }

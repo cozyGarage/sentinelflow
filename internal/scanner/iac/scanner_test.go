@@ -277,6 +277,39 @@ func TestSupportsDockerfileSuffix(t *testing.T) {
 	}
 }
 
+func TestDockerfileSuffixScannedAndUniqueIDs(t *testing.T) {
+	dir := t.TempDir()
+	writeTempFile(t, dir, "Dockerfile", "FROM nginx:latest\n")
+	writeTempFile(t, dir, "app.dockerfile", "FROM nginx:latest\n")
+
+	cfg := config.Default()
+	cfg.Scanners.Exclude = nil
+	cfg.Scanners.IaC.Frameworks = []string{"dockerfile"}
+	result, err := NewScanner(cfg).Scan(context.Background(), dir, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ids := map[string]bool{}
+	files := map[string]bool{}
+	for _, f := range result.Findings {
+		if f.RuleID != "latest-tag" {
+			continue
+		}
+		if ids[f.ID] {
+			t.Fatalf("duplicate IaC finding ID across files: %s", f.ID)
+		}
+		ids[f.ID] = true
+		files[f.Location.File] = true
+	}
+	if len(ids) < 2 {
+		t.Fatalf("expected latest-tag in both Dockerfiles, got %d ids (%v)", len(ids), files)
+	}
+	if !files["Dockerfile"] || !files["app.dockerfile"] {
+		t.Fatalf("expected both Dockerfile and app.dockerfile scanned, got %v", files)
+	}
+}
+
+
 
 func TestKubernetesMultiDocAndInitContainer(t *testing.T) {
 	dir := t.TempDir()

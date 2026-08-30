@@ -184,7 +184,7 @@ func (s *Scanner) loadPolicyFiles(engine *OPAEngine, scanRoot string) error {
 		}
 	}
 
-	if len(loadErrs) > 0 && engine.PolicyCount() == 0 {
+	if len(loadErrs) > 0 {
 		return fmt.Errorf("failed to load policies: %s", strings.Join(loadErrs, "; "))
 	}
 	return nil
