@@ -142,6 +142,9 @@ type ScannerRun struct {
 	FilesCount    int        `json:"files_count"`
 	FindingsCount int        `json:"findings_count"`
 	Error         string     `json:"error,omitempty"`
+	// Warnings are non-fatal signals (e.g. skipped oversized files). They must
+	// not fail CI by themselves — use Error for hard failures.
+	Warnings []string `json:"warnings,omitempty"`
 }
 
 // ScanMetadata contains information about the scan environment

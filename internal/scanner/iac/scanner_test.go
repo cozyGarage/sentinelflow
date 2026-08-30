@@ -506,15 +506,16 @@ resource "aws_security_group" "web6" {
 	}
 }
 
-func TestTerraformS3LiteralBucketRef(t *testing.T) {
+func TestTerraformS3CountIndexRef(t *testing.T) {
 	dir := t.TempDir()
 	content := `
 resource "aws_s3_bucket" "logs" {
+  count  = 1
   bucket = "company-logs"
 }
 
 resource "aws_s3_bucket_server_side_encryption_configuration" "logs" {
-  bucket = "company-logs"
+  bucket = aws_s3_bucket.logs[0].id
   rule {
     apply_server_side_encryption_by_default {
       sse_algorithm = "AES256"
@@ -523,15 +524,15 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "logs" {
 }
 
 resource "aws_s3_bucket_public_access_block" "logs" {
-  bucket = "company-logs"
+  bucket = aws_s3_bucket.logs[0].id
   block_public_acls = true
 }
 `
-	filePath := writeTempFile(t, dir, "s3.tf", content)
+	filePath := writeTempFile(t, dir, "s3count.tf", content)
 	findings := NewTerraformScanner(&config.Config{}).ScanFile(context.Background(), filePath, dir)
 	for _, f := range findings {
 		if f.RuleID == "aws-s3-no-encryption" || f.RuleID == "aws-s3-public-block-disabled" {
-			t.Fatalf("literal bucket attr should link protection resources, got %s: %s", f.RuleID, f.Description)
+			t.Fatalf("count-index bucket refs should resolve, got %s: %s", f.RuleID, f.Description)
 		}
 	}
 }

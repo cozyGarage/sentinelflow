@@ -227,6 +227,10 @@ runs:
 
         echo "exit-code=$EXIT_CODE" >> "$GITHUB_OUTPUT"
 
+        if [ -f "$OUT_PATH" ] && [ "${SF_FORMAT}" = "json" ]; then
+          bash "${SF_ACTION_PATH}/scripts/emit-scan-warnings.sh" "$OUT_PATH" || true
+        fi
+
         if [ -f "$OUT_PATH" ]; then
           if COUNT=$(bash "${SF_ACTION_PATH}/scripts/count-findings.sh" "${SF_FORMAT}" "$OUT_PATH"); then
             echo "findings-count=$COUNT" >> "$GITHUB_OUTPUT"

@@ -225,7 +225,7 @@ func extractBalancedBlock(content string, openBrace, limit int) string {
 var (
 	tfAttrPattern   = regexp.MustCompile(`(?m)^\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*=\s*(.+)$`)
 	tfBlockPattern  = regexp.MustCompile(`(?m)^\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*\{`)
-	tfRefPattern    = regexp.MustCompile(`^([a-zA-Z0-9_]+)\.([a-zA-Z0-9_]+)(?:\.id)?$`)
+	tfRefPattern    = regexp.MustCompile(`^([a-zA-Z0-9_]+)\.([a-zA-Z0-9_]+)(?:\[[^\]]*\])?(?:\.id)?$`)
 	tfListPattern   = regexp.MustCompile(`^\[(.*)\]$`)
 )
 
@@ -319,7 +319,7 @@ func normalizeTerraformValue(raw string) interface{} {
 		return strings.ReplaceAll(raw[1:len(raw)-1], `\"`, `"`)
 	}
 
-	// Resolve aws_s3_bucket.example.id -> example for policy matching.
+	// Resolve aws_s3_bucket.example.id / aws_s3_bucket.example[0].id -> example
 	if m := tfRefPattern.FindStringSubmatch(raw); len(m) == 3 {
 		return m[2]
 	}

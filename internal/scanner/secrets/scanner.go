@@ -99,12 +99,19 @@ func (s *Scanner) Scan(ctx context.Context, path string, opts interface{}) (*Sca
 	}
 
 	var scanFiles []string
+	var warnings []string
 	for _, file := range files {
 		if !s.Supports(file) {
 			continue
 		}
 		if info, err := os.Stat(file); err == nil && info.Size() > 1*1024*1024 {
-			fmt.Fprintf(os.Stderr, "warning: secrets: skipping %s (exceeds 1MB)\n", file)
+			rel := file
+			if r, err := filepath.Rel(path, file); err == nil {
+				rel = r
+			}
+			msg := fmt.Sprintf("skipped %s (exceeds 1MB)", filepath.ToSlash(rel))
+			warnings = append(warnings, msg)
+			fmt.Fprintf(os.Stderr, "warning: secrets: %s\n", msg)
 			continue
 		}
 		rel, _ := filepath.Rel(path, file)
@@ -117,6 +124,7 @@ func (s *Scanner) Scan(ctx context.Context, path string, opts interface{}) (*Sca
 		scanFiles = append(scanFiles, file)
 	}
 	result.FilesCount = len(scanFiles)
+	result.Warnings = warnings
 
 	concurrency := types.EffectiveConcurrency(opts, s.config.Scanners.Secrets.Concurrency, 10)
 	var mu sync.Mutex

@@ -130,6 +130,7 @@ func (e *Engine) Scan(ctx context.Context, targetPath string) (*api.ScanResult, 
 			if scanResult != nil {
 				run.FilesCount = scanResult.FilesCount
 				run.FindingsCount = len(scanResult.Findings)
+				run.Warnings = append([]string(nil), scanResult.Warnings...)
 
 				mu.Lock()
 				result.Findings = append(result.Findings, scanResult.Findings...)

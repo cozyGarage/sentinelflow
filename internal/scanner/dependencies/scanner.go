@@ -497,7 +497,7 @@ func (n *NpmScanner) Scan(ctx context.Context, path string) ([]Dependency, error
 	return deps, nil
 }
 
-// scanLockfile prefers package-lock.json / npm-shrinkwrap.json exact versions.
+// scanLockfile prefers package-lock.json / npm-shrinkwrap.json / yarn.lock exact versions.
 func (n *NpmScanner) scanLockfile(path string) ([]Dependency, error) {
 	for _, name := range []string{"package-lock.json", "npm-shrinkwrap.json"} {
 		lockPath := filepath.Join(path, name)
@@ -516,7 +516,90 @@ func (n *NpmScanner) scanLockfile(path string) ([]Dependency, error) {
 			return deps, nil
 		}
 	}
-	return nil, os.ErrNotExist
+
+	yarnPath := filepath.Join(path, "yarn.lock")
+	content, err := os.ReadFile(yarnPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, os.ErrNotExist
+		}
+		return nil, err
+	}
+	deps, err := parseYarnLock(content, yarnPath)
+	if err != nil {
+		return nil, fmt.Errorf("yarn.lock: %w", err)
+	}
+	if len(deps) == 0 {
+		return nil, os.ErrNotExist
+	}
+	return deps, nil
+}
+
+// parseYarnLock parses classic Yarn v1 lockfiles (not Berry).
+func parseYarnLock(content []byte, lockPath string) ([]Dependency, error) {
+	var deps []Dependency
+	seen := map[string]bool{}
+	lines := strings.Split(string(content), "\n")
+
+	var headers []string
+	for i := 0; i < len(lines); i++ {
+		line := lines[i]
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
+			continue
+		}
+		// Entry header: "pkg@range:" or multiple comma-separated keys ending with :
+		if !strings.HasPrefix(line, " ") && !strings.HasPrefix(line, "\t") && strings.HasSuffix(trimmed, ":") {
+			header := strings.TrimSuffix(trimmed, ":")
+			headers = strings.Split(header, ",")
+			for j := range headers {
+				headers[j] = strings.Trim(strings.TrimSpace(headers[j]), `"`)
+			}
+			continue
+		}
+		if len(headers) == 0 {
+			continue
+		}
+		if strings.HasPrefix(trimmed, "version ") {
+			ver := strings.TrimSpace(strings.TrimPrefix(trimmed, "version "))
+			ver = strings.Trim(ver, `"`)
+			for _, h := range headers {
+				name := yarnPackageName(h)
+				if name == "" || seen[name] {
+					continue
+				}
+				seen[name] = true
+				deps = append(deps, Dependency{
+					Name:      name,
+					Version:   ver,
+					Ecosystem: "npm",
+					FilePath:  lockPath,
+				})
+			}
+			headers = nil
+		}
+	}
+	return deps, nil
+}
+
+func yarnPackageName(key string) string {
+	key = strings.TrimSpace(key)
+	if key == "" {
+		return ""
+	}
+	// @scope/name@version or name@version (version may be range)
+	if strings.HasPrefix(key, "@") {
+		// @scope/pkg@^1.0.0
+		rest := key[1:]
+		if i := strings.LastIndex(rest, "@"); i > 0 {
+			return "@" + rest[:i]
+		}
+		return key
+	}
+	if i := strings.LastIndex(key, "@"); i > 0 {
+		return key[:i]
+	}
+	return key
 }
 
 func parseNpmLock(content []byte, lockPath string) ([]Dependency, error) {
