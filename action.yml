@@ -228,17 +228,7 @@ runs:
         echo "exit-code=$EXIT_CODE" >> "$GITHUB_OUTPUT"
 
         if [ -f "$OUT_PATH" ] && [ "${SF_FORMAT}" = "json" ]; then
-          python3 - "$OUT_PATH" <<'PY' || true
-import json, sys
-path = sys.argv[1]
-try:
-    data = json.load(open(path, encoding="utf-8"))
-except Exception:
-    sys.exit(0)
-for run in data.get("scanner_runs") or []:
-    for w in run.get("warnings") or []:
-        print(f"::warning::sentinelflow {run.get('scanner','scanner')}: {w}")
-PY
+          bash "${SF_ACTION_PATH}/scripts/emit-scan-warnings.sh" "$OUT_PATH" || true
         fi
 
         if [ -f "$OUT_PATH" ]; then
