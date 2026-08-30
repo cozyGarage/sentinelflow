@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - SAST `cmd-inject-shell` alternation no longer matches bare `"bash"` / `"cmd"` strings
 - SAST `sqli-format` no longer matches English `fmt.Sprintf("Update …")` remediation text
 - SAST `xss-eval` matches lowercase `eval(` only (avoids Go `query.Eval`)
+- Bump Go to `1.25.13` and `golang.org/x/crypto` to `v0.55.0` so `govulncheck` / deps stay green
 
 ### Changed
 
