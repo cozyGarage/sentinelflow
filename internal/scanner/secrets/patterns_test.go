@@ -1,6 +1,7 @@
 package secrets
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
@@ -8,10 +9,12 @@ import (
 	"github.com/cozygarage/sentinelflow/internal/config"
 )
 
-func TestLoadCustomPatterns(t *testing.T) {
+func TestLoadFilePatternsFromScanRoot(t *testing.T) {
 	tmpDir := t.TempDir()
 	patternsDir := filepath.Join(tmpDir, ".sentinelflow")
-	os.MkdirAll(patternsDir, 0755)
+	if err := os.MkdirAll(patternsDir, 0755); err != nil {
+		t.Fatal(err)
+	}
 
 	patternsYAML := `patterns:
   - id: custom-api-token
@@ -20,30 +23,31 @@ func TestLoadCustomPatterns(t *testing.T) {
     severity: critical
     description: Custom API token pattern
 `
-	os.WriteFile(filepath.Join(patternsDir, "patterns.yaml"), []byte(patternsYAML), 0644)
+	if err := os.WriteFile(filepath.Join(patternsDir, "patterns.yaml"), []byte(patternsYAML), 0644); err != nil {
+		t.Fatal(err)
+	}
 
-	origWd, _ := os.Getwd()
-	os.Chdir(tmpDir)
-	defer os.Chdir(origWd)
-
-	cfg := &config.Config{}
+	cfg := config.Default()
 	scanner := NewScanner(cfg)
+	loaded := scanner.loadFilePatterns(tmpDir)
 
 	found := false
-	for _, p := range scanner.patterns {
+	for _, p := range loaded {
 		if p.ID == "custom-api-token" {
 			found = true
 		}
 	}
 	if !found {
-		t.Error("expected custom pattern to be loaded")
+		t.Error("expected custom pattern to be loaded from scan root")
 	}
 }
 
-func TestCustomPatternDetection(t *testing.T) {
+func TestCustomPatternDetectionViaScanRoot(t *testing.T) {
 	tmpDir := t.TempDir()
 	patternsDir := filepath.Join(tmpDir, ".sentinelflow")
-	os.MkdirAll(patternsDir, 0755)
+	if err := os.MkdirAll(patternsDir, 0755); err != nil {
+		t.Fatal(err)
+	}
 
 	patternsYAML := `patterns:
   - id: custom-token
@@ -52,17 +56,71 @@ func TestCustomPatternDetection(t *testing.T) {
     severity: high
     description: Custom token
 `
-	os.WriteFile(filepath.Join(patternsDir, "patterns.yaml"), []byte(patternsYAML), 0644)
+	if err := os.WriteFile(filepath.Join(patternsDir, "patterns.yaml"), []byte(patternsYAML), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(tmpDir, "app.env"), []byte("api_key=CUST_AbCdEfGhIjKlMnOpQrSt\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
 
-	origWd, _ := os.Getwd()
-	os.Chdir(tmpDir)
-	defer os.Chdir(origWd)
-
-	cfg := &config.Config{}
+	cfg := config.Default()
+	cfg.Scanners.Secrets.Allowlist = nil
+	cfg.Git.ScanHistory = false
+	cfg.Scanners.Secrets.ScanGitHistory = false
 	scanner := NewScanner(cfg)
-	findings := scanner.scanContent("api_key=CUST_AbCdEfGhIjKlMnOpQrSt", "test.env", 0)
+	result, err := scanner.Scan(context.Background(), tmpDir, nil)
+	if err != nil {
+		t.Fatalf("scan: %v", err)
+	}
+	found := false
+	for _, f := range result.Findings {
+		if f.RuleID == "custom-token" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("expected custom pattern to detect token, got %+v", result.Findings)
+	}
+}
 
-	if len(findings) == 0 {
-		t.Error("expected custom pattern to detect token")
+func TestSecretsHistoryDepthPrefersSecretsWhenGitHistoryOff(t *testing.T) {
+	cfg := config.Default()
+	cfg.Git.ScanHistory = false
+	cfg.Git.HistoryDepth = 50
+	cfg.Scanners.Secrets.ScanGitHistory = true
+	cfg.Scanners.Secrets.MaxHistoryDepth = 7
+	if got := secretsHistoryDepth(cfg); got != 7 {
+		t.Fatalf("expected secrets max depth 7, got %d", got)
+	}
+}
+
+func TestFindingIDsIncludePathToken(t *testing.T) {
+	cfg := config.Default()
+	cfg.Scanners.Secrets.Allowlist = nil
+	s := NewScanner(cfg)
+	tmp := t.TempDir()
+	if err := os.WriteFile(filepath.Join(tmp, "a.env"), []byte("token=ghp_abcdefghijklmnopqrstuvwxyz0123456789ABCD\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(tmp, "b.env"), []byte("token=ghp_abcdefghijklmnopqrstuvwxyz0123456789ABCD\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	result, err := s.Scan(context.Background(), tmp, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ids := map[string]bool{}
+	for _, f := range result.Findings {
+		if f.RuleID != "github-token" {
+			continue
+		}
+		if ids[f.ID] {
+			t.Fatalf("duplicate secret finding ID: %s", f.ID)
+		}
+		ids[f.ID] = true
+	}
+	if len(ids) < 2 {
+		t.Fatalf("expected distinct IDs across files, got %d (%v)", len(ids), ids)
 	}
 }

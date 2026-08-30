@@ -130,7 +130,7 @@ func (f *TextFormatter) Format(result *api.ScanResult) (string, error) {
 				continue
 			}
 
-			output += fmt.Sprintf("\n%s (% d)\n", severity, len(findings))
+			output += fmt.Sprintf("\n%s (%d)\n", severity, len(findings))
 			output += "-----------------------------------\n\n"
 
 			for _, finding := range findings {

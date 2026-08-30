@@ -209,6 +209,7 @@ fail_on:
 git:
   scan_history: false
   history_depth: 50
+  # scan_staged_only is reserved / not implemented
   scan_staged_only: false
 `
 		if err := os.WriteFile(configPath, []byte(defaultConfig), 0644); err != nil {

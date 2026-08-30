@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"hash/fnv"
 	"io"
 	"math"
 	"os"
@@ -47,7 +48,7 @@ func NewScanner(cfg *config.Config) *Scanner {
 		config: cfg,
 	}
 	s.patterns = s.loadPatterns()
-	s.patterns = append(s.patterns, s.loadCustomPatterns()...)
+	s.patterns = append(s.patterns, s.loadConfigPatterns()...)
 	return s
 }
 
@@ -78,6 +79,11 @@ func (s *Scanner) Scan(ctx context.Context, path string, opts interface{}) (*Sca
 	result := &ScannerResult{
 		Findings: []api.Finding{},
 	}
+
+	// Load .sentinelflow/patterns.yaml relative to the scan root (not process CWD).
+	basePatterns := s.patterns
+	s.patterns = append(append([]*SecretPattern{}, basePatterns...), s.loadFilePatterns(path)...)
+	defer func() { s.patterns = basePatterns }()
 
 	files, err := types.ResolveFiles(path, opts, s.collectFiles)
 	if err != nil {
@@ -205,9 +211,10 @@ func (s *Scanner) scanReader(ctx context.Context, r io.Reader, filePath, basePat
 						relPath = rel
 					}
 				}
+				relPath = filepath.ToSlash(relPath)
 
 				finding := api.Finding{
-					ID:          fmt.Sprintf("SEC-%s-%d", pattern.ID, lineNum),
+					ID:          fmt.Sprintf("SEC-%s-%s-%d", pattern.ID, pathToken(relPath), lineNum),
 					Type:        api.FindingTypeSecret,
 					Severity:    pattern.Severity,
 					Title:       fmt.Sprintf("Potential %s detected", pattern.Name),
@@ -292,18 +299,18 @@ func (s *Scanner) loadPatterns() []*SecretPattern {
 		{
 			ID:          "github-token",
 			Name:        "GitHub Token",
-			Pattern:     regexp.MustCompile(`(ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9_]{36,255}`),
+			Pattern:     regexp.MustCompile(`(ghp|gho|ghr)_[A-Za-z0-9_]{36,255}`),
 			Severity:    api.SeverityCritical,
-			Description: "GitHub personal access token or OAuth token found",
+			Description: "GitHub personal access token or OAuth/refresh token found",
 			Keywords:    []string{"github", "token"},
 		},
 		{
 			ID:          "github-app-token",
 			Name:        "GitHub App Token",
-			Pattern:     regexp.MustCompile(`(ghu|ghs)_[A-Za-z0-9_]{36}`),
+			Pattern:     regexp.MustCompile(`(ghu|ghs)_[A-Za-z0-9_]{36,255}`),
 			Severity:    api.SeverityHigh,
-			Description: "GitHub App token found in code",
-			Keywords:    []string{"github", "app"},
+			Description: "GitHub App user-to-server or installation token found",
+			Keywords:    []string{"github", "app", "token"},
 		},
 		// GitLab
 		{
@@ -564,10 +571,16 @@ func (s *Scanner) checkHighEntropy(line string, lineNum int, filePath, basePath 
 				entropy := s.calculateEntropy(secret)
 
 				if entropy >= s.config.Scanners.Secrets.EntropyThreshold && !s.isPlaceholder(secret) {
-					relPath, _ := filepath.Rel(basePath, filePath)
+					relPath := filePath
+					if basePath != "" {
+						if rel, err := filepath.Rel(basePath, filePath); err == nil {
+							relPath = rel
+						}
+					}
+					relPath = filepath.ToSlash(relPath)
 
 					finding := api.Finding{
-						ID:          fmt.Sprintf("SEC-entropy-%d", lineNum),
+						ID:          fmt.Sprintf("SEC-entropy-%s-%d", pathToken(relPath), lineNum),
 						Type:        api.FindingTypeSecret,
 						Severity:    api.SeverityMedium,
 						Title:       "High-entropy string detected",
@@ -633,10 +646,7 @@ func (s *Scanner) shouldScanGitHistory(path string) bool {
 
 // scanGitHistory scans past commits for secrets using patch hunks (added lines only).
 func (s *Scanner) scanGitHistory(ctx context.Context, path string) ([]api.Finding, error) {
-	depth := s.config.Git.HistoryDepth
-	if depth <= 0 {
-		depth = s.config.Scanners.Secrets.MaxHistoryDepth
-	}
+	depth := secretsHistoryDepth(s.config)
 	if depth <= 0 {
 		depth = 50
 	}
@@ -769,7 +779,15 @@ type customPatternEntry struct {
 
 // loadCustomPatterns loads patterns from .sentinelflow/patterns.yaml
 func (s *Scanner) loadCustomPatterns() []*SecretPattern {
-	paths := []string{".sentinelflow/patterns.yaml", ".sentinelflow/patterns.yml"}
+	return append(s.loadFilePatterns("."), s.loadConfigPatterns()...)
+}
+
+// loadFilePatterns loads .sentinelflow/patterns.yaml from the scan root.
+func (s *Scanner) loadFilePatterns(scanRoot string) []*SecretPattern {
+	paths := []string{
+		filepath.Join(scanRoot, ".sentinelflow", "patterns.yaml"),
+		filepath.Join(scanRoot, ".sentinelflow", "patterns.yml"),
+	}
 	var patterns []*SecretPattern
 
 	for _, p := range paths {
@@ -791,30 +809,63 @@ func (s *Scanner) loadCustomPatterns() []*SecretPattern {
 			if err != nil {
 				continue
 			}
+			id := entry.ID
+			if id == "" {
+				id = fmt.Sprintf("custom-file-%d", len(patterns)+1)
+			}
 			patterns = append(patterns, &SecretPattern{
-				ID:          entry.ID,
+				ID:          id,
 				Name:        entry.Name,
 				Pattern:     re,
 				Severity:    api.ParseSeverity(entry.Severity),
 				Description: entry.Description,
 			})
 		}
+		break // first file wins
 	}
+	return patterns
+}
 
-	// Also load patterns from config
+// loadConfigPatterns compiles scanners.secrets.patterns as additional regexes.
+func (s *Scanner) loadConfigPatterns() []*SecretPattern {
+	var patterns []*SecretPattern
 	for _, pat := range s.config.Scanners.Secrets.Patterns {
 		re, err := regexp.Compile(pat)
 		if err != nil {
 			continue
 		}
 		patterns = append(patterns, &SecretPattern{
-			ID:          fmt.Sprintf("custom-%d", len(patterns)),
+			ID:          fmt.Sprintf("custom-%d", len(patterns)+1),
 			Name:        "Custom Pattern",
 			Pattern:     re,
 			Severity:    api.SeverityHigh,
 			Description: "Custom secret pattern from configuration",
 		})
 	}
-
 	return patterns
+}
+
+func pathToken(relPath string) string {
+	h := fnv.New32a()
+	_, _ = h.Write([]byte(filepath.ToSlash(relPath)))
+	return fmt.Sprintf("%08x", h.Sum32())
+}
+
+func secretsHistoryDepth(cfg *config.Config) int {
+	if cfg == nil {
+		return 50
+	}
+	// Prefer secrets.max_history_depth when secrets.scan_git_history is the enabler.
+	if cfg.Scanners.Secrets.ScanGitHistory && cfg.Scanners.Secrets.MaxHistoryDepth > 0 {
+		if !cfg.Git.ScanHistory {
+			return cfg.Scanners.Secrets.MaxHistoryDepth
+		}
+	}
+	if cfg.Git.HistoryDepth > 0 {
+		return cfg.Git.HistoryDepth
+	}
+	if cfg.Scanners.Secrets.MaxHistoryDepth > 0 {
+		return cfg.Scanners.Secrets.MaxHistoryDepth
+	}
+	return 50
 }

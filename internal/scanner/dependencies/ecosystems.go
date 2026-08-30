@@ -19,9 +19,9 @@ type PipScanner struct{}
 func (p *PipScanner) Name() string { return "pip" }
 
 func (p *PipScanner) Detect(path string) bool {
+	// Bare Pipfile is not parsed (only Pipfile.lock) — detecting it alone was a false green.
 	files := []string{
 		"requirements.txt",
-		"Pipfile",
 		"Pipfile.lock",
 		"pyproject.toml",
 		"poetry.lock",

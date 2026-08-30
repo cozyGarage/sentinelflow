@@ -86,12 +86,12 @@ func (s *Scanner) Name() string {
 func (s *Scanner) Supports(path string) bool {
 	base := filepath.Base(path)
 
-	// Only ecosystems with implemented parsers (no Gemfile/Ruby yet).
+	// Only files that implemented parsers actually read (no Gemfile/Ruby/Gradle yet).
 	supportedFiles := []string{
-		"go.mod", "go.sum",
-		"package.json", "package-lock.json", "yarn.lock",
-		"requirements.txt", "Pipfile", "Pipfile.lock", "poetry.lock", "pyproject.toml",
-		"pom.xml", "build.gradle",
+		"go.mod",
+		"package.json",
+		"requirements.txt", "Pipfile.lock", "poetry.lock", "pyproject.toml",
+		"pom.xml",
 		"Cargo.toml", "Cargo.lock",
 	}
 

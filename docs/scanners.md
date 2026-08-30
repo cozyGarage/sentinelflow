@@ -9,7 +9,7 @@ This guide explains how each scanner in SentinelFlow v1.0 works.
 1. **Regex matching** — Patterns for AWS, GCP, GitHub, Stripe, and other common credential formats.
 2. **Entropy analysis** — Shannon entropy threshold (default `4.5`) for high-randomness strings.
 3. **Keyword prefilter** — For patterns that embed keywords (generic secrets, AWS secret key assignments, etc.), the line must contain a keyword before the regex runs.
-4. **Custom patterns** — Optional `.sentinelflow/patterns.yaml` for org-specific rules.
+4. **Custom patterns** — Optional `.sentinelflow/patterns.yaml` under the **scan root** (not process CWD), plus optional regex strings in `scanners.secrets.patterns`.
 
 ### Git history
 

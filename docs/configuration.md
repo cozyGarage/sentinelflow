@@ -26,7 +26,7 @@ Run `sentinelflow init` to generate a starter configuration.
 | --- | --- | --- | --- |
 | `enabled` | bool | `true` | Enable secret scanning |
 | `allowlist` | []string | test file globs | Glob patterns skipped **only** by the secrets scanner (does not hide paths from IaC/SAST) |
-| `patterns` | []string | — | Custom pattern names to include |
+| `patterns` | []string | — | Extra secret **regex** patterns (compiled as Go RE2). Invalid regexes are skipped |
 | `entropy_threshold` | float | `4.5` | Minimum Shannon entropy to flag |
 | `scan_git_history` | bool | `false` | Scan git history for secrets |
 | `max_history_depth` | int | `50` | Max commits to scan in history |
@@ -36,7 +36,7 @@ Run `sentinelflow init` to generate a starter configuration.
 | Field | Type | Default | Description |
 | --- | --- | --- | --- |
 | `enabled` | bool | `true` | Enable IaC scanning |
-| `frameworks` | []string | terraform, kubernetes, dockerfile | Frameworks to scan |
+| `frameworks` | []string | terraform, kubernetes, dockerfile | Frameworks to scan. Unknown names fail config validation (CloudFormation is not implemented) |
 | `severity` | string | `medium` | Minimum severity to report |
 | `skip_rules` | []string | — | Rule IDs to ignore |
 
@@ -144,7 +144,7 @@ CLI override: `--fail-on high`
 | --- | --- | --- | --- |
 | `scan_history` | bool | `false` | Scan git commit history |
 | `history_depth` | int | `50` | Number of commits to scan |
-| `scan_staged_only` | bool | `false` | Only scan staged changes |
+| `scan_staged_only` | bool | `false` | **Not implemented** — reserved; full tree is always scanned |
 
 ## Example
 

@@ -2,9 +2,19 @@ package filter
 
 import "testing"
 
-func TestShouldSkipTestFiles(t *testing.T) {
-	if !ShouldSkip("internal/scanner/sast/scanner_test.go", nil) {
-		t.Error("expected _test.go to be skipped")
+func TestShouldSkipTestFilesOnlyViaAllowlist(t *testing.T) {
+	if ShouldSkip("internal/scanner/sast/scanner_test.go", nil) {
+		t.Error("empty allowlist/exclude must not hard-skip _test.go")
+	}
+	allowlist := []string{"**/*_test.go"}
+	if !ShouldSkip("internal/scanner/sast/scanner_test.go", allowlist) {
+		t.Error("expected glob allowlist to skip _test.go")
+	}
+}
+
+func TestShouldSkipTestdata(t *testing.T) {
+	if !ShouldSkip("internal/scanner/sast/testdata/vuln.go", nil) {
+		t.Error("expected /testdata/ paths to be skipped")
 	}
 }
 
