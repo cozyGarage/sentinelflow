@@ -64,18 +64,28 @@ Residual detail: [audit-residual-risks.md](audit-residual-risks.md). Release ste
 
 **Goal:** Raise signal on surfaces users already enable; stay honest where incomplete.
 
+**Quality waves (A–E)** — landed on `main` via quality-waves PR (finding IDs, parse/match, reliability, lockfile-first deps, license opt-in + docs honesty):
+
+| Theme | Status |
+| --- | --- |
+| Finding-ID correctness | Done (package/container/col in IDs; report version from buildinfo) |
+| Parse / match fixes | Done (`FROM --platform`, IPv6 SG, S3 literal bucket refs) |
+| Reliability | Done (bad patterns.yaml fails; history truncation errors; count≠fake 0) |
+| Lockfile-first deps | Done (npm lock + go.sum preferred) |
+| License honesty | Done — limited map; **opt-in** only (not in `--all`) |
+
 | Work | Why | Acceptance |
 | --- | --- | --- |
-| License: SBOM-backed or richer DB **or** keep “limited map” and demote default-on in `--all` | Current map = high FN | Either real coverage or defaults match honesty |
+| License default-on demotion (**chosen honesty path**) | Limited map = high FN | Docs + Action: license **opt-in** (not in `--all`); CLI alignment may land with quality-wave Go work |
 | Dependencies: Ruby/Gemfile **or** keep unsupported | Claim gap closed | Parser + OSV ecosystem **or** docs-only forever |
-| CloudFormation (or explicit “not planned”) | Listed as planned IaC gap | Minimal rule set **or** remove from roadmap language |
+| CloudFormation | Was listed as a planned gap | **Not planned** for now — unsupported; listing it fails validation |
 | Policy ↔ IaC drift suite | Prevent silent divergence | Fixture matrix: same privileged/init cases for both |
 | Secrets: entropy/pattern tuning + more fixtures | Core value prop | Measured FP drop on demo + self-scan |
 | ~~SAST: move intentional patterns out of production sources~~ | Done — `rules.yaml` + FP regex fixes | Patterns embedded from data file; SAST path excludes removed |
 | SAST: taint/dataflow or richer sinks | Still line-local regex | Keep honest docs; expand rules carefully |
 | Redact: structured secret fields, not only snippet heuristics | Defense in depth | Secret findings never emit raw match groups in any format |
 
-**Defer unless pulled forward:** AI code review (keep rejected until a real design).
+**Defer unless pulled forward:** AI code review (keep rejected until a real design). CloudFormation (explicit non-goal near term).
 
 ---
 
@@ -109,7 +119,7 @@ Residual detail: [audit-residual-risks.md](audit-residual-risks.md). Release ste
 
 1. ~~**R0** — cut `v1.1.0`~~ done.
 2. ~~**R1** — install decision + timeout / OSV flake / CI docs~~ done.
-3. **R2** — license/deps/IaC/policy depth; ~~SAST rules out of Go sources~~ done (partial); continue secrets/redact depth.
+3. **R2** — quality waves (finding IDs, parse/match, no silent skips, lockfile-first deps, license opt-in); ~~SAST rules out of Go sources~~ done (partial); continue secrets/redact depth.
 4. **R3** — platform, signing, monorepo, identity; Hub images when secrets land.
 
 Re-run the [audit loop](audit-residual-risks.md) after each release train; keep residual risks short and current.

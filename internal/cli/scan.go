@@ -45,8 +45,8 @@ Available scanners:
   --deps         Scan dependencies for vulnerabilities
   --sast         Static application security testing (OWASP patterns)
   --container    Scan container images (requires Trivy)
-  --license      Check dependency licenses against policy
-  --all          Enable secrets/IaC/deps/SAST/license (not container or AI; use --container for Trivy)
+  --license      Check dependency licenses against policy (opt-in; not part of --all)
+  --all          Enable secrets/IaC/deps/SAST (not container, license, or AI; use --container / --license to opt in)
 
 Examples:
   sentinelflow scan
@@ -63,12 +63,12 @@ func init() {
 	scanCmd.Flags().BoolVar(&scanDependencies, "deps", false, "scan dependencies")
 	scanCmd.Flags().BoolVar(&scanSAST, "sast", false, "static application security testing")
 	scanCmd.Flags().BoolVar(&scanContainer, "container", false, "scan container images")
-	scanCmd.Flags().BoolVar(&scanLicense, "license", false, "check dependency licenses")
+	scanCmd.Flags().BoolVar(&scanLicense, "license", false, "check dependency licenses (opt-in; not included in --all)")
 	scanCmd.Flags().StringVar(&containerImage, "container-image", "", "container image to scan")
 	scanCmd.Flags().BoolVar(&useBaseline, "baseline", false, "apply baseline filtering")
 	scanCmd.Flags().StringVar(&scanTimeoutFlag, "timeout", "", "scan deadline (Go duration, e.g. 10m, 90s); overrides scan_timeout")
 	scanCmd.Flags().BoolVar(&scanAI, "ai", false, "AI-powered code review (not available in this release)")
-	scanCmd.Flags().BoolVar(&scanAll, "all", false, "enable secrets, iac, deps, sast, and license (not container/AI)")
+	scanCmd.Flags().BoolVar(&scanAll, "all", false, "enable secrets, iac, deps, and sast (not container/license/AI)")
 	scanCmd.Flags().StringVarP(&outputFile, "output", "o", "", "output file path")
 	scanCmd.Flags().StringVar(&failOnSeverity, "fail-on", "", "fail if findings match severity (critical, high, medium, low)")
 }
@@ -189,7 +189,8 @@ func applyScanFlags(cfg *config.Config) error {
 		cfg.Scanners.IaC.Enabled = true
 		cfg.Scanners.Dependencies.Enabled = true
 		cfg.Scanners.SAST.Enabled = true
-		cfg.Scanners.License.Enabled = true
+		// License is limited-map / high FN — opt-in via --license, not --all.
+		cfg.Scanners.License.Enabled = false
 		// Container needs Trivy (+ usually an image); keep opt-in via --container.
 		cfg.Scanners.Container.Enabled = false
 		// AI scanner is not registered in v1.0
@@ -207,9 +208,12 @@ func applyScanFlags(cfg *config.Config) error {
 		cfg.Policies.Enabled = false
 	}
 
-	// --container must still work with --all (Action sets both when scan-container=true).
+	// --container / --license must still work with --all.
 	if scanContainer {
 		cfg.Scanners.Container.Enabled = true
+	}
+	if scanLicense {
+		cfg.Scanners.License.Enabled = true
 	}
 
 	if containerImage != "" {

@@ -4,7 +4,11 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+
+	"github.com/cozygarage/sentinelflow/internal/config"
+	"github.com/cozygarage/sentinelflow/pkg/api"
 )
 
 func TestPipScannerRequirementsAndPyProject(t *testing.T) {
@@ -214,5 +218,44 @@ func TestParsePythonRequirement(t *testing.T) {
 	}
 	if _, _, ok := parsePythonRequirement("requests @ git+https://example.com/req.git"); ok {
 		t.Fatal("URL requirements should be skipped")
+	}
+}
+
+func TestNpmPrefersPackageLock(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "package.json"), []byte(`{
+  "dependencies": { "lodash": "^4.0.0" }
+}`), 0644); err != nil {
+		t.Fatal(err)
+	}
+	lock := `{
+  "name": "app",
+  "lockfileVersion": 3,
+  "packages": {
+    "": { "name": "app" },
+    "node_modules/lodash": { "version": "4.17.21" }
+  }
+}`
+	if err := os.WriteFile(filepath.Join(root, "package-lock.json"), []byte(lock), 0644); err != nil {
+		t.Fatal(err)
+	}
+	deps, err := (&NpmScanner{}).Scan(context.Background(), root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(deps) != 1 || deps[0].Name != "lodash" || deps[0].Version != "4.17.21" {
+		t.Fatalf("expected lockfile exact version, got %+v", deps)
+	}
+	if !strings.HasSuffix(deps[0].FilePath, "package-lock.json") {
+		t.Fatalf("expected package-lock path, got %s", deps[0].FilePath)
+	}
+}
+
+func TestDepFindingIDIncludesPackage(t *testing.T) {
+	s := NewScanner(config.Default())
+	a := s.createFinding(Dependency{Name: "pkg-a", Version: "1.0.0", Ecosystem: "npm", FilePath: "/tmp/package.json"}, Vulnerability{ID: "CVE-1", Severity: api.SeverityHigh}, "/tmp")
+	b := s.createFinding(Dependency{Name: "pkg-b", Version: "1.0.0", Ecosystem: "npm", FilePath: "/tmp/package.json"}, Vulnerability{ID: "CVE-1", Severity: api.SeverityHigh}, "/tmp")
+	if a.ID == b.ID {
+		t.Fatalf("same CVE in different packages must differ: %s", a.ID)
 	}
 }

@@ -28,10 +28,9 @@ jobs:
         with:
           fetch-depth: 0
 
-      - uses: cozyGarage/sentielflow/.github/actions/sentinelflow@main
+      - uses: ./.github/actions/sentinelflow
         with:
-          delivery: docker
-          image: sentinelflow/sentinelflow:latest
+          delivery: build
           scan-all: 'true'
           fail-on: high
           format: sarif
@@ -44,19 +43,20 @@ jobs:
           category: sentinelflow
 ```
 
-For the same repository (dogfood PR code), build from source:
+External repos when a Hub image is published:
 
 ```yaml
-      - uses: ./.github/actions/sentinelflow
+      - uses: cozyGarage/sentielflow/.github/actions/sentinelflow@main
         with:
-          delivery: build
+          delivery: docker
+          image: sentinelflow/sentinelflow:<tag>
           scan-all: 'true'
           fail-on: high
           format: sarif
           output: report.sarif
 ```
 
-`delivery: docker` (default) pulls `image` and is the right path for **external** repos once a release image is published. `delivery: build` only works when the SentinelFlow source tree is in the workspace.
+`delivery: build` is preferred for this repo (and whenever Hub tags are absent). `delivery: docker` pulls `image` for **external** repos **once** a release image is published. `delivery: build` only works when the SentinelFlow source tree is in the workspace.
 
 ### Action inputs
 
@@ -64,12 +64,12 @@ For the same repository (dogfood PR code), build from source:
 | --- | --- | --- |
 | `delivery` | `docker` | `docker` pulls `image`; `build` compiles from the workspace (same-repo only) |
 | `image` | `sentinelflow/sentinelflow:latest` | Container image when `delivery=docker` |
-| `scan-all` | `true` | Enable secrets, IaC, deps, SAST, license (does **not** enable container). Individual `scan-*: 'false'` inputs **opt out** even when `scan-all` is true |
+| `scan-all` | `true` | Enable secrets, IaC, deps, SAST (does **not** enable container or license). Individual `scan-*: 'false'` inputs **opt out** even when `scan-all` is true |
 | `scan-secrets` | `true` | Secret scanning |
 | `scan-iac` | `true` | IaC scanning |
 | `scan-deps` | `true` | Dependency scanning |
 | `scan-sast` | `true` | OWASP SAST rules |
-| `scan-license` | `true` | License policy checks |
+| `scan-license` | `false` | License policy checks (**opt-in**; not part of `scan-all` / `--all`) |
 | `scan-container` | `false` | Container scan (requires `delivery=build` + Trivy) |
 | `container-image` | — | Image to scan when container enabled |
 | `use-baseline` | `false` | Skip baselined findings |
@@ -107,12 +107,14 @@ sentinelflow baseline . -o .sentinelflow/baseline.yaml
       - uses: cozyGarage/sentielflow/.github/actions/sentinelflow@main
         with:
           delivery: docker
-          image: sentinelflow/sentinelflow:latest
+          image: sentinelflow/sentinelflow:<tag>
           use-baseline: 'true'
           fail-on: high
           format: sarif
           output: report.sarif
 ```
+
+Use `delivery: build` instead when no Hub image is available.
 
 ### SARIF upload (code scanning)
 
@@ -156,7 +158,7 @@ The workflow generates a Markdown report and updates an existing bot comment whe
 
 ## GitLab CI
 
-Prefer the published image (after a release):
+Prefer build-from-source (or a release binary). Use a published image only when Hub tags exist:
 
 ```yaml
 stages:
@@ -164,10 +166,11 @@ stages:
 
 sentinelflow:
   stage: security
-  image: sentinelflow/sentinelflow:latest
+  image: golang:1.25
   script:
-    - sentinelflow scan --all --format sarif -o gl-sast-report.sarif --fail-on high
-    - sentinelflow sbom -o sbom.json
+    - go build -o sentinelflow ./cmd/sentinelflow
+    - ./sentinelflow scan --all --format sarif -o gl-sast-report.sarif --fail-on high
+    - ./sentinelflow sbom -o sbom.json
   artifacts:
     reports:
       sast: gl-sast-report.sarif
@@ -175,25 +178,26 @@ sentinelflow:
       - sbom.json
 ```
 
-Build from source when dogfooding this repository:
+Optional container path (when an image is published):
 
 ```yaml
 sentinelflow:
   stage: security
-  image: golang:1.25
+  image: sentinelflow/sentinelflow:<tag>
   script:
-    - go build -o sentinelflow ./cmd/sentinelflow
-    - ./sentinelflow scan --all --format sarif -o gl-sast-report.sarif --fail-on high
+    - sentinelflow scan --all --format sarif -o gl-sast-report.sarif --fail-on high
 ```
 
 See [examples/.gitlab-ci.yml](../examples/.gitlab-ci.yml) for a complete source-based example with policy validation.
 
-## Docker
+## Docker (optional)
 
 ```bash
-docker build -t sentinelflow .
-docker run --rm -v $(pwd):/workspace -w /workspace sentinelflow scan --all
+docker build -t sentinelflow/sentinelflow:local .
+docker run --rm -v $(pwd):/workspace -w /workspace sentinelflow/sentinelflow:local scan --all
 ```
+
+Prefer `make build` / install script when you do not need a container.
 
 ## Exit codes
 
@@ -205,6 +209,6 @@ SentinelFlow exits with code `1` when findings exceed the `--fail-on` threshold.
 | --- | --- |
 | `--fail-on` | `high` or `critical` |
 | `--format` | `sarif` for GitHub/GitLab security tabs |
-| `--all` | Enable all implemented scanners |
+| `--all` | Enable secrets, IaC, deps, SAST (not container, not license) |
 | `fetch-depth: 0` | Required for git history secret scanning |
 | Config file | Commit `.sentinelflow.yaml` to the repo |

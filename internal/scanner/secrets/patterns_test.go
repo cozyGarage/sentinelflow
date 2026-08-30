@@ -29,7 +29,10 @@ func TestLoadFilePatternsFromScanRoot(t *testing.T) {
 
 	cfg := config.Default()
 	scanner := NewScanner(cfg)
-	loaded := scanner.loadFilePatterns(tmpDir)
+	loaded, err := scanner.loadFilePatterns(tmpDir)
+	if err != nil {
+		t.Fatalf("loadFilePatterns: %v", err)
+	}
 
 	found := false
 	for _, p := range loaded {
@@ -122,5 +125,53 @@ func TestFindingIDsIncludePathToken(t *testing.T) {
 	}
 	if len(ids) < 2 {
 		t.Fatalf("expected distinct IDs across files, got %d (%v)", len(ids), ids)
+	}
+}
+
+func TestInvalidPatternsYAMLFailsScan(t *testing.T) {
+	tmpDir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(tmpDir, ".sentinelflow"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	bad := `patterns:
+  - id: broken
+    regex: "(unclosed"
+`
+	if err := os.WriteFile(filepath.Join(tmpDir, ".sentinelflow", "patterns.yaml"), []byte(bad), 0644); err != nil {
+		t.Fatal(err)
+	}
+	s := NewScanner(config.Default())
+	_, err := s.Scan(context.Background(), tmpDir, nil)
+	if err == nil {
+		t.Fatal("expected invalid patterns.yaml to fail the scan")
+	}
+}
+
+func TestSameLineSecretMatchesHaveDistinctIDs(t *testing.T) {
+	tmp := t.TempDir()
+	// Two AWS access keys on one line
+	line := `keys = ["AKIAIOSFODNN7EXAMPLE", "AKIAI44QH8DHBEXAMPLE"]` + "\n"
+	if err := os.WriteFile(filepath.Join(tmp, "cfg.env"), []byte(line), 0644); err != nil {
+		t.Fatal(err)
+	}
+	s := NewScanner(config.Default())
+	result, err := s.Scan(context.Background(), tmp, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ids := map[string]bool{}
+	count := 0
+	for _, f := range result.Findings {
+		if f.RuleID != "aws-access-key" {
+			continue
+		}
+		count++
+		if ids[f.ID] {
+			t.Fatalf("duplicate ID for same-line matches: %s", f.ID)
+		}
+		ids[f.ID] = true
+	}
+	if count < 2 {
+		t.Fatalf("expected 2 aws-access-key findings on one line, got %d", count)
 	}
 }

@@ -80,9 +80,17 @@ func (s *Scanner) Scan(ctx context.Context, path string, opts interface{}) (*Sca
 		Findings: []api.Finding{},
 	}
 
+	if _, err := s.loadConfigPatternsStrict(); err != nil {
+		return nil, err
+	}
+
 	// Load .sentinelflow/patterns.yaml relative to the scan root (not process CWD).
 	basePatterns := s.patterns
-	s.patterns = append(append([]*SecretPattern{}, basePatterns...), s.loadFilePatterns(path)...)
+	filePatterns, err := s.loadFilePatterns(path)
+	if err != nil {
+		return nil, err
+	}
+	s.patterns = append(append([]*SecretPattern{}, basePatterns...), filePatterns...)
 	defer func() { s.patterns = basePatterns }()
 
 	files, err := types.ResolveFiles(path, opts, s.collectFiles)
@@ -96,6 +104,7 @@ func (s *Scanner) Scan(ctx context.Context, path string, opts interface{}) (*Sca
 			continue
 		}
 		if info, err := os.Stat(file); err == nil && info.Size() > 1*1024*1024 {
+			fmt.Fprintf(os.Stderr, "warning: secrets: skipping %s (exceeds 1MB)\n", file)
 			continue
 		}
 		rel, _ := filepath.Rel(path, file)
@@ -214,7 +223,7 @@ func (s *Scanner) scanReader(ctx context.Context, r io.Reader, filePath, basePat
 				relPath = filepath.ToSlash(relPath)
 
 				finding := api.Finding{
-					ID:          fmt.Sprintf("SEC-%s-%s-%d", pattern.ID, pathToken(relPath), lineNum),
+					ID:          fmt.Sprintf("SEC-%s-%s-%d-%d", pattern.ID, pathToken(relPath), lineNum, start+1),
 					Type:        api.FindingTypeSecret,
 					Severity:    pattern.Severity,
 					Title:       fmt.Sprintf("Potential %s detected", pattern.Name),
@@ -564,44 +573,48 @@ func (s *Scanner) checkHighEntropy(line string, lineNum int, filePath, basePath 
 	}
 
 	for _, pattern := range patterns {
-		matches := pattern.FindAllStringSubmatch(line, -1)
-		for _, match := range matches {
-			if len(match) > 1 {
-				secret := match[1]
-				entropy := s.calculateEntropy(secret)
+		matches := pattern.FindAllStringSubmatchIndex(line, -1)
+		for matchIdx, loc := range matches {
+			if len(loc) < 4 {
+				continue
+			}
+			secret := line[loc[2]:loc[3]]
+			entropy := s.calculateEntropy(secret)
 
-				if entropy >= s.config.Scanners.Secrets.EntropyThreshold && !s.isPlaceholder(secret) {
-					relPath := filePath
-					if basePath != "" {
-						if rel, err := filepath.Rel(basePath, filePath); err == nil {
-							relPath = rel
-						}
+			if entropy >= s.config.Scanners.Secrets.EntropyThreshold && !s.isPlaceholder(secret) {
+				relPath := filePath
+				if basePath != "" {
+					if rel, err := filepath.Rel(basePath, filePath); err == nil {
+						relPath = rel
 					}
-					relPath = filepath.ToSlash(relPath)
-
-					finding := api.Finding{
-						ID:          fmt.Sprintf("SEC-entropy-%s-%d", pathToken(relPath), lineNum),
-						Type:        api.FindingTypeSecret,
-						Severity:    api.SeverityMedium,
-						Title:       "High-entropy string detected",
-						Description: fmt.Sprintf("High-entropy string (%.2f bits) may be a secret", entropy),
-						Location: api.Location{
-							File:      relPath,
-							StartLine: lineNum,
-							EndLine:   lineNum,
-							Snippet:   s.maskSecret(line, 0, len(line)),
-						},
-						Remediation: "Review this string and move to environment variables if it's a secret",
-						Scanner:     "secrets",
-						RuleID:      "high-entropy",
-						Confidence:  0.7,
-						Metadata: map[string]any{
-							"entropy": entropy,
-						},
-					}
-
-					findings = append(findings, finding)
 				}
+				relPath = filepath.ToSlash(relPath)
+
+				finding := api.Finding{
+					ID:          fmt.Sprintf("SEC-entropy-%s-%d-%d", pathToken(relPath), lineNum, loc[2]+1),
+					Type:        api.FindingTypeSecret,
+					Severity:    api.SeverityMedium,
+					Title:       "High-entropy string detected",
+					Description: fmt.Sprintf("High-entropy string (%.2f bits) may be a secret", entropy),
+					Location: api.Location{
+						File:      relPath,
+						StartLine: lineNum,
+						EndLine:   lineNum,
+						StartCol:  loc[2] + 1,
+						EndCol:    loc[3] + 1,
+						Snippet:   s.maskSecret(line, 0, len(line)),
+					},
+					Remediation: "Review this string and move to environment variables if it's a secret",
+					Scanner:     "secrets",
+					RuleID:      "high-entropy",
+					Confidence:  0.7,
+					Metadata: map[string]any{
+						"entropy": entropy,
+						"match":   matchIdx,
+					},
+				}
+
+				findings = append(findings, finding)
 			}
 		}
 	}
@@ -658,8 +671,10 @@ func (s *Scanner) scanGitHistory(ctx context.Context, path string) ([]api.Findin
 	}
 
 	const maxPatchBytes = 2 * 1024 * 1024
+	truncated := false
 	if len(output) > maxPatchBytes {
 		output = output[:maxPatchBytes]
+		truncated = true
 	}
 
 	var findings []api.Finding
@@ -710,7 +725,7 @@ func (s *Scanner) scanGitHistory(ctx context.Context, path string) ([]api.Findin
 				fileFindings[i].Location.StartLine = lineNum
 				fileFindings[i].Location.EndLine = lineNum
 				// scanReader sees a one-line buffer so IDs end in -1; remint with the hunk line.
-				fileFindings[i].ID = fmt.Sprintf("SEC-%s-%s-%d", fileFindings[i].RuleID, pathToken(virtualPath), lineNum)
+				fileFindings[i].ID = fmt.Sprintf("SEC-%s-%s-%d-%d", fileFindings[i].RuleID, pathToken(virtualPath), lineNum, fileFindings[i].Location.StartCol)
 				fileFindings[i].Metadata = map[string]any{
 					"git_commit": commit,
 					"git_file":   file,
@@ -726,7 +741,13 @@ func (s *Scanner) scanGitHistory(ctx context.Context, path string) ([]api.Findin
 		}
 	}
 
-	return findings, scanner.Err()
+	if err := scanner.Err(); err != nil {
+		return findings, err
+	}
+	if truncated {
+		return findings, fmt.Errorf("git history patch truncated at %d bytes; results may be incomplete", maxPatchBytes)
+	}
+	return findings, nil
 }
 
 func shortCommit(commit string) string {
@@ -781,11 +802,14 @@ type customPatternEntry struct {
 
 // loadCustomPatterns loads patterns from .sentinelflow/patterns.yaml
 func (s *Scanner) loadCustomPatterns() []*SecretPattern {
-	return append(s.loadFilePatterns("."), s.loadConfigPatterns()...)
+	patterns, _ := s.loadFilePatterns(".")
+	configPatterns, _ := s.loadConfigPatternsStrict()
+	return append(patterns, configPatterns...)
 }
 
 // loadFilePatterns loads .sentinelflow/patterns.yaml from the scan root.
-func (s *Scanner) loadFilePatterns(scanRoot string) []*SecretPattern {
+// Missing files are OK; invalid YAML or regexes return an error (no silent skip).
+func (s *Scanner) loadFilePatterns(scanRoot string) ([]*SecretPattern, error) {
 	paths := []string{
 		filepath.Join(scanRoot, ".sentinelflow", "patterns.yaml"),
 		filepath.Join(scanRoot, ".sentinelflow", "patterns.yml"),
@@ -795,12 +819,15 @@ func (s *Scanner) loadFilePatterns(scanRoot string) []*SecretPattern {
 	for _, p := range paths {
 		data, err := os.ReadFile(p)
 		if err != nil {
-			continue
+			if os.IsNotExist(err) {
+				continue
+			}
+			return nil, fmt.Errorf("read patterns file %s: %w", p, err)
 		}
 
 		var file customPatternFile
 		if err := yaml.Unmarshal(data, &file); err != nil {
-			continue
+			return nil, fmt.Errorf("invalid patterns file %s: %w", p, err)
 		}
 
 		for _, entry := range file.Patterns {
@@ -809,7 +836,11 @@ func (s *Scanner) loadFilePatterns(scanRoot string) []*SecretPattern {
 			}
 			re, err := regexp.Compile(entry.Regex)
 			if err != nil {
-				continue
+				id := entry.ID
+				if id == "" {
+					id = entry.Name
+				}
+				return nil, fmt.Errorf("invalid pattern %q in %s: %w", id, p, err)
 			}
 			id := entry.ID
 			if id == "" {
@@ -823,18 +854,23 @@ func (s *Scanner) loadFilePatterns(scanRoot string) []*SecretPattern {
 				Description: entry.Description,
 			})
 		}
-		break // first file wins
+		return patterns, nil // first file wins
 	}
+	return patterns, nil
+}
+
+// loadConfigPatterns compiles scanners.secrets.patterns (best-effort for NewScanner).
+func (s *Scanner) loadConfigPatterns() []*SecretPattern {
+	patterns, _ := s.loadConfigPatternsStrict()
 	return patterns
 }
 
-// loadConfigPatterns compiles scanners.secrets.patterns as additional regexes.
-func (s *Scanner) loadConfigPatterns() []*SecretPattern {
+func (s *Scanner) loadConfigPatternsStrict() ([]*SecretPattern, error) {
 	var patterns []*SecretPattern
-	for _, pat := range s.config.Scanners.Secrets.Patterns {
+	for i, pat := range s.config.Scanners.Secrets.Patterns {
 		re, err := regexp.Compile(pat)
 		if err != nil {
-			continue
+			return nil, fmt.Errorf("invalid scanners.secrets.patterns[%d]: %w", i, err)
 		}
 		patterns = append(patterns, &SecretPattern{
 			ID:          fmt.Sprintf("custom-%d", len(patterns)+1),
@@ -844,7 +880,7 @@ func (s *Scanner) loadConfigPatterns() []*SecretPattern {
 			Description: "Custom secret pattern from configuration",
 		})
 	}
-	return patterns
+	return patterns, nil
 }
 
 func pathToken(relPath string) string {

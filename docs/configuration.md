@@ -38,7 +38,7 @@ Run `sentinelflow init` to generate a starter configuration.
 | Field | Type | Default | Description |
 | --- | --- | --- | --- |
 | `enabled` | bool | `true` | Enable IaC scanning |
-| `frameworks` | []string | terraform, kubernetes, dockerfile | Frameworks to scan. Unknown names fail config validation (CloudFormation is not implemented) |
+| `frameworks` | []string | terraform, kubernetes, dockerfile | Frameworks to scan. Unknown names (including CloudFormation) fail config validation. CloudFormation is **not planned** / unsupported |
 | `severity` | string | `medium` | Minimum severity to report |
 | `skip_rules` | []string | — | Rule IDs to ignore |
 
@@ -54,6 +54,8 @@ Run `sentinelflow init` to generate a starter configuration.
 | `fail_on_error` | bool | `true` | Fail the CLI when the dependencies scanner errors (e.g. OSV network blips). Set `false` to keep any findings and print a warning instead of failing solely for transport errors |
 
 Default stays strict for security. Soft-fail is for flaky CI networks only — findings that were collected still go through `fail_on`.
+
+When lockfiles are present (`package-lock.json`, `npm-shrinkwrap.json`, `go.sum`, `poetry.lock`, `Pipfile.lock`, `Cargo.lock`, …), the scanner prefers them. Range-only manifests without a lockfile are best-effort / may query approximate versions.
 
 ### SAST (`scanners.sast`)
 
@@ -78,11 +80,11 @@ Built-in rules: `sqli-concat`, `sqli-format`, `xss-innerhtml`, `xss-eval`, `xss-
 
 | Field | Type | Default | Description |
 | --- | --- | --- | --- |
-| `enabled` | bool | `false` | Enable license policy scanning (`package.json` / `go.mod` only) |
+| `enabled` | bool | `false` | Opt-in license policy scanning (`package.json` / `go.mod` only). Not enabled by `--all` |
 | `denied` | []string | GPL-3.0, AGPL-3.0, SSPL-1.0 | Licenses that fail the scan |
 | `allowed` | []string | — | If non-empty, only these licenses are permitted (checked before denied) |
 
-License coverage is intentionally limited: known transitive licenses are a small hardcoded map, not a full SBOM license database.
+License coverage is intentionally limited: known transitive licenses are a small hardcoded map, not a full SBOM license database. Keep license **off** unless you explicitly want this limited gate.
 
 ### Baseline (`baseline`)
 

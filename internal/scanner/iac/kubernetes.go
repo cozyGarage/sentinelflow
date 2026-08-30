@@ -157,7 +157,7 @@ func (s *KubernetesScanner) checkContainer(container, podSC map[string]interface
 			"Privileged Container Detected",
 			fmt.Sprintf("Container %q is running in privileged mode, which grants all capabilities", name),
 			api.SeverityCritical, relPath, "privileged: true",
-			"Remove privileged flag or use specific capabilities instead"))
+			"Remove privileged flag or use specific capabilities instead", name))
 	}
 
 	if runAsUser, ok := asInt(secContext["runAsUser"]); ok && runAsUser == 0 {
@@ -165,7 +165,7 @@ func (s *KubernetesScanner) checkContainer(container, podSC map[string]interface
 			"Container Running as Root",
 			fmt.Sprintf("Container %q is configured to run as root user (UID 0)", name),
 			api.SeverityHigh, relPath, "runAsUser: 0",
-			"Set runAsUser to a non-root UID (e.g., 1000)"))
+			"Set runAsUser to a non-root UID (e.g., 1000)", name))
 	}
 
 	runAsNonRoot, hasRunAsNonRoot := asBool(secContext["runAsNonRoot"])
@@ -174,7 +174,7 @@ func (s *KubernetesScanner) checkContainer(container, podSC map[string]interface
 			"runAsNonRoot Not Enforced",
 			fmt.Sprintf("Container %q does not enforce running as non-root user", name),
 			api.SeverityMedium, relPath, "securityContext",
-			"Set runAsNonRoot: true in pod or container securityContext"))
+			"Set runAsNonRoot: true in pod or container securityContext", name))
 	}
 
 	if allowPrivEsc, ok := asBool(secContext["allowPrivilegeEscalation"]); ok && allowPrivEsc {
@@ -182,7 +182,7 @@ func (s *KubernetesScanner) checkContainer(container, podSC map[string]interface
 			"Privilege Escalation Allowed",
 			fmt.Sprintf("Container %q allows privilege escalation", name),
 			api.SeverityHigh, relPath, "allowPrivilegeEscalation: true",
-			"Set allowPrivilegeEscalation: false"))
+			"Set allowPrivilegeEscalation: false", name))
 	}
 
 	if _, hasResources := container["resources"]; !hasResources {
@@ -190,7 +190,7 @@ func (s *KubernetesScanner) checkContainer(container, podSC map[string]interface
 			"Missing Resource Limits",
 			fmt.Sprintf("Container %q does not have CPU/memory limits defined", name),
 			api.SeverityLow, relPath, fmt.Sprintf("container: %s", name),
-			"Define resource requests and limits"))
+			"Define resource requests and limits", name))
 	}
 
 	if image, ok := container["image"].(string); ok {
@@ -199,7 +199,7 @@ func (s *KubernetesScanner) checkContainer(container, podSC map[string]interface
 				"Using 'latest' Image Tag",
 				"Container uses 'latest' or no tag, which can lead to unpredictable deployments",
 				api.SeverityMedium, relPath, fmt.Sprintf("image: %s", image),
-				"Use specific image tags or digests"))
+				"Use specific image tags or digests", name))
 		}
 	}
 
@@ -285,9 +285,13 @@ func (s *KubernetesScanner) getPodSpec(manifest map[string]interface{}) map[stri
 	return podSpec
 }
 
-func k8sFinding(id, ruleID, title, desc string, sev api.Severity, file, snippet, remediation string) api.Finding {
+func k8sFinding(id, ruleID, title, desc string, sev api.Severity, file, snippet, remediation string, extra ...string) api.Finding {
+	token := pathToken(file)
+	if len(extra) > 0 && extra[0] != "" {
+		token = pathToken(file + "|" + extra[0])
+	}
 	return api.Finding{
-		ID:          fmt.Sprintf("%s-%s", id, pathToken(file)),
+		ID:          fmt.Sprintf("%s-%s", id, token),
 		Type:        api.FindingTypeMisconfiguration,
 		Severity:    sev,
 		Title:       title,
