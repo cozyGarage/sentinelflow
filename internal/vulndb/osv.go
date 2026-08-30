@@ -198,11 +198,12 @@ func (s *OSVSource) Query(ctx context.Context, ecosystem, pkg, version string) (
 // mapEcosystem maps our ecosystem names to OSV ecosystem names
 func mapEcosystem(ecosystem string) string {
 	mapping := map[string]string{
-		"npm":   "npm",
-		"go":    "Go",
-		"pip":   "PyPI",
-		"maven": "Maven",
-		"cargo": "crates.io",
+		"npm":      "npm",
+		"go":       "Go",
+		"pip":      "PyPI",
+		"maven":    "Maven",
+		"cargo":    "crates.io",
+		"rubygems": "RubyGems",
 	}
 
 	if mapped, ok := mapping[ecosystem]; ok {

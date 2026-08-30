@@ -58,7 +58,7 @@ Queries the [OSV API](https://osv.dev/) for Go, npm, pip, Maven, and Cargo ecosy
 
 ### Supported files
 
-Dependencies **prefer lockfiles when present** (`package-lock.json`, `npm-shrinkwrap.json`, classic `yarn.lock`, `go.sum`, `poetry.lock`, `Pipfile.lock`, `Cargo.lock`, etc.). Range-only manifests without a lockfile are **best-effort** and may query approximate versions against OSV.
+Dependencies **prefer lockfiles when present** (`package-lock.json`, `npm-shrinkwrap.json`, classic `yarn.lock`, `go.sum`, `poetry.lock`, `Pipfile.lock`, `Cargo.lock`, `Gemfile.lock`, etc.). Range-only manifests without a lockfile are **best-effort** and may query approximate versions against OSV.
 
 | Ecosystem | Manifests / lockfiles |
 | --- | --- |
@@ -67,6 +67,7 @@ Dependencies **prefer lockfiles when present** (`package-lock.json`, `npm-shrink
 | Python (PyPI) | `poetry.lock` / `Pipfile.lock` (preferred), `requirements.txt`, `pyproject.toml` |
 | Maven | `pom.xml` (resolves basic `${property}` versions) |
 | Cargo | `Cargo.lock` (preferred), `Cargo.toml` fallback |
+| RubyGems | `Gemfile.lock` only (bare `Gemfile` unsupported) |
 
 Unpinned or URL-based Python/Cargo requirements without a concrete version are skipped so OSV queries stay meaningful.
 

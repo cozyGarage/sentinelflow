@@ -74,6 +74,7 @@ func NewScanner(cfg *config.Config) *Scanner {
 	s.ecosystems["pip"] = &PipScanner{}
 	s.ecosystems["maven"] = &MavenScanner{}
 	s.ecosystems["cargo"] = &CargoScanner{}
+	s.ecosystems["rubygems"] = &RubyGemsScanner{}
 
 	return s
 }
@@ -87,13 +88,14 @@ func (s *Scanner) Name() string {
 func (s *Scanner) Supports(path string) bool {
 	base := filepath.Base(path)
 
-	// Only files that implemented parsers actually read (no Gemfile/Ruby/Gradle yet).
+	// Only files that implemented parsers actually read (bare Gemfile unsupported).
 	supportedFiles := []string{
 		"go.mod",
-		"package.json",
+		"package.json", "package-lock.json", "npm-shrinkwrap.json", "yarn.lock",
 		"requirements.txt", "Pipfile.lock", "poetry.lock", "pyproject.toml",
 		"pom.xml",
 		"Cargo.toml", "Cargo.lock",
+		"Gemfile.lock",
 	}
 
 	for _, f := range supportedFiles {

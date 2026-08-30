@@ -11,7 +11,7 @@ Re-audit after correctness, delivery, scanner-quality waves, first release, and 
 | Docker Hub | Images not published yet | `v1.1.0` (+ follow-ups) ship binaries; Hub needs `DOCKER_USERNAME` / `DOCKER_PASSWORD`. Prefer binary / Action / `make build`. |
 | Module path | `go install` unsupported by decision | Module `github.com/cozygarage/sentinelflow` ≠ repo `cozyGarage/sentielflow`. Install = binary / Action / `make build` first; Docker optional. |
 | License scanner | High FN rate by design | Hardcoded license map; no SBOM. **Honesty path:** opt-in only (not in `--all`). Documented; not a full license gate. |
-| Dependencies | No Ruby/Gemfile parsing; range-only manifests | Lockfile-first preferred; without lockfile = best-effort. Ruby still unsupported. |
+| Dependencies | Bare Gemfile / Gradle still unsupported | Lockfile-first preferred; `Gemfile.lock` supported (RubyGems). Ruby Gemfile alone is skipped. |
 | CloudFormation | Not implemented | **Not planned** for now. Listing it under `scanners.iac.frameworks` fails validation. |
 | AI scanner | Rejected at config/CLI | Planned; keep `enabled: false`. |
 | OSV / network | Soft-fail optional | Default `fail_on_error: true`. Set `scanners.dependencies.fail_on_error: false` to warn instead of failing CI on transport errors. |
@@ -20,6 +20,7 @@ Re-audit after correctness, delivery, scanner-quality waves, first release, and 
 | Policy vs IaC | Remaining Rego gaps | e.g. some workload kinds / stringly YAML edge cases may still diverge. |
 | Redaction | Heuristic, not cryptographic | Reporter + secrets redact patterns; novel secret formats may still leak in snippets. |
 | SAST | Line-local regex only | Rules in `rules.yaml`; `severity`/`skip_rules` honored. No taint analysis; Go/JS/TS/Python/Java only. |
+| OPA API | `opa/rego` v0 wrapper deprecated | Keep until Rego v1 migrate; `opa/v1` needs policy rewrite or explicit RegoV0. |
 
 ## Landed since original residual note
 

@@ -292,3 +292,53 @@ func TestDepFindingIDIncludesPackage(t *testing.T) {
 		t.Fatalf("same CVE in different packages must differ: %s", a.ID)
 	}
 }
+
+func TestRubyGemsScannerGemfileLock(t *testing.T) {
+	root := t.TempDir()
+	lock := `GEM
+  remote: https://rubygems.org/
+  specs:
+    rails (7.1.3)
+      actionpack (= 7.1.3)
+    actionpack (7.1.3)
+    nokogiri (1.16.2-x86_64-linux)
+      racc (~> 1.4)
+
+PLATFORMS
+  x86_64-linux
+
+DEPENDENCIES
+  rails (~> 7.1)
+`
+	if err := os.WriteFile(filepath.Join(root, "Gemfile.lock"), []byte(lock), 0644); err != nil {
+		t.Fatal(err)
+	}
+	s := &RubyGemsScanner{}
+	if !s.Detect(root) {
+		t.Fatal("expected Detect on Gemfile.lock")
+	}
+	deps, err := s.Scan(context.Background(), root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]string{}
+	for _, d := range deps {
+		got[d.Name] = d.Version
+	}
+	if got["rails"] != "7.1.3" || got["actionpack"] != "7.1.3" {
+		t.Fatalf("expected gem pins, got %+v", got)
+	}
+	if got["nokogiri"] != "1.16.2" {
+		t.Fatalf("expected platform suffix stripped, got %q", got["nokogiri"])
+	}
+	if (&RubyGemsScanner{}).Detect(t.TempDir()) {
+		t.Fatal("bare dir without Gemfile.lock must not Detect")
+	}
+	s2 := NewScanner(config.Default())
+	if s2.Supports("Gemfile") {
+		t.Fatal("bare Gemfile must remain unsupported")
+	}
+	if !s2.Supports("Gemfile.lock") {
+		t.Fatal("expected Supports(Gemfile.lock)")
+	}
+}
