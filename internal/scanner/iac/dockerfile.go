@@ -80,7 +80,7 @@ func (s *DockerfileScanner) ScanFile(ctx context.Context, filePath, basePath str
 				continue
 			}
 			findings = append(findings, api.Finding{
-				ID:          fmt.Sprintf("IAC-DOCKER-%s-%d", rule.ID, inst.Line),
+				ID:          fmt.Sprintf("IAC-DOCKER-%s-%s-%d", rule.ID, pathToken(relPath), inst.Line),
 				Type:        api.FindingTypeMisconfiguration,
 				Severity:    rule.Severity,
 				Title:       rule.Name,
@@ -109,7 +109,7 @@ func (s *DockerfileScanner) ScanFile(ctx context.Context, filePath, basePath str
 			line = instructions[len(instructions)-1].EndLine
 		}
 		findings = append(findings, api.Finding{
-			ID:          fmt.Sprintf("IAC-DOCKER-%s-%d", rule.ID, line),
+			ID:          fmt.Sprintf("IAC-DOCKER-%s-%s-%d", rule.ID, pathToken(relPath), line),
 			Type:        api.FindingTypeMisconfiguration,
 			Severity:    rule.Severity,
 			Title:       rule.Name,

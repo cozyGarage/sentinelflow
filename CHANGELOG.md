@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- IaC/policy finding IDs include a path token so baseline cannot cross-suppress sibling files
+- Broken custom Rego policies always fail the policy scanner (even when builtins loaded)
+- Exclude globs with multiple `**` segments (e.g. `**/testdata/**`) match correctly
+
+### Fixed (prior)
+
 - Selective CLI flags (`--secrets`, `--iac`, …) disable the policy scanner so OPA no longer runs unexpectedly
 - Shared `filter.ShouldSkip` no longer hard-skips `*_test.go` (defaults / `scanners.exclude` / secrets allowlist handle it; `**` globs match correctly)
 - Secrets finding IDs include a path token; `.sentinelflow/patterns.yaml` loads from the scan root
@@ -22,14 +28,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Document `scan_staged_only` as not implemented; clarify secrets `patterns` are regexes
 
-### Fixed (prior)
+### Fixed (SAST)
 
 - SAST `cmd-inject-shell` alternation no longer matches bare `"bash"` / `"cmd"` strings
 - SAST `sqli-format` no longer matches English `fmt.Sprintf("Update …")` remediation text
 - SAST `xss-eval` matches lowercase `eval(` only (avoids Go `query.Eval`)
 - Bump Go to `1.25.13` and `golang.org/x/crypto` to `v0.55.0` so `govulncheck` / deps stay green
 
-### Changed (prior)
+### Changed (SAST)
 
 - SAST rules load from embedded `rules.yaml`; removed SAST self-scan path excludes for scanner/policy/deps/container sources
 - SAST honors `scanners.sast.severity` and `skip_rules`; finding IDs include a path token to avoid cross-file collisions

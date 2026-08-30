@@ -23,6 +23,22 @@ func TestFilterBaselinedFindings(t *testing.T) {
 	}
 }
 
+func TestFilterByIDDoesNotCrossFilesWhenIDsDiffer(t *testing.T) {
+	a := api.Finding{
+		ID: "IAC-DOCKER-latest-tag-aaaa-1", RuleID: "latest-tag",
+		Location: api.Location{File: "Dockerfile", StartLine: 1},
+	}
+	b := api.Finding{
+		ID: "IAC-DOCKER-latest-tag-bbbb-1", RuleID: "latest-tag",
+		Location: api.Location{File: "app.dockerfile", StartLine: 1},
+	}
+	bl := &File{Findings: []Entry{{ID: a.ID, RuleID: a.RuleID, File: a.Location.File, Hash: HashFinding(a)}}}
+	filtered := Filter([]api.Finding{a, b}, bl)
+	if len(filtered) != 1 || filtered[0].ID != b.ID {
+		t.Fatalf("baselining one file's ID must not suppress the other file, got %+v", filtered)
+	}
+}
+
 func TestHashFindingStable(t *testing.T) {
 	f := api.Finding{
 		RuleID:   "test-rule",

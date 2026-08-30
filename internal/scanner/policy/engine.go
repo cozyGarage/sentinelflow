@@ -3,6 +3,7 @@ package policy
 import (
 	"context"
 	"fmt"
+	"hash/fnv"
 	"os"
 	"path/filepath"
 	"strings"
@@ -171,7 +172,7 @@ func ConvertToFindings(result *PolicyResult, severity api.Severity) []api.Findin
 
 	for i, violation := range result.Violations {
 		finding := api.Finding{
-			ID:          fmt.Sprintf("POLICY-%s-%d", result.PolicyName, i),
+			ID:          fmt.Sprintf("POLICY-%s-%s-%d", result.PolicyName, pathToken(violation.Resource), i),
 			Type:        api.FindingTypePolicyViolation,
 			Severity:    severity,
 			Title:       fmt.Sprintf("Policy Violation: %s", result.PolicyName),
@@ -189,4 +190,10 @@ func ConvertToFindings(result *PolicyResult, severity api.Severity) []api.Findin
 	}
 
 	return findings
+}
+
+func pathToken(relPath string) string {
+	h := fnv.New32a()
+	_, _ = h.Write([]byte(filepath.ToSlash(relPath)))
+	return fmt.Sprintf("%08x", h.Sum32())
 }
