@@ -36,15 +36,18 @@ func TestDetectDeniedLicense(t *testing.T) {
 	}
 }
 
-func TestAllowedLicense(t *testing.T) {
+func TestLGPLDoesNotMatchDeniedGPL(t *testing.T) {
 	tmpDir := t.TempDir()
-	pkgJSON := `{"name": "test-app", "license": "MIT"}`
-	os.WriteFile(filepath.Join(tmpDir, "package.json"), []byte(pkgJSON), 0644)
+	pkgJSON := `{"name": "test-app", "license": "LGPL-3.0"}`
+	if err := os.WriteFile(filepath.Join(tmpDir, "package.json"), []byte(pkgJSON), 0644); err != nil {
+		t.Fatal(err)
+	}
 
 	s := NewScanner(&config.Config{
 		Scanners: config.ScannersConfig{
 			License: config.LicenseConfig{
-				Denied: []string{"GPL-3.0"},
+				Enabled: true,
+				Denied:  []string{"GPL-3.0"},
 			},
 		},
 	})
@@ -54,7 +57,16 @@ func TestAllowedLicense(t *testing.T) {
 		t.Fatalf("scan failed: %v", err)
 	}
 	if len(result.Findings) != 0 {
-		t.Errorf("expected no findings for MIT license, got %d", len(result.Findings))
+		t.Fatalf("LGPL-3.0 must not match denied GPL-3.0 via substring, got %d findings", len(result.Findings))
+	}
+}
+
+func TestLicenseInListExactOnly(t *testing.T) {
+	if licenseInList("LGPL-3.0", []string{"GPL-3.0"}) {
+		t.Fatal("substring match must not apply")
+	}
+	if !licenseInList("GPL-3.0", []string{"gpl-3.0"}) {
+		t.Fatal("exact case-insensitive match should apply")
 	}
 }
 

@@ -96,10 +96,9 @@ func runScan(cmd *cobra.Command, args []string) error {
 	// Load configuration from the scan target (not only process CWD).
 	cfg, err := loadScanConfig(absPath)
 	if err != nil {
-		if verbose {
-			fmt.Println(color.YellowString("⚠ No config file found, using defaults"))
-		}
-		cfg = config.Default()
+		// LoadFromDir already returns defaults when no file exists; real errors
+		// (malformed YAML, bad --config path) must not be swallowed as defaults.
+		return fmt.Errorf("failed to load config: %w", err)
 	}
 
 	// Apply CLI flags to config, then normalize/validate (including --fail-on).
@@ -206,6 +205,11 @@ func applyScanFlags(cfg *config.Config) error {
 		cfg.Scanners.Container.Enabled = scanContainer
 		cfg.Scanners.License.Enabled = scanLicense
 		cfg.Policies.Enabled = false
+	}
+
+	// --container must still work with --all (Action sets both when scan-container=true).
+	if scanContainer {
+		cfg.Scanners.Container.Enabled = true
 	}
 
 	if containerImage != "" {

@@ -709,6 +709,8 @@ func (s *Scanner) scanGitHistory(ctx context.Context, path string) ([]api.Findin
 			for i := range fileFindings {
 				fileFindings[i].Location.StartLine = lineNum
 				fileFindings[i].Location.EndLine = lineNum
+				// scanReader sees a one-line buffer so IDs end in -1; remint with the hunk line.
+				fileFindings[i].ID = fmt.Sprintf("SEC-%s-%s-%d", fileFindings[i].RuleID, pathToken(virtualPath), lineNum)
 				fileFindings[i].Metadata = map[string]any{
 					"git_commit": commit,
 					"git_file":   file,

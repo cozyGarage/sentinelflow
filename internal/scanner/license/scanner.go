@@ -176,7 +176,8 @@ func (s *Scanner) checkLicense(name, license string, denied, allowed []string, f
 
 func licenseInList(license string, list []string) bool {
 	for _, item := range list {
-		if strings.EqualFold(license, item) || strings.Contains(strings.ToUpper(license), strings.ToUpper(item)) {
+		// Exact match only — substring would make LGPL-3.0 match denied GPL-3.0.
+		if strings.EqualFold(strings.TrimSpace(license), strings.TrimSpace(item)) {
 			return true
 		}
 	}

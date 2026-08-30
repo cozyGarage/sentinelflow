@@ -185,7 +185,19 @@ runs:
           ARGS+=(--timeout "${SF_TIMEOUT}")
         fi
 
-        OUT_PATH="${SF_WORKSPACE}/${SF_OUTPUT}"
+        if [[ "${SF_OUTPUT}" = /* ]]; then
+          OUT_PATH="${SF_OUTPUT}"
+        else
+          OUT_PATH="${SF_WORKSPACE}/${SF_OUTPUT}"
+        fi
+        if [[ "${SF_OUTPUT}" = /* ]]; then
+          case "${SF_OUTPUT}" in
+            "${SF_WORKSPACE}"/*) DOCKER_OUT="/workspace/${SF_OUTPUT#"${SF_WORKSPACE}"/}" ;;
+            *) DOCKER_OUT="${SF_OUTPUT}" ;;
+          esac
+        else
+          DOCKER_OUT="/workspace/${SF_OUTPUT}"
+        fi
         WORK_DIR="${SF_WORKING_DIRECTORY}"
         if [ -z "${WORK_DIR}" ] || [ "${WORK_DIR}" = "." ]; then
           DOCKER_WORKDIR="/workspace"
@@ -209,7 +221,7 @@ runs:
             scan "${ARGS[@]}" \
               --fail-on "${SF_FAIL_ON}" \
               --format "${SF_FORMAT}" \
-              -o "/workspace/${SF_OUTPUT}"
+              -o "${DOCKER_OUT}"
           EXIT_CODE=$?
         fi
         set -e

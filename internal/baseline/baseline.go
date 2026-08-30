@@ -104,7 +104,10 @@ func Filter(findings []api.Finding, baseline *File) []api.Finding {
 		if e.ID != "" {
 			baselined["id:"+e.ID] = true
 		}
-		if e.RuleID != "" && e.File != "" {
+		// Legacy entries without ID/hash: suppress by rule+file only. When ID or
+		// hash is present, rule:file must not blanket-suppress new findings in
+		// the same file (false green for same-rule new secrets/IaC).
+		if e.ID == "" && e.Hash == "" && e.RuleID != "" && e.File != "" {
 			baselined[fmt.Sprintf("%s:%s", e.RuleID, e.File)] = true
 		}
 	}
@@ -114,7 +117,7 @@ func Filter(findings []api.Finding, baseline *File) []api.Finding {
 		if baselined[HashFinding(f)] {
 			continue
 		}
-		if baselined["id:"+f.ID] {
+		if f.ID != "" && baselined["id:"+f.ID] {
 			continue
 		}
 		if baselined[fmt.Sprintf("%s:%s", f.RuleID, f.Location.File)] {

@@ -174,6 +174,30 @@ func TestApplyScanFlagsAllDoesNotEnableContainer(t *testing.T) {
 	}
 }
 
+func TestApplyScanFlagsAllWithContainerFlag(t *testing.T) {
+	prevAll := scanAll
+	prevImage := containerImage
+	prevContainer := scanContainer
+	t.Cleanup(func() {
+		scanAll = prevAll
+		containerImage = prevImage
+		scanContainer = prevContainer
+	})
+
+	scanAll = true
+	containerImage = ""
+	scanContainer = true
+
+	cfg := config.Default()
+	cfg.Scanners.Container.Enabled = false
+	if err := applyScanFlags(cfg); err != nil {
+		t.Fatalf("applyScanFlags: %v", err)
+	}
+	if !cfg.Scanners.Container.Enabled {
+		t.Fatal("expected --all --container to enable container")
+	}
+}
+
 func TestApplyScanFlagsRejectsAI(t *testing.T) {
 	prevAI := scanAI
 	prevAll := scanAll

@@ -95,13 +95,18 @@ func (e *OPAEngine) EvaluatePolicy(policyName string, input interface{}) (*Polic
 	return result, nil
 }
 
-// collectViolations recursively searches for violation messages in OPA output
+// collectViolations recursively searches for violation messages in OPA output.
+// Only deny*/violation* rule keys are treated as findings so helper sets
+// (e.g. workload_kinds) are not reported as violations.
 func collectViolations(data map[string]interface{}, violations *[]PolicyViolation) {
-	for _, v := range data {
+	for key, v := range data {
 		switch val := v.(type) {
 		case map[string]interface{}:
 			collectViolations(val, violations)
 		case []interface{}:
+			if !isViolationRuleKey(key) {
+				continue
+			}
 			for _, item := range val {
 				switch msg := item.(type) {
 				case string:
@@ -118,6 +123,13 @@ func collectViolations(data map[string]interface{}, violations *[]PolicyViolatio
 			}
 		}
 	}
+}
+
+func isViolationRuleKey(key string) bool {
+	k := strings.ToLower(key)
+	return k == "deny" || k == "violation" ||
+		strings.HasPrefix(k, "deny_") || strings.HasPrefix(k, "violation_") ||
+		strings.HasPrefix(k, "violations")
 }
 
 // ValidatePolicy validates policy syntax without evaluating
