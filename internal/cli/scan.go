@@ -289,6 +289,9 @@ func printScanHeader(path string, cfg *config.Config) {
 	if cfg.Scanners.License.Enabled {
 		scanners = append(scanners, "license")
 	}
+	if cfg.Policies.Enabled {
+		scanners = append(scanners, "policy")
+	}
 	if cfg.Scanners.AI.Enabled {
 		scanners = append(scanners, "ai")
 	}

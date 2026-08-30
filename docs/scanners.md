@@ -144,7 +144,7 @@ See [Policy Authoring](policies.md) for Rego examples. Sample inputs live under 
 
 ## 8. SBOM (`internal/scanner/sbom`)
 
-Generates CycloneDX JSON from the project dependency tree via `sentinelflow sbom`.
+Generates CycloneDX JSON via `sentinelflow sbom` from `go.mod`, `package-lock.json`, and `Cargo.lock` (missing files skipped; corrupt lockfiles fail).
 
 ---
 

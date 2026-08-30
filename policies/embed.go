@@ -4,7 +4,6 @@ package policies
 import (
 	"embed"
 	"fmt"
-	"io/fs"
 	"sort"
 	"strings"
 )
@@ -107,27 +106,6 @@ func LoadSelected(names []string) (map[string]string, error) {
 		selected[name] = b.Content
 	}
 	return selected, nil
-}
-
-// AllContents returns every embedded policy name -> source.
-func AllContents() (map[string]string, error) {
-	entries, err := fs.ReadDir(files, ".")
-	if err != nil {
-		return nil, err
-	}
-	out := make(map[string]string, len(entries))
-	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), ".rego") {
-			continue
-		}
-		data, err := files.ReadFile(e.Name())
-		if err != nil {
-			return nil, err
-		}
-		name := strings.TrimSuffix(e.Name(), ".rego")
-		out[name] = string(data)
-	}
-	return out, nil
 }
 
 func severityFromContent(content string) string {

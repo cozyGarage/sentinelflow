@@ -130,10 +130,3 @@ func (f *SARIFFormatter) severityToLevel(severity api.Severity) string {
 		return "warning"
 	}
 }
-
-func (f *SARIFFormatter) getFirstReference(refs []string) string {
-	if len(refs) > 0 {
-		return refs[0]
-	}
-	return ""
-}

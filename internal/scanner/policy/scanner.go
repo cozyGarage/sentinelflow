@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/cozygarage/sentinelflow/internal/config"
+	"github.com/cozygarage/sentinelflow/internal/scanner/types"
 	"github.com/cozygarage/sentinelflow/pkg/api"
 	"github.com/cozygarage/sentinelflow/policies"
 )
@@ -19,11 +20,8 @@ type Scanner struct {
 	severities map[string]api.Severity
 }
 
-// ScannerResult contains scan results
-type ScannerResult struct {
-	Findings   []api.Finding
-	FilesCount int
-}
+// ScannerResult is the shared scanner result type.
+type ScannerResult = types.ScannerResult
 
 // NewScanner creates a new policy scanner
 func NewScanner(cfg *config.Config) *Scanner {

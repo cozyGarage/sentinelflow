@@ -148,7 +148,6 @@ CLI override: `--fail-on high`
 | --- | --- | --- | --- |
 | `scan_history` | bool | `false` | Scan git commit history |
 | `history_depth` | int | `50` | Number of commits to scan |
-| `scan_staged_only` | bool | `false` | **Not implemented** — reserved; full tree is always scanned |
 
 ## Example
 

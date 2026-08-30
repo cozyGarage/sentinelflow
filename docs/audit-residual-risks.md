@@ -1,6 +1,6 @@
 # Audit residual risks (post Waves 1–3 + R0/R1)
 
-> **In progress on `cursor/quality-waves-abcde-c09b`:** docs/product honesty for license opt-in, lockfile-first deps, Docker Hub soft-sell, and CloudFormation “not planned.” Engine/scanner Go fixes for Waves A–E may still be in flight — treat residual rows below as open unless a later note marks them closed.
+> Quality waves A–E and sprint Q1–Q3 are on `main`. Rows below are longer-horizon residuals.
 
 Re-audit after correctness, delivery, scanner-quality waves, first release, and R1 productize. Unit tests green; `make demo` fails the gate as expected on intentional findings.
 

@@ -12,6 +12,7 @@ import (
 	"sync"
 
 	"github.com/cozygarage/sentinelflow/internal/config"
+	"github.com/cozygarage/sentinelflow/internal/scanner/types"
 	"github.com/cozygarage/sentinelflow/internal/vulndb"
 	"github.com/cozygarage/sentinelflow/pkg/api"
 )
@@ -51,11 +52,8 @@ type Vulnerability struct {
 	References  []string
 }
 
-// ScannerResult contains scan results (matching scanner.ScannerResult interface)
-type ScannerResult struct {
-	Findings   []api.Finding
-	FilesCount int
-}
+// ScannerResult is the shared scanner result type.
+type ScannerResult = types.ScannerResult
 
 // NewScanner creates a new dependency scanner
 func NewScanner(cfg *config.Config) *Scanner {
@@ -65,7 +63,9 @@ func NewScanner(cfg *config.Config) *Scanner {
 	}
 
 	client, err := vulndb.NewClient()
-	if err == nil {
+	if err != nil {
+		s.client = nil
+	} else {
 		s.client = client
 	}
 
