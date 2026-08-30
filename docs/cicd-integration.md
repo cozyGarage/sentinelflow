@@ -64,7 +64,7 @@ For the same repository (dogfood PR code), build from source:
 | --- | --- | --- |
 | `delivery` | `docker` | `docker` pulls `image`; `build` compiles from the workspace (same-repo only) |
 | `image` | `sentinelflow/sentinelflow:latest` | Container image when `delivery=docker` |
-| `scan-all` | `true` | Enable secrets, IaC, deps, SAST, license via `--all` (does **not** enable container) |
+| `scan-all` | `true` | Enable secrets, IaC, deps, SAST, license (does **not** enable container). Individual `scan-*: 'false'` inputs **opt out** even when `scan-all` is true |
 | `scan-secrets` | `true` | Secret scanning |
 | `scan-iac` | `true` | IaC scanning |
 | `scan-deps` | `true` | Dependency scanning |

@@ -38,7 +38,7 @@ func runSBOM(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("invalid path: %w", err)
 	}
 
-	cfg, err := config.Load()
+	cfg, err := config.LoadFromDir(config.ConfigDirForTarget(absPath))
 	if err != nil {
 		cfg = config.Default()
 	}

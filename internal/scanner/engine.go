@@ -148,6 +148,9 @@ func (e *Engine) Scan(ctx context.Context, targetPath string) (*api.ScanResult, 
 		if blPath == "" {
 			blPath = baseline.DefaultPath
 		}
+		if !filepath.IsAbs(blPath) {
+			blPath = filepath.Join(targetPath, blPath)
+		}
 		bl, err := baseline.Load(blPath)
 		if err != nil {
 			return nil, fmt.Errorf("failed to load baseline %s: %w", blPath, err)

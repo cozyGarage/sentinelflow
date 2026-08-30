@@ -57,3 +57,27 @@ func TestAllowedLicense(t *testing.T) {
 		t.Errorf("expected no findings for MIT license, got %d", len(result.Findings))
 	}
 }
+
+func TestInvalidPackageJSONSurfacesError(t *testing.T) {
+	tmpDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(tmpDir, "package.json"), []byte("{not-json"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	s := NewScanner(config.Default())
+	_, err := s.Scan(context.Background(), tmpDir, nil)
+	if err == nil {
+		t.Fatal("expected parse error for invalid package.json")
+	}
+}
+
+func TestMissingManifestsAreOK(t *testing.T) {
+	tmpDir := t.TempDir()
+	s := NewScanner(config.Default())
+	result, err := s.Scan(context.Background(), tmpDir, nil)
+	if err != nil {
+		t.Fatalf("empty dir should not error: %v", err)
+	}
+	if result.FilesCount != 0 {
+		t.Fatalf("expected 0 files, got %d", result.FilesCount)
+	}
+}

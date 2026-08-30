@@ -1,6 +1,8 @@
 # Configuration Reference
 
-SentinelFlow reads settings from `.sentinelflow.yaml` in the project root. Environment variables prefixed with `SENTINELFLOW_` can override file values.
+SentinelFlow reads `.sentinelflow.yaml` from the **scan target directory** (the path passed to `scan` / `baseline` / `sbom`), falling back to the process working directory. Use `--config` to force an explicit file. Environment variables prefixed with `SENTINELFLOW_` can override file values.
+
+Relative `baseline.file` paths are resolved against the scan target as well.
 
 Run `sentinelflow init` to generate a starter configuration.
 
