@@ -30,11 +30,14 @@ func TestEngineInitialization(t *testing.T) {
 		t.Fatal("Failed to create engine")
 	}
 
-	scanners := engine.GetScanners()
-
+	tmpDir := t.TempDir()
+	result, err := engine.Scan(context.Background(), tmpDir)
+	if err != nil {
+		t.Fatalf("scan empty dir: %v", err)
+	}
 	// Should have 4 scanners (secrets, iac, dependencies, policy)
-	if len(scanners) != 4 {
-		t.Errorf("Expected 4 scanners, got %d", len(scanners))
+	if len(result.ScannerRuns) != 4 {
+		t.Errorf("Expected 4 scanner runs, got %d", len(result.ScannerRuns))
 	}
 }
 

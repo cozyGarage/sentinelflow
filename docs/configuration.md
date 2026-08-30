@@ -124,13 +124,9 @@ Built-in policies:
 
 | Field | Type | Default | Description |
 | --- | --- | --- | --- |
-| `format` | string | `text` | Default output format |
-| `include_remediation` | bool | `true` | Include fix suggestions |
-| `github_annotations` | bool | `true` | Emit GitHub annotation hints |
-| `sarif_upload` | bool | `false` | Enable SARIF upload hints |
-| `output_dir` | string | — | Directory for report files |
+| `format` | string | `text` | Default output format (`--format` / `-f` overrides) |
 
-Supported formats: `text`, `json`, `sarif`, `markdown`, `html`.
+Supported formats: `text`, `json`, `sarif`, `markdown`, `html`. Remediation text is always included when present on a finding. GitHub annotations and SARIF upload are workflow/Action concerns, not config knobs.
 
 ## Fail Conditions (`fail_on`)
 

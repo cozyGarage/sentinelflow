@@ -6,16 +6,13 @@ import (
 	"os"
 	"sync"
 
-	"github.com/cozygarage/sentinelflow/internal/config"
 	"github.com/cozygarage/sentinelflow/pkg/api"
 )
 
 // ScanOptions contains options for a scan operation.
 type ScanOptions struct {
-	Config      *config.Config
 	Files       []string
 	Concurrency int
-	Verbose     bool
 }
 
 // ScannerResult is the standard result type returned by scanners.

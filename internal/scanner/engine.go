@@ -23,12 +23,6 @@ import (
 // Scanner defines the interface for all security scanners
 type Scanner = adapter.Scanner
 
-// ScanOptions contains options for a scan operation
-type ScanOptions = types.ScanOptions
-
-// ScannerResult contains results from a single scanner
-type ScannerResult = types.ScannerResult
-
 // Engine orchestrates all security scanners
 type Engine struct {
 	config   *config.Config
@@ -98,7 +92,6 @@ func (e *Engine) Scan(ctx context.Context, targetPath string) (*api.ScanResult, 
 	}
 
 	opts := types.ScanOptions{
-		Config:      e.config,
 		Files:       files,
 		Concurrency: concurrency,
 	}
@@ -242,9 +235,4 @@ func (e *Engine) collectGitMetadata(path string, meta *api.ScanMetadata) {
 			}
 		}
 	}
-}
-
-// GetScanners returns the list of enabled scanners
-func (e *Engine) GetScanners() []Scanner {
-	return e.scanners
 }

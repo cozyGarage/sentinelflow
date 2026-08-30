@@ -11,7 +11,6 @@ import (
 
 // Reporter generates security scan reports
 type Reporter struct {
-	config     *config.Config
 	formatters map[string]Formatter
 }
 
@@ -21,9 +20,8 @@ type Formatter interface {
 }
 
 // New creates a new reporter
-func New(cfg *config.Config) *Reporter {
+func New(_ *config.Config) *Reporter {
 	r := &Reporter{
-		config:     cfg,
 		formatters: make(map[string]Formatter),
 	}
 

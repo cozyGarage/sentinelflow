@@ -1,6 +1,6 @@
 # Audit residual risks (post Waves 1–3 + R0/R1)
 
-> Quality waves A–E and sprint Q1–Q3 are on `main`. Rows below are longer-horizon residuals.
+> Quality waves A–E, sprint Q1–Q3, residual sprint, and dead-code cleanups are on `main`. Rows below are longer-horizon residuals.
 
 Re-audit after correctness, delivery, scanner-quality waves, first release, and R1 productize. Unit tests green; `make demo` fails the gate as expected on intentional findings.
 

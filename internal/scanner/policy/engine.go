@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"hash/fnv"
-	"os"
 	"path/filepath"
 	"strings"
 
@@ -41,27 +40,6 @@ func (e *OPAEngine) LoadPolicy(name, content string) error {
 	e.modules[name] = content
 
 	return nil
-}
-
-// LoadPoliciesFromDir loads all .rego files from a directory
-func (e *OPAEngine) LoadPoliciesFromDir(dir string) error {
-	return filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-
-		if info.IsDir() || !strings.HasSuffix(path, ".rego") {
-			return nil
-		}
-
-		content, err := os.ReadFile(path)
-		if err != nil {
-			return fmt.Errorf("failed to read policy %s: %w", path, err)
-		}
-
-		name := strings.TrimSuffix(filepath.Base(path), ".rego")
-		return e.LoadPolicy(name, string(content))
-	})
 }
 
 // EvaluatePolicy evaluates a policy against input data
@@ -149,11 +127,6 @@ func (e *OPAEngine) ListPolicies() []string {
 		names = append(names, name)
 	}
 	return names
-}
-
-// PolicyCount returns the number of loaded policies.
-func (e *OPAEngine) PolicyCount() int {
-	return len(e.policies)
 }
 
 // PolicyResult contains the result of policy evaluation

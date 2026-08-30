@@ -9,18 +9,6 @@ import (
 	"time"
 )
 
-// Database is the main vulnerability database interface
-type Database interface {
-	// Query searches for vulnerabilities in a package
-	Query(ctx context.Context, ecosystem, name, version string) ([]Vulnerability, error)
-
-	// Update refreshes the vulnerability database
-	Update(ctx context.Context) error
-
-	// Close closes the database
-	Close() error
-}
-
 // Vulnerability represents a security vulnerability
 type Vulnerability struct {
 	ID         string    `json:"id"`
@@ -133,21 +121,6 @@ func (c *Client) Query(ctx context.Context, ecosystem, pkg, version string) ([]V
 	_ = c.cache.Set(cacheKey, allVulns, 24*time.Hour)
 
 	return allVulns, nil
-}
-
-// Update updates vulnerability data from all sources
-func (c *Client) Update(ctx context.Context) error {
-	// Clear cache
-	if err := c.cache.Clear(); err != nil {
-		return fmt.Errorf("failed to clear cache: %w", err)
-	}
-
-	return nil
-}
-
-// Close closes the database client
-func (c *Client) Close() error {
-	return nil
 }
 
 // Option is a functional option for Client

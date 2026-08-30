@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Dead-code round 2: drop unused API helpers, unread reporting knobs, orphan scripts/fixtures; slim ScanOptions / vulndb / buildinfo / reporter / SBOM / policy embed leftovers
+
 ### Fixed
 
 - Load `.sentinelflow.yaml` and relative baseline paths from the scan target (not only process CWD)
