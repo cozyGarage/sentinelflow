@@ -4,21 +4,11 @@ package buildinfo
 // Version is the product version embedded in scan reports (overridden by ldflags).
 var Version = "1.0.0"
 
-// Commit is the git commit (optional).
-var Commit = "none"
-
-// Date is the build date (optional).
-var Date = "unknown"
-
 // Set updates version metadata from main/ldflags.
-func Set(version, commit, date string) {
+// commit and date are accepted for ldflag compatibility but unused in reports
+// (CLI version output uses internal/cli.SetVersionInfo instead).
+func Set(version, _, _ string) {
 	if version != "" {
 		Version = version
-	}
-	if commit != "" {
-		Commit = commit
-	}
-	if date != "" {
-		Date = date
 	}
 }

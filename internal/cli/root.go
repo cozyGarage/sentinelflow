@@ -197,9 +197,6 @@ policies:
 
 reporting:
   format: markdown
-  include_remediation: true
-  github_annotations: true
-  sarif_upload: true
 
 fail_on:
   severity: high

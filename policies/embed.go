@@ -68,12 +68,6 @@ func Get(name string) (Builtin, error) {
 		return Builtin{}, fmt.Errorf("built-in policy %q missing: %w", name, err)
 	}
 	meta.Content = string(content)
-	if meta.Severity == "" {
-		meta.Severity = severityFromContent(meta.Content)
-	}
-	if meta.Description == "" {
-		meta.Description = descriptionFromContent(meta.Content)
-	}
 	return meta, nil
 }
 
@@ -106,28 +100,4 @@ func LoadSelected(names []string) (map[string]string, error) {
 		selected[name] = b.Content
 	}
 	return selected, nil
-}
-
-func severityFromContent(content string) string {
-	for _, line := range strings.Split(content, "\n") {
-		if strings.Contains(line, "# severity:") {
-			parts := strings.SplitN(line, "severity:", 2)
-			if len(parts) == 2 {
-				return strings.TrimSpace(parts[1])
-			}
-		}
-	}
-	return "medium"
-}
-
-func descriptionFromContent(content string) string {
-	for _, line := range strings.Split(content, "\n") {
-		if strings.Contains(line, "# description:") {
-			parts := strings.SplitN(line, "description:", 2)
-			if len(parts) == 2 {
-				return strings.TrimSpace(parts[1])
-			}
-		}
-	}
-	return ""
 }

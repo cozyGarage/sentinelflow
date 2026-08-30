@@ -155,7 +155,6 @@ type ScanMetadata struct {
 	SentinelFlowVersion string    `json:"sentinelflow_version"`
 	GitCommit           string    `json:"git_commit,omitempty"`
 	GitBranch           string    `json:"git_branch,omitempty"`
-	GitRepository       string    `json:"git_repository,omitempty"`
 }
 
 // CountBySeverity returns a map of severity to count
@@ -167,51 +166,11 @@ func (r *ScanResult) CountBySeverity() map[Severity]int {
 	return counts
 }
 
-// CountByType returns a map of finding type to count
-func (r *ScanResult) CountByType() map[FindingType]int {
-	counts := make(map[FindingType]int)
-	for _, f := range r.Findings {
-		counts[f.Type]++
-	}
-	return counts
-}
-
-// HasCritical returns true if there are any critical findings
-func (r *ScanResult) HasCritical() bool {
-	for _, f := range r.Findings {
-		if f.Severity == SeverityCritical {
-			return true
-		}
-	}
-	return false
-}
-
-// HasHigh returns true if there are any high severity findings
-func (r *ScanResult) HasHigh() bool {
-	for _, f := range r.Findings {
-		if f.Severity == SeverityHigh {
-			return true
-		}
-	}
-	return false
-}
-
 // FilterBySeverity returns findings matching the given severity
 func (r *ScanResult) FilterBySeverity(severity Severity) []Finding {
 	var filtered []Finding
 	for _, f := range r.Findings {
 		if f.Severity == severity {
-			filtered = append(filtered, f)
-		}
-	}
-	return filtered
-}
-
-// FilterByScanner returns findings from the specified scanner
-func (r *ScanResult) FilterByScanner(scanner string) []Finding {
-	var filtered []Finding
-	for _, f := range r.Findings {
-		if f.Scanner == scanner {
 			filtered = append(filtered, f)
 		}
 	}

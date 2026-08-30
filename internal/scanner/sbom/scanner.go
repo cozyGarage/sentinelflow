@@ -14,9 +14,7 @@ import (
 )
 
 // Scanner generates SBOM documents from project lockfiles
-type Scanner struct {
-	config *config.Config
-}
+type Scanner struct{}
 
 // ScannerResult contains SBOM generation results
 type ScannerResult struct {
@@ -49,8 +47,8 @@ type Component struct {
 }
 
 // NewScanner creates a new SBOM scanner
-func NewScanner(cfg *config.Config) *Scanner {
-	return &Scanner{config: cfg}
+func NewScanner(_ *config.Config) *Scanner {
+	return &Scanner{}
 }
 
 // Generate creates a CycloneDX SBOM from the target path.

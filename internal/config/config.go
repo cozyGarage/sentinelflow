@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/spf13/viper"
-	"gopkg.in/yaml.v3"
 )
 
 // AINotAvailableMessage is the shared rejection text for --ai / scanners.ai.enabled.
@@ -132,11 +131,7 @@ type PoliciesConfig struct {
 
 // ReportConfig configures report generation
 type ReportConfig struct {
-	Format             string `yaml:"format" mapstructure:"format"`
-	IncludeRemediation bool   `yaml:"include_remediation" mapstructure:"include_remediation"`
-	GitHubAnnotations  bool   `yaml:"github_annotations" mapstructure:"github_annotations"`
-	SARIFUpload        bool   `yaml:"sarif_upload" mapstructure:"sarif_upload"`
-	OutputDir          string `yaml:"output_dir" mapstructure:"output_dir"`
+	Format string `yaml:"format" mapstructure:"format"`
 }
 
 // FailOnConfig configures when the scan should fail
@@ -287,10 +282,7 @@ func Default() *Config {
 			},
 		},
 		Reporting: ReportConfig{
-			Format:             "text",
-			IncludeRemediation: true,
-			GitHubAnnotations:  true,
-			SARIFUpload:        false,
+			Format: "text",
 		},
 		FailOn: FailOnConfig{
 			Severity:         "high",
@@ -306,15 +298,6 @@ func Default() *Config {
 			File:    ".sentinelflow/baseline.yaml",
 		},
 	}
-}
-
-// Save writes configuration to a file
-func (c *Config) Save(path string) error {
-	data, err := yaml.Marshal(c)
-	if err != nil {
-		return err
-	}
-	return os.WriteFile(path, data, 0644)
 }
 
 // Validate checks if the configuration is valid
