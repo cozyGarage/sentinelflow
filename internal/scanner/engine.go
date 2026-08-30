@@ -244,11 +244,6 @@ func (e *Engine) collectGitMetadata(path string, meta *api.ScanMetadata) {
 	}
 }
 
-// AddScanner adds a custom scanner to the engine
-func (e *Engine) AddScanner(s Scanner) {
-	e.scanners = append(e.scanners, s)
-}
-
 // GetScanners returns the list of enabled scanners
 func (e *Engine) GetScanners() []Scanner {
 	return e.scanners

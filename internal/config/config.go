@@ -148,14 +148,8 @@ type FailOnConfig struct {
 
 // GitConfig configures git-related settings
 type GitConfig struct {
-	ScanHistory    bool `yaml:"scan_history" mapstructure:"scan_history"`
-	HistoryDepth   int  `yaml:"history_depth" mapstructure:"history_depth"`
-	ScanStagedOnly bool `yaml:"scan_staged_only" mapstructure:"scan_staged_only"`
-}
-
-// Load reads configuration from the process working directory and environment.
-func Load() (*Config, error) {
-	return LoadFromDir(".")
+	ScanHistory  bool `yaml:"scan_history" mapstructure:"scan_history"`
+	HistoryDepth int  `yaml:"history_depth" mapstructure:"history_depth"`
 }
 
 // LoadFile loads configuration from an explicit file path (--config).
@@ -304,9 +298,8 @@ func Default() *Config {
 			PolicyViolations: true,
 		},
 		Git: GitConfig{
-			ScanHistory:    false,
-			HistoryDepth:   50,
-			ScanStagedOnly: false,
+			ScanHistory:  false,
+			HistoryDepth: 50,
 		},
 		Baseline: BaselineConfig{
 			Enabled: false,

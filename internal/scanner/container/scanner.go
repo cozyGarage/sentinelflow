@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/cozygarage/sentinelflow/internal/config"
+	"github.com/cozygarage/sentinelflow/internal/scanner/types"
 	"github.com/cozygarage/sentinelflow/pkg/api"
 )
 
@@ -20,13 +21,8 @@ type Scanner struct {
 	config *config.Config
 }
 
-// ScannerResult contains scan results
-type ScannerResult struct {
-	Findings   []api.Finding
-	FilesCount int
-	Skipped    bool
-	SkipReason string
-}
+// ScannerResult is the shared scanner result type.
+type ScannerResult = types.ScannerResult
 
 // NewScanner creates a new container scanner
 func NewScanner(cfg *config.Config) *Scanner {

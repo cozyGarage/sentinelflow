@@ -808,13 +808,6 @@ type customPatternEntry struct {
 	Description string `yaml:"description"`
 }
 
-// loadCustomPatterns loads patterns from .sentinelflow/patterns.yaml
-func (s *Scanner) loadCustomPatterns() []*SecretPattern {
-	patterns, _ := s.loadFilePatterns(".")
-	configPatterns, _ := s.loadConfigPatternsStrict()
-	return append(patterns, configPatterns...)
-}
-
 // loadFilePatterns loads .sentinelflow/patterns.yaml from the scan root.
 // Missing files are OK; invalid YAML or regexes return an error (no silent skip).
 func (s *Scanner) loadFilePatterns(scanRoot string) ([]*SecretPattern, error) {

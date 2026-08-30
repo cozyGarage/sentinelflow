@@ -166,10 +166,3 @@ func WithCache(cache Cache) Option {
 		c.cache = cache
 	}
 }
-
-// WithHTTPClient sets a custom HTTP client
-func WithHTTPClient(client *http.Client) Option {
-	return func(c *Client) {
-		c.client = client
-	}
-}

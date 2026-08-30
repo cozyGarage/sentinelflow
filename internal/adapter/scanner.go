@@ -70,11 +70,7 @@ func NewDependenciesAdapter(cfg *config.Config) *DependenciesAdapter {
 func (a *DependenciesAdapter) Name() string             { return a.scanner.Name() }
 func (a *DependenciesAdapter) Supports(path string) bool { return a.scanner.Supports(path) }
 func (a *DependenciesAdapter) Scan(ctx context.Context, path string, opts interface{}) (*ScannerResult, error) {
-	result, err := a.scanner.Scan(ctx, path, opts)
-	if result == nil {
-		return nil, err
-	}
-	return &ScannerResult{Findings: result.Findings, FilesCount: result.FilesCount}, err
+	return a.scanner.Scan(ctx, path, opts)
 }
 
 // PolicyAdapter wraps the policy scanner
@@ -90,11 +86,7 @@ func NewPolicyAdapter(cfg *config.Config) *PolicyAdapter {
 func (a *PolicyAdapter) Name() string             { return a.scanner.Name() }
 func (a *PolicyAdapter) Supports(path string) bool { return a.scanner.Supports(path) }
 func (a *PolicyAdapter) Scan(ctx context.Context, path string, opts interface{}) (*ScannerResult, error) {
-	result, err := a.scanner.Scan(ctx, path, opts)
-	if result == nil {
-		return nil, err
-	}
-	return &ScannerResult{Findings: result.Findings, FilesCount: result.FilesCount}, err
+	return a.scanner.Scan(ctx, path, opts)
 }
 
 // SASTAdapter wraps the SAST scanner
@@ -124,11 +116,7 @@ func NewContainerAdapter(cfg *config.Config) *ContainerAdapter {
 func (a *ContainerAdapter) Name() string             { return a.scanner.Name() }
 func (a *ContainerAdapter) Supports(path string) bool { return a.scanner.Supports(path) }
 func (a *ContainerAdapter) Scan(ctx context.Context, path string, opts interface{}) (*ScannerResult, error) {
-	result, err := a.scanner.Scan(ctx, path, opts)
-	if result == nil {
-		return nil, err
-	}
-	return &ScannerResult{Findings: result.Findings, FilesCount: result.FilesCount}, err
+	return a.scanner.Scan(ctx, path, opts)
 }
 
 // LicenseAdapter wraps the license scanner
@@ -143,9 +131,5 @@ func NewLicenseAdapter(cfg *config.Config) *LicenseAdapter {
 func (a *LicenseAdapter) Name() string             { return a.scanner.Name() }
 func (a *LicenseAdapter) Supports(path string) bool { return a.scanner.Supports(path) }
 func (a *LicenseAdapter) Scan(ctx context.Context, path string, opts interface{}) (*ScannerResult, error) {
-	result, err := a.scanner.Scan(ctx, path, opts)
-	if result == nil {
-		return nil, err
-	}
-	return &ScannerResult{Findings: result.Findings, FilesCount: result.FilesCount}, err
+	return a.scanner.Scan(ctx, path, opts)
 }

@@ -22,7 +22,6 @@ type Scanner struct {
 type ScannerResult struct {
 	Document   *CycloneDX
 	FilesCount int
-	OutputPath string
 }
 
 // CycloneDX represents a CycloneDX 1.5 BOM document
@@ -54,20 +53,8 @@ func NewScanner(cfg *config.Config) *Scanner {
 	return &Scanner{config: cfg}
 }
 
-func (s *Scanner) Name() string { return "sbom" }
-
-func (s *Scanner) Supports(path string) bool {
-	base := filepath.Base(path)
-	lockfiles := []string{"go.mod", "package-lock.json", "yarn.lock", "Cargo.lock", "poetry.lock", "Pipfile.lock"}
-	for _, lf := range lockfiles {
-		if base == lf {
-			return true
-		}
-	}
-	return false
-}
-
-// Generate creates a CycloneDX SBOM from the target path
+// Generate creates a CycloneDX SBOM from the target path.
+// Missing lockfiles are skipped; corrupt lockfiles fail the generation.
 func (s *Scanner) Generate(ctx context.Context, path string) (*ScannerResult, error) {
 	result := &ScannerResult{
 		Document: &CycloneDX{
@@ -87,21 +74,33 @@ func (s *Scanner) Generate(ctx context.Context, path string) (*ScannerResult, er
 	}
 
 	var components []Component
+	var errs []string
 
-	if comps, err := s.parseGoMod(path); err == nil {
-		components = append(components, comps...)
-		result.FilesCount++
+	parsers := []struct {
+		name string
+		fn   func(string) ([]Component, error)
+	}{
+		{"go.mod", s.parseGoMod},
+		{"package-lock.json", s.parsePackageLock},
+		{"Cargo.lock", s.parseCargoLock},
 	}
-	if comps, err := s.parsePackageLock(path); err == nil {
-		components = append(components, comps...)
-		result.FilesCount++
-	}
-	if comps, err := s.parseCargoLock(path); err == nil {
+	for _, p := range parsers {
+		comps, err := p.fn(path)
+		if err != nil {
+			if os.IsNotExist(err) {
+				continue
+			}
+			errs = append(errs, fmt.Sprintf("%s: %v", p.name, err))
+			continue
+		}
 		components = append(components, comps...)
 		result.FilesCount++
 	}
 
 	result.Document.Components = components
+	if len(errs) > 0 {
+		return result, fmt.Errorf("SBOM parse errors: %s", strings.Join(errs, "; "))
+	}
 	return result, nil
 }
 
@@ -216,22 +215,4 @@ func (s *Scanner) parseCargoLock(path string) ([]Component, error) {
 		}
 	}
 	return components, nil
-}
-
-// Scan implements the scanner interface for engine integration
-func (s *Scanner) Scan(ctx context.Context, path string, opts interface{}) (*SBOMScanResult, error) {
-	gen, err := s.Generate(ctx, path)
-	if err != nil {
-		return nil, err
-	}
-	return &SBOMScanResult{
-		FilesCount: gen.FilesCount,
-		ComponentCount: len(gen.Document.Components),
-	}, nil
-}
-
-// SBOMScanResult is used when SBOM runs as part of engine scan
-type SBOMScanResult struct {
-	FilesCount     int
-	ComponentCount int
 }

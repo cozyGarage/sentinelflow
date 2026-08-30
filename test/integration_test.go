@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/cozygarage/sentinelflow/internal/config"
@@ -133,12 +134,14 @@ spec:
 		switch {
 		case finding.RuleID == "aws-s3-public-acl":
 			foundIssues["public-s3"] = true
-		case finding.RuleID == "aws-secret-access-key" || finding.RuleID == "aws-secret-key":
+		case finding.RuleID == "aws-access-key" || finding.RuleID == "aws-secret-key":
 			foundIssues["aws-secret"] = true
-		case finding.Title == "Privileged Container":
+		case finding.RuleID == "k8s-privileged":
 			foundIssues["privileged-pod"] = true
 		case finding.RuleID == "latest-tag":
 			foundIssues["dockerfile-latest"] = true
+		case finding.Scanner == "dependencies" && strings.Contains(strings.ToLower(finding.Title), "lodash"):
+			foundIssues["vulnerable-lodash"] = true
 		}
 	}
 
@@ -164,7 +167,7 @@ spec:
 
 	for _, run := range result.ScannerRuns {
 		t.Logf("Scanner %s: %d findings in %d files (%s)",
-			run.Scanner, run.FindingsCount, run.FilesCount, run.Duration)
+			run.Scanner, run.FindingsCount, run.FilesCount, run.Duration.Std())
 
 		if run.Error != "" {
 			t.Errorf("Scanner %s failed: %s", run.Scanner, run.Error)
@@ -225,33 +228,42 @@ const secret = "AKIAIOSFODNN7EXAMPLE"
 	}
 }
 
-// TestFailOnSeverity tests that the scanner respects fail-on-severity thresholds
+// TestFailOnSeverity verifies high-severity findings exist so fail-on gates can trip.
 func TestFailOnSeverity(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	// Create file with critical issue
 	os.WriteFile(filepath.Join(tmpDir, "secrets.txt"), []byte("AKIAIOSFODNN7EXAMPLE"), 0644)
 
 	cfg := &config.Config{
 		Scanners: config.ScannersConfig{
 			Secrets: config.SecretsConfig{Enabled: true},
 		},
+		FailOn: config.FailOnConfig{Severity: "high"},
 	}
 
 	engine := scanner.NewEngine(cfg)
 	result, err := engine.Scan(context.Background(), tmpDir)
-
 	if err != nil {
 		t.Fatalf("Scan failed: %v", err)
 	}
 
-	// Check we have critical findings
 	counts := result.CountBySeverity()
-	if counts[api.SeverityCritical] == 0 {
-		t.Skip("No critical findings to test fail-on")
+	if counts[api.SeverityCritical]+counts[api.SeverityHigh] == 0 {
+		t.Fatal("expected at least one critical/high finding for fail-on coverage")
 	}
-
-	t.Logf("Found %d critical findings", counts[api.SeverityCritical])
+	if !api.MeetsMinimum(api.SeverityHigh, cfg.FailOn.Severity) {
+		t.Fatal("expected high threshold to meet itself")
+	}
+	tripped := false
+	for _, f := range result.Findings {
+		if api.MeetsMinimum(f.Severity, cfg.FailOn.Severity) {
+			tripped = true
+			break
+		}
+	}
+	if !tripped {
+		t.Fatal("expected fail-on high to trip on findings")
+	}
 }
 
 func TestConcurrentScanning(t *testing.T) {
