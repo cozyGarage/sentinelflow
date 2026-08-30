@@ -77,13 +77,13 @@ Residual detail: [audit-residual-risks.md](audit-residual-risks.md). Release ste
 | Work | Why | Acceptance |
 | --- | --- | --- |
 | License default-on demotion (**chosen honesty path**) | Limited map = high FN | Docs + Action: license **opt-in** (not in `--all`); CLI alignment may land with quality-wave Go work |
-| Dependencies: Ruby/Gemfile **or** keep unsupported | Claim gap closed | Parser + OSV ecosystem **or** docs-only forever |
+| Dependencies: Ruby `Gemfile.lock` | Close claim gap | Done — RubyGems via `Gemfile.lock`; bare Gemfile stays unsupported |
 | CloudFormation | Was listed as a planned gap | **Not planned** for now — unsupported; listing it fails validation |
-| Policy ↔ IaC drift suite | Prevent silent divergence | Fixture matrix: same privileged/init cases for both |
+| Policy ↔ IaC drift suite | Prevent silent divergence | Done for privileged pod/init + public/unencrypted S3 |
 | Secrets: entropy/pattern tuning + more fixtures | Core value prop | Measured FP drop on demo + self-scan |
 | ~~SAST: move intentional patterns out of production sources~~ | Done — `rules.yaml` + FP regex fixes | Patterns embedded from data file; SAST path excludes removed |
 | SAST: taint/dataflow or richer sinks | Still line-local regex | Keep honest docs; expand rules carefully |
-| Redact: structured secret fields, not only snippet heuristics | Defense in depth | Secret findings never emit raw match groups in any format |
+| Redact: structured secret fields, not only snippet heuristics | Defense in depth | Done for Title/Description/Snippet/Metadata/Remediation/References on secret findings |
 
 **Defer unless pulled forward:** AI code review (keep rejected until a real design). CloudFormation (explicit non-goal near term).
 

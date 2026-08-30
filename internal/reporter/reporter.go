@@ -68,6 +68,16 @@ func redactResult(result *api.ScanResult) *api.ScanResult {
 			if f.Description != "" {
 				f.Description = redact.Line(f.Description)
 			}
+			if f.Remediation != "" {
+				f.Remediation = redact.Line(f.Remediation)
+			}
+			if len(f.References) > 0 {
+				refs := make([]string, len(f.References))
+				for i, ref := range f.References {
+					refs[i] = redact.Line(ref)
+				}
+				f.References = refs
+			}
 			if f.Metadata != nil {
 				meta := make(map[string]any, len(f.Metadata))
 				for k, v := range f.Metadata {

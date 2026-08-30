@@ -189,10 +189,10 @@ func parsePoetryTable(table map[string]interface{}, file string, dev bool) []Dep
 func poetryVersion(raw interface{}) string {
 	switch v := raw.(type) {
 	case string:
-		return strings.Trim(v, "^~>=<!= ")
+		return strings.Trim(v, "^~>=<! ")
 	case map[string]interface{}:
 		if ver, ok := v["version"].(string); ok {
-			return strings.Trim(ver, "^~>=<!= ")
+			return strings.Trim(ver, "^~>=<! ")
 		}
 	}
 	return ""
@@ -249,7 +249,7 @@ func (p *PipScanner) scanPipfileLock(path string) ([]Dependency, error) {
 		} `json:"develop"`
 	}
 	if err := json.Unmarshal(content, &doc); err != nil {
-		return nil, fmt.Errorf("Pipfile.lock: %w", err)
+		return nil, fmt.Errorf("pipfile.lock: %w", err)
 	}
 
 	var deps []Dependency
@@ -457,7 +457,7 @@ func (c *CargoScanner) scanLock(path string) ([]Dependency, error) {
 		} `toml:"package"`
 	}
 	if err := toml.Unmarshal(content, &doc); err != nil {
-		return nil, fmt.Errorf("Cargo.lock: %w", err)
+		return nil, fmt.Errorf("cargo.lock: %w", err)
 	}
 
 	var deps []Dependency
@@ -492,7 +492,7 @@ func (c *CargoScanner) scanToml(path string) ([]Dependency, error) {
 		BuildDependencies map[string]interface{} `toml:"build-dependencies"`
 	}
 	if err := toml.Unmarshal(content, &doc); err != nil {
-		return nil, fmt.Errorf("Cargo.toml: %w", err)
+		return nil, fmt.Errorf("cargo.toml: %w", err)
 	}
 
 	var deps []Dependency
@@ -523,10 +523,10 @@ func parseCargoTable(table map[string]interface{}, file string, dev bool) []Depe
 func cargoVersion(raw interface{}) string {
 	switch v := raw.(type) {
 	case string:
-		return strings.Trim(v, "^~>=<!= ")
+		return strings.Trim(v, "^~>=<! ")
 	case map[string]interface{}:
 		if ver, ok := v["version"].(string); ok {
-			return strings.Trim(ver, "^~>=<!= ")
+			return strings.Trim(ver, "^~>=<! ")
 		}
 	}
 	return ""
@@ -565,4 +565,91 @@ func dedupeDependencies(deps []Dependency) []Dependency {
 		out = append(out, dep)
 	}
 	return out
+}
+
+// RubyGemsScanner scans Bundler Gemfile.lock (bare Gemfile is unsupported).
+type RubyGemsScanner struct{}
+
+func (r *RubyGemsScanner) Name() string { return "rubygems" }
+
+func (r *RubyGemsScanner) Detect(path string) bool {
+	_, err := os.Stat(filepath.Join(path, "Gemfile.lock"))
+	return err == nil
+}
+
+func (r *RubyGemsScanner) Scan(ctx context.Context, path string) ([]Dependency, error) {
+	file := filepath.Join(path, "Gemfile.lock")
+	content, err := os.ReadFile(file)
+	if err != nil {
+		return nil, err
+	}
+	return parseGemfileLock(content, file), nil
+}
+
+func parseGemfileLock(content []byte, file string) []Dependency {
+	var deps []Dependency
+	seen := map[string]bool{}
+	inGEM := false
+	inSpecs := false
+
+	for _, line := range strings.Split(string(content), "\n") {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" {
+			continue
+		}
+		// Section headers are flush-left uppercase words.
+		if len(line) > 0 && line[0] != ' ' && line[0] != '\t' {
+			inGEM = trimmed == "GEM"
+			inSpecs = false
+			continue
+		}
+		if !inGEM {
+			continue
+		}
+		if trimmed == "specs:" {
+			inSpecs = true
+			continue
+		}
+		if !inSpecs {
+			continue
+		}
+		// Nested dependency lines are indented more than package lines (6+ spaces).
+		indent := len(line) - len(strings.TrimLeft(line, " \t"))
+		if indent >= 6 {
+			continue
+		}
+		name, version, ok := parseGemSpecLine(trimmed)
+		if !ok || seen[name] {
+			continue
+		}
+		seen[name] = true
+		deps = append(deps, Dependency{
+			Name:      name,
+			Version:   version,
+			Ecosystem: "rubygems",
+			FilePath:  file,
+		})
+	}
+	return deps
+}
+
+func parseGemSpecLine(line string) (name, version string, ok bool) {
+	// name (1.2.3) or name (1.2.3-x86_64-linux)
+	if !strings.Contains(line, "(") || !strings.HasSuffix(line, ")") {
+		return "", "", false
+	}
+	open := strings.LastIndex(line, "(")
+	name = strings.TrimSpace(line[:open])
+	version = strings.TrimSpace(line[open+1 : len(line)-1])
+	if name == "" || version == "" {
+		return "", "", false
+	}
+	// Drop platform suffix for OSV when present: 1.16.2-x86_64-linux → 1.16.2
+	if i := strings.Index(version, "-"); i > 0 {
+		head := version[:i]
+		if strings.ContainsAny(head, "0123456789") && strings.Count(head, ".") >= 1 {
+			version = head
+		}
+	}
+	return name, version, true
 }

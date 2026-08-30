@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/cozygarage/sentinelflow/internal/config"
@@ -155,5 +156,51 @@ resource "aws_s3_bucket" "data" {
 	}
 	if len(result.Findings) == 0 {
 		t.Fatal("policy scanner missed unencrypted S3 that IaC found")
+	}
+}
+
+func TestPolicyAndIaCAgreeOnPrivilegedInitContainer(t *testing.T) {
+	root := t.TempDir()
+	manifest := `apiVersion: v1
+kind: Pod
+metadata:
+  name: init-priv
+spec:
+  initContainers:
+    - name: setup
+      image: busybox:1.36
+      securityContext:
+        privileged: true
+  containers:
+    - name: app
+      image: nginx:1.25
+`
+	if err := os.WriteFile(filepath.Join(root, "pod.yaml"), []byte(manifest), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	iacFindings := iac.NewKubernetesScanner(config.Default()).ScanFile(context.Background(), filepath.Join(root, "pod.yaml"), root)
+	iacHit := false
+	for _, f := range iacFindings {
+		if f.RuleID == "k8s-privileged" && strings.Contains(f.Description, "setup") {
+			iacHit = true
+			break
+		}
+	}
+	if !iacHit {
+		t.Fatal("IaC scanner missed privileged initContainer")
+	}
+
+	cfg := config.Default()
+	cfg.Policies.Enabled = true
+	cfg.Policies.Builtin = []string{"no-privileged-containers"}
+	cfg.Policies.Files = nil
+	ps := policy.NewScanner(cfg)
+	result, err := ps.Scan(context.Background(), root, nil)
+	if err != nil {
+		t.Fatalf("policy scan: %v", err)
+	}
+	if len(result.Findings) == 0 {
+		t.Fatal("builtin policy missed privileged initContainer that IaC found")
 	}
 }

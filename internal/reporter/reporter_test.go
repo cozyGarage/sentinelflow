@@ -284,6 +284,23 @@ func TestGenerateRedactsSecretMetadata(t *testing.T) {
 	}
 }
 
+func TestGenerateRedactsSecretRemediationAndReferences(t *testing.T) {
+	result := createTestResult()
+	result.Findings[0].Type = api.FindingTypeSecret
+	result.Findings[0].Scanner = "secrets"
+	result.Findings[0].Remediation = `rotate token="ghp_abcdefghijklmnopqrstuvwxyz0123456789ABCD" immediately`
+	result.Findings[0].References = []string{`https://example.com?token=ghp_abcdefghijklmnopqrstuvwxyz0123456789ABCD`}
+
+	rep := New(nil)
+	out, err := rep.Generate(result, "json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(out, "ghp_abcdefghijklmnopqrstuvwxyz0123456789ABCD") {
+		t.Fatal("expected remediation/references redacted in JSON report")
+	}
+}
+
 func TestEmptyResults(t *testing.T) {
 	result := &api.ScanResult{
 		Findings:    []api.Finding{},
