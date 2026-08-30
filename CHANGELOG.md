@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Load `.sentinelflow.yaml` and relative baseline paths from the scan target (not only process CWD)
+- Action: `scan-*: false` opts out even when `scan-all: true`
+- `count-findings.sh` counts real JSON `findings` / SARIF `results` (and text/markdown totals)
+- License scanner surfaces parse/read errors instead of silently returning 0 findings
+
+### Fixed (prior)
+
 - IaC/policy finding IDs include a path token so baseline cannot cross-suppress sibling files
 - Broken custom Rego policies always fail the policy scanner (even when builtins loaded)
 - Exclude globs with multiple `**` segments (e.g. `**/testdata/**`) match correctly

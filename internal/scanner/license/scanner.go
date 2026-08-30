@@ -51,15 +51,27 @@ func (s *Scanner) Scan(ctx context.Context, path string, opts interface{}) (*Sca
 	}
 	allowed := s.config.Scanners.License.Allowed
 
-	if findings, err := s.checkPackageJSON(path, denied, allowed); err == nil {
+	var errs []string
+	if findings, err := s.checkPackageJSON(path, denied, allowed); err != nil {
+		if !os.IsNotExist(err) {
+			errs = append(errs, fmt.Sprintf("package.json: %v", err))
+		}
+	} else {
 		result.Findings = append(result.Findings, findings...)
 		result.FilesCount++
 	}
-	if findings, err := s.checkGoMod(path, denied, allowed); err == nil {
+	if findings, err := s.checkGoMod(path, denied, allowed); err != nil {
+		if !os.IsNotExist(err) {
+			errs = append(errs, fmt.Sprintf("go.mod: %v", err))
+		}
+	} else {
 		result.Findings = append(result.Findings, findings...)
 		result.FilesCount++
 	}
 
+	if len(errs) > 0 {
+		return result, fmt.Errorf("license scan errors: %s", strings.Join(errs, "; "))
+	}
 	return result, nil
 }
 

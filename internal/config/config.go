@@ -4,6 +4,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -152,15 +153,54 @@ type GitConfig struct {
 	ScanStagedOnly bool `yaml:"scan_staged_only" mapstructure:"scan_staged_only"`
 }
 
-// Load reads configuration from file and environment
+// Load reads configuration from the process working directory and environment.
 func Load() (*Config, error) {
-	cfg := Default()
+	return LoadFromDir(".")
+}
 
-	if err := viper.Unmarshal(cfg); err != nil {
+// LoadFile loads configuration from an explicit file path (--config).
+func LoadFile(path string) (*Config, error) {
+	v := viper.New()
+	v.SetConfigFile(path)
+	v.AutomaticEnv()
+	v.SetEnvPrefix("SENTINELFLOW")
+	if err := v.ReadInConfig(); err != nil {
+		return nil, err
+	}
+	return unmarshalConfig(v)
+}
+
+// LoadFromDir loads .sentinelflow.yaml from dir (preferred), then falls back to
+// the process working directory. Environment variables (SENTINELFLOW_*) still apply.
+// Pass an absolute scan target directory so `sentinelflow scan /other/repo` uses
+// that repo's config instead of only the caller's CWD.
+func LoadFromDir(dir string) (*Config, error) {
+	v := viper.New()
+	v.SetConfigType("yaml")
+	v.SetConfigName(".sentinelflow")
+	if dir != "" {
+		v.AddConfigPath(dir)
+	}
+	// Secondary search path so local overrides still work when scanning a subdir.
+	v.AddConfigPath(".")
+	v.AutomaticEnv()
+	v.SetEnvPrefix("SENTINELFLOW")
+
+	if err := v.ReadInConfig(); err != nil {
+		if _, ok := err.(viper.ConfigFileNotFoundError); !ok && !os.IsNotExist(err) {
+			return nil, err
+		}
+	}
+
+	return unmarshalConfig(v)
+}
+
+func unmarshalConfig(v *viper.Viper) (*Config, error) {
+	cfg := Default()
+	if err := v.Unmarshal(cfg); err != nil {
 		return nil, err
 	}
 
-	// Load AI API key from environment if not set
 	if cfg.Scanners.AI.APIKey == "" {
 		cfg.Scanners.AI.APIKey = os.Getenv("SENTINELFLOW_AI_API_KEY")
 		if cfg.Scanners.AI.APIKey == "" {
@@ -169,6 +209,19 @@ func Load() (*Config, error) {
 	}
 
 	return cfg, nil
+}
+
+// ConfigDirForTarget returns the directory that should own .sentinelflow.yaml
+// for a scan target (directory itself, or parent of a file).
+func ConfigDirForTarget(target string) string {
+	info, err := os.Stat(target)
+	if err != nil {
+		return filepath.Clean(target)
+	}
+	if info.IsDir() {
+		return filepath.Clean(target)
+	}
+	return filepath.Dir(target)
 }
 
 // Default returns the default configuration

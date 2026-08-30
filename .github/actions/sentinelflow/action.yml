@@ -16,7 +16,7 @@ inputs:
     required: false
     default: sentinelflow/sentinelflow:latest
   scan-all:
-    description: Enable secrets/iac/deps/sast/license via --all (does not enable container; use scan-container)
+    description: Enable secrets/iac/deps/sast/license (does not enable container). Individual scan-*: false inputs opt out.
     required: false
     default: 'true'
   scan-secrets:
@@ -147,8 +147,20 @@ runs:
       run: |
         set -euo pipefail
         ARGS=()
+        # scan-all enables the standard scanner set, but individual scan-*: false
+        # inputs opt out (per-scanner false wins over scan-all).
         if [ "${SF_SCAN_ALL}" = "true" ]; then
-          ARGS+=(--all)
+          if [ "${SF_SCAN_SECRETS}" = "false" ] || [ "${SF_SCAN_IAC}" = "false" ] || \
+             [ "${SF_SCAN_DEPS}" = "false" ] || [ "${SF_SCAN_SAST}" = "false" ] || \
+             [ "${SF_SCAN_LICENSE}" = "false" ]; then
+            [ "${SF_SCAN_SECRETS}" = "true" ] && ARGS+=(--secrets)
+            [ "${SF_SCAN_IAC}" = "true" ] && ARGS+=(--iac)
+            [ "${SF_SCAN_DEPS}" = "true" ] && ARGS+=(--deps)
+            [ "${SF_SCAN_SAST}" = "true" ] && ARGS+=(--sast)
+            [ "${SF_SCAN_LICENSE}" = "true" ] && ARGS+=(--license)
+          else
+            ARGS+=(--all)
+          fi
         else
           [ "${SF_SCAN_SECRETS}" = "true" ] && ARGS+=(--secrets)
           [ "${SF_SCAN_IAC}" = "true" ] && ARGS+=(--iac)
@@ -205,15 +217,8 @@ runs:
 
         if [ -f "$OUT_PATH" ]; then
           COUNT_HELPER="${SF_WORKSPACE}/scripts/count-findings.sh"
-          if [ "${SF_FORMAT}" = "json" ]; then
-            COUNT=$(bash "$COUNT_HELPER" json "$OUT_PATH")
-            echo "findings-count=$COUNT" >> "$GITHUB_OUTPUT"
-          elif [ "${SF_FORMAT}" = "sarif" ]; then
-            COUNT=$(bash "$COUNT_HELPER" sarif "$OUT_PATH")
-            echo "findings-count=$COUNT" >> "$GITHUB_OUTPUT"
-          else
-            echo "findings-count=0" >> "$GITHUB_OUTPUT"
-          fi
+          COUNT=$(bash "$COUNT_HELPER" "${SF_FORMAT}" "$OUT_PATH" || echo 0)
+          echo "findings-count=$COUNT" >> "$GITHUB_OUTPUT"
         else
           echo "findings-count=0" >> "$GITHUB_OUTPUT"
         fi

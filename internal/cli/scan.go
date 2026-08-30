@@ -93,8 +93,8 @@ func runScan(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("invalid path: %w", err)
 	}
 
-	// Load configuration
-	cfg, err := config.Load()
+	// Load configuration from the scan target (not only process CWD).
+	cfg, err := loadScanConfig(absPath)
 	if err != nil {
 		if verbose {
 			fmt.Println(color.YellowString("⚠ No config file found, using defaults"))
@@ -227,6 +227,13 @@ func applyScanFlags(cfg *config.Config) error {
 	}
 
 	return nil
+}
+
+func loadScanConfig(targetPath string) (*config.Config, error) {
+	if cfgFile != "" {
+		return config.LoadFile(cfgFile)
+	}
+	return config.LoadFromDir(config.ConfigDirForTarget(targetPath))
 }
 
 func scannerErrors(result *api.ScanResult, cfg *config.Config) error {

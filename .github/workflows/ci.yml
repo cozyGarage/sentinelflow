@@ -33,10 +33,14 @@ jobs:
       - name: Install checksum helper test
         run: bash scripts/install_checksum_test.sh
 
-      - name: Findings count helper (pipefail / zero matches)
+      - name: Findings count helper (json/sarif/text)
         run: |
           set -euo pipefail
-          echo '{}' > /tmp/empty.json
+          echo '{"findings":[]}' > /tmp/empty.json
           test "$(bash scripts/count-findings.sh json /tmp/empty.json)" = "0"
-          echo '{"severity":"high","severity":"low"}' > /tmp/two.json
+          printf '%s\n' '{"findings":[{"severity":"high"},{"severity":"low"}]}' > /tmp/two.json
           test "$(bash scripts/count-findings.sh json /tmp/two.json)" = "2"
+          printf '%s\n' '{"runs":[{"results":[{"ruleId":"a"},{"ruleId":"b"},{"ruleId":"c"}]}]}' > /tmp/three.sarif
+          test "$(bash scripts/count-findings.sh sarif /tmp/three.sarif)" = "3"
+          printf '%s\n' 'Total Findings: 4' > /tmp/text.out
+          test "$(bash scripts/count-findings.sh text /tmp/text.out)" = "4"

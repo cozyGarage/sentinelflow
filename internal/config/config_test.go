@@ -1,6 +1,8 @@
 package config
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -83,5 +85,34 @@ func TestValidateRejectsUnknownIaCFramework(t *testing.T) {
 	err := cfg.Validate()
 	if err == nil || !strings.Contains(err.Error(), "cloudformation") {
 		t.Fatalf("expected cloudformation rejection, got %v", err)
+	}
+}
+
+func TestLoadFromDirPrefersTargetConfig(t *testing.T) {
+	dir := t.TempDir()
+	content := "version: \"1.0\"\nfail_on:\n  severity: critical\n"
+	if err := os.WriteFile(filepath.Join(dir, ".sentinelflow.yaml"), []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := LoadFromDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.FailOn.Severity != "critical" {
+		t.Fatalf("expected target config severity critical, got %q", cfg.FailOn.Severity)
+	}
+}
+
+func TestConfigDirForTarget(t *testing.T) {
+	dir := t.TempDir()
+	file := filepath.Join(dir, "main.go")
+	if err := os.WriteFile(file, []byte("package main\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if got := ConfigDirForTarget(dir); got != filepath.Clean(dir) {
+		t.Fatalf("dir target: got %q", got)
+	}
+	if got := ConfigDirForTarget(file); got != filepath.Clean(dir) {
+		t.Fatalf("file target: got %q want %q", got, dir)
 	}
 }
