@@ -79,9 +79,13 @@ Unpinned or URL-based Python/Cargo requirements without a concrete version are s
 
 ## 4. SAST Scanner (`internal/scanner/sast`)
 
-OWASP-oriented regex rules for SQL injection, XSS, path traversal, SSRF, and command injection patterns across common languages (Go, JS/TS, Python, Java, PHP, Ruby, etc.).
+OWASP-oriented regex rules for SQL injection, XSS, path traversal, SSRF, and command injection. Rules load from embedded `rules.yaml` (not Go string literals) so self-scan does not match detector text.
 
-Concurrency is capped (8 workers) to avoid resource exhaustion on large trees.
+**Languages with shared sinks today:** Go, JavaScript/TypeScript, Python, Java. Other extensions are not claimed until language-specific rules exist.
+
+**Config:** `scanners.sast.severity` and `skip_rules` are honored (same behavior as IaC). Default concurrency is 8 workers.
+
+**Limits:** line-local regex only — no taint/dataflow. Prefer `skip_rules` / baseline for known noise rather than disabling the scanner.
 
 ---
 

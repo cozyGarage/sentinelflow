@@ -58,8 +58,11 @@ Default stays strict for security. Soft-fail is for flaky CI networks only — f
 | Field | Type | Default | Description |
 | --- | --- | --- | --- |
 | `enabled` | bool | `false` | Enable SAST scanning |
-| `severity` | string | `medium` | Minimum severity to report |
-| `skip_rules` | []string | — | Rule IDs to ignore |
+| `severity` | string | `medium` | Minimum severity to report (`critical`/`high`/`medium`/`low`) |
+| `skip_rules` | []string | — | Rule IDs (or finding IDs) to ignore |
+| `concurrency` | int | `8` | Worker pool size for file scanning |
+
+Built-in rules: `sqli-concat`, `sqli-format`, `xss-innerhtml`, `xss-eval`, `xss-dangerously`, `path-traversal`, `path-join-user`, `ssrf-http`, `cmd-inject-exec`, `cmd-inject-shell`.
 
 ### Container (`scanners.container`)
 

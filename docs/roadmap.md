@@ -71,7 +71,8 @@ Residual detail: [audit-residual-risks.md](audit-residual-risks.md). Release ste
 | CloudFormation (or explicit “not planned”) | Listed as planned IaC gap | Minimal rule set **or** remove from roadmap language |
 | Policy ↔ IaC drift suite | Prevent silent divergence | Fixture matrix: same privileged/init cases for both |
 | Secrets: entropy/pattern tuning + more fixtures | Core value prop | Measured FP drop on demo + self-scan |
-| SAST: move intentional patterns out of production sources | Self-scan exclude is a workaround | Patterns in data files; scanner loads them |
+| ~~SAST: move intentional patterns out of production sources~~ | Done — `rules.yaml` + FP regex fixes | Patterns embedded from data file; SAST path excludes removed |
+| SAST: taint/dataflow or richer sinks | Still line-local regex | Keep honest docs; expand rules carefully |
 | Redact: structured secret fields, not only snippet heuristics | Defense in depth | Secret findings never emit raw match groups in any format |
 
 **Defer unless pulled forward:** AI code review (keep rejected until a real design).
@@ -108,7 +109,7 @@ Residual detail: [audit-residual-risks.md](audit-residual-risks.md). Release ste
 
 1. ~~**R0** — cut `v1.1.0`~~ done.
 2. ~~**R1** — install decision + timeout / OSV flake / CI docs~~ done.
-3. **R2** — license/deps/IaC/policy depth; remove self-scan exclude workaround for SAST patterns.
+3. **R2** — license/deps/IaC/policy depth; ~~SAST rules out of Go sources~~ done (partial); continue secrets/redact depth.
 4. **R3** — platform, signing, monorepo, identity; Hub images when secrets land.
 
 Re-run the [audit loop](audit-residual-risks.md) after each release train; keep residual risks short and current.

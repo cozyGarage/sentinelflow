@@ -4,12 +4,16 @@ package sast
 import (
 	"bufio"
 	"context"
+	_ "embed"
 	"fmt"
+	"hash/fnv"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
 	"sync"
+
+	"gopkg.in/yaml.v3"
 
 	"github.com/cozygarage/sentinelflow/internal/config"
 	"github.com/cozygarage/sentinelflow/internal/scanner/filter"
@@ -17,6 +21,9 @@ import (
 	"github.com/cozygarage/sentinelflow/internal/scanner/types"
 	"github.com/cozygarage/sentinelflow/pkg/api"
 )
+
+//go:embed rules.yaml
+var rulesYAML []byte
 
 // Scanner implements SAST rule scanning
 type Scanner struct {
@@ -35,6 +42,20 @@ type Rule struct {
 	CWE         string
 }
 
+type ruleFile struct {
+	Rules []ruleDef `yaml:"rules"`
+}
+
+type ruleDef struct {
+	ID          string `yaml:"id"`
+	Name        string `yaml:"name"`
+	Category    string `yaml:"category"`
+	Pattern     string `yaml:"pattern"`
+	Severity    string `yaml:"severity"`
+	Description string `yaml:"description"`
+	CWE         string `yaml:"cwe"`
+}
+
 // ScannerResult contains scan results
 type ScannerResult = types.ScannerResult
 
@@ -50,10 +71,11 @@ func (s *Scanner) Name() string { return "sast" }
 
 func (s *Scanner) Supports(path string) bool {
 	ext := strings.ToLower(filepath.Ext(path))
+	// Shared regex sinks focus on these ecosystems; other extensions are omitted
+	// until language-specific rules exist (honesty over empty coverage claims).
 	supported := map[string]bool{
 		".go": true, ".js": true, ".ts": true, ".jsx": true, ".tsx": true,
-		".py": true, ".java": true, ".php": true, ".rb": true, ".cs": true,
-		".rs": true, ".kt": true, ".scala": true,
+		".py": true, ".java": true,
 	}
 	return supported[ext]
 }
@@ -97,10 +119,42 @@ func (s *Scanner) Scan(ctx context.Context, path string, opts interface{}) (*Sca
 		mu.Unlock()
 	})
 
+	result.Findings = s.filterFindings(result.Findings)
+
 	if len(scanErrs) > 0 {
 		return result, fmt.Errorf("sast scan errors (%d): %s", len(scanErrs), strings.Join(scanErrs, "; "))
 	}
 	return result, nil
+}
+
+func (s *Scanner) filterFindings(findings []api.Finding) []api.Finding {
+	if len(findings) == 0 {
+		return findings
+	}
+
+	skip := map[string]bool{}
+	if s.config != nil {
+		for _, rule := range s.config.Scanners.SAST.SkipRules {
+			skip[strings.TrimSpace(rule)] = true
+		}
+	}
+
+	minSeverity := ""
+	if s.config != nil {
+		minSeverity = s.config.Scanners.SAST.Severity
+	}
+
+	var out []api.Finding
+	for _, f := range findings {
+		if skip[f.RuleID] || skip[f.ID] {
+			continue
+		}
+		if minSeverity != "" && !api.MeetsMinimum(f.Severity, minSeverity) {
+			continue
+		}
+		out = append(out, f)
+	}
+	return out
 }
 
 func (s *Scanner) scanFile(ctx context.Context, filePath, basePath string) ([]api.Finding, error) {
@@ -134,10 +188,11 @@ func (s *Scanner) scanFile(ctx context.Context, filePath, basePath string) ([]ap
 				if rel, err := filepath.Rel(basePath, filePath); err == nil {
 					relPath = rel
 				}
+				relPath = filepath.ToSlash(relPath)
 
 				for _, loc := range locs {
 					findings = append(findings, api.Finding{
-						ID:          fmt.Sprintf("SAST-%s-%d", rule.ID, lineNum),
+						ID:          fmt.Sprintf("SAST-%s-%s-%d", rule.ID, pathToken(relPath), lineNum),
 						Type:        api.FindingTypeInsecureCode,
 						Severity:    rule.Severity,
 						Title:       rule.Name,
@@ -172,7 +227,12 @@ func (s *Scanner) collectFiles(dir string) ([]string, error) {
 		}
 		if info.IsDir() {
 			name := info.Name()
-			if name == ".git" || name == "node_modules" || name == "vendor" {
+			if name == ".git" || name == "node_modules" || name == "vendor" ||
+				name == ".terraform" || name == "__pycache__" || name == ".venv" ||
+				name == "dist" || name == "build" || name == ".cache" {
+				return filepath.SkipDir
+			}
+			if path != dir && (name == "testdata" || filter.IsBundledSampleDir(dir, path)) {
 				return filepath.SkipDir
 			}
 			return nil
@@ -199,11 +259,10 @@ func (s *Scanner) isComment(line string) bool {
 		strings.HasPrefix(trimmed, "/*") || strings.HasPrefix(trimmed, "*")
 }
 
-func truncate(s string, max int) string {
-	if len(s) <= max {
-		return s
-	}
-	return s[:max] + "..."
+func pathToken(relPath string) string {
+	h := fnv.New32a()
+	_, _ = h.Write([]byte(relPath))
+	return fmt.Sprintf("%08x", h.Sum32())
 }
 
 func remediationFor(category string) string {
@@ -221,56 +280,39 @@ func remediationFor(category string) string {
 }
 
 func loadRules() []Rule {
-	return []Rule{
-		{
-			ID: "sqli-concat", Name: "SQL Injection via String Concatenation", Category: "sqli",
-			Pattern: regexp.MustCompile(`(?i)(SELECT|INSERT|UPDATE|DELETE|DROP)\s+.*\+\s*.*(request|param|input|user|req\.|params\.|query)`),
-			Severity: api.SeverityHigh, Description: "SQL query built with string concatenation from user input", CWE: "CWE-89",
-		},
-		{
-			ID: "sqli-format", Name: "SQL Injection via Format String", Category: "sqli",
-			Pattern: regexp.MustCompile(`(?i)(fmt\.Sprintf|sprintf|String\.format)\s*\(\s*["'].*(SELECT|INSERT|UPDATE|DELETE)`),
-			Severity: api.SeverityHigh, Description: "SQL query constructed with format string", CWE: "CWE-89",
-		},
-		{
-			ID: "xss-innerhtml", Name: "DOM-based XSS via innerHTML", Category: "xss",
-			Pattern: regexp.MustCompile(`(?i)\.innerHTML\s*=\s*.*(request|param|input|user|location|document\.URL)`),
-			Severity: api.SeverityHigh, Description: "User-controlled data assigned to innerHTML", CWE: "CWE-79",
-		},
-		{
-			ID: "xss-eval", Name: "XSS via eval()", Category: "xss",
-			Pattern: regexp.MustCompile(`(?i)\beval\s*\(`),
-			Severity: api.SeverityHigh, Description: "Use of eval() can lead to code injection", CWE: "CWE-95",
-		},
-		{
-			ID: "xss-dangerously", Name: "React dangerouslySetInnerHTML", Category: "xss",
-			Pattern: regexp.MustCompile(`dangerouslySetInnerHTML`),
-			Severity: api.SeverityMedium, Description: "dangerouslySetInnerHTML bypasses XSS protections", CWE: "CWE-79",
-		},
-		{
-			ID: "path-traversal", Name: "Path Traversal", Category: "path",
-			Pattern: regexp.MustCompile(`(?i)(\.\./|\.\.\\)`),
-			Severity: api.SeverityHigh, Description: "Path traversal sequence detected", CWE: "CWE-22",
-		},
-		{
-			ID: "path-join-user", Name: "Unsafe Path Join with User Input", Category: "path",
-			Pattern: regexp.MustCompile(`(?i)(filepath\.Join|path\.join|os\.path\.join)\s*\([^)]*(request|param|input|user|req\.|params\.)`),
-			Severity: api.SeverityMedium, Description: "File path constructed from user input without validation", CWE: "CWE-22",
-		},
-		{
-			ID: "ssrf-http", Name: "Potential SSRF", Category: "ssrf",
-			Pattern: regexp.MustCompile(`(?i)(http\.Get|http\.Post|fetch|urllib\.request|requests\.(get|post))\s*\([^)]*(request|param|input|user|req\.|params\.|query)`),
-			Severity: api.SeverityHigh, Description: "HTTP request URL may be controlled by user input", CWE: "CWE-918",
-		},
-		{
-			ID: "cmd-inject-exec", Name: "Command Injection via exec", Category: "cmd-inject",
-			Pattern: regexp.MustCompile(`(?i)(exec\.Command|os\.system|subprocess\.(call|run|Popen)|Runtime\.getRuntime\(\)\.exec)\s*\([^)]*\+`),
-			Severity: api.SeverityCritical, Description: "Shell command built with string concatenation", CWE: "CWE-78",
-		},
-		{
-			ID: "cmd-inject-shell", Name: "Shell Command Execution", Category: "cmd-inject",
-			Pattern: regexp.MustCompile(`(?i)(exec\.Command|subprocess)\s*\(\s*["']sh["']|["']bash["']|["']cmd["']`),
-			Severity: api.SeverityHigh, Description: "Shell invocation detected; prefer direct execution", CWE: "CWE-78",
-		},
+	rules, err := parseRules(rulesYAML)
+	if err != nil {
+		panic(fmt.Sprintf("sast: invalid embedded rules.yaml: %v", err))
 	}
+	return rules
+}
+
+func parseRules(data []byte) ([]Rule, error) {
+	var file ruleFile
+	if err := yaml.Unmarshal(data, &file); err != nil {
+		return nil, err
+	}
+	if len(file.Rules) == 0 {
+		return nil, fmt.Errorf("no rules defined")
+	}
+	out := make([]Rule, 0, len(file.Rules))
+	for _, def := range file.Rules {
+		if strings.TrimSpace(def.ID) == "" || strings.TrimSpace(def.Pattern) == "" {
+			return nil, fmt.Errorf("rule missing id or pattern")
+		}
+		re, err := regexp.Compile(def.Pattern)
+		if err != nil {
+			return nil, fmt.Errorf("rule %s: %w", def.ID, err)
+		}
+		out = append(out, Rule{
+			ID:          def.ID,
+			Name:        def.Name,
+			Category:    def.Category,
+			Pattern:     re,
+			Severity:    api.ParseSeverity(def.Severity),
+			Description: def.Description,
+			CWE:         def.CWE,
+		})
+	}
+	return out, nil
 }

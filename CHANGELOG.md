@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- SAST `cmd-inject-shell` alternation no longer matches bare `"bash"` / `"cmd"` strings
+- SAST `sqli-format` no longer matches English `fmt.Sprintf("Update …")` remediation text
+- SAST `xss-eval` matches lowercase `eval(` only (avoids Go `query.Eval`)
+- Bump Go to `1.25.13` and `golang.org/x/crypto` to `v0.55.0` so `govulncheck` / deps stay green
+
+### Changed
+
+- SAST rules load from embedded `rules.yaml`; removed SAST self-scan path excludes for scanner/policy/deps/container sources
+- SAST honors `scanners.sast.severity` and `skip_rules`; finding IDs include a path token to avoid cross-file collisions
+- SAST `Supports` limited to Go/JS/TS/Python/Java until language-specific rules exist
+
+### Added
+
+- SAST fixture corpus under `internal/scanner/sast/testdata/` and broader rule unit tests
+
 ## [1.1.1] - 2026-07-29
 
 ### Added

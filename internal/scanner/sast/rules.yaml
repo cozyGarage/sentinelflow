@@ -1,0 +1,85 @@
+# Built-in SAST regex rules. Kept out of .go sources so self-scan does not
+# match intentional pattern text. Patterns are Go RE2 (case flags inline).
+rules:
+  - id: sqli-concat
+    name: SQL Injection via String Concatenation
+    category: sqli
+    pattern: '(?i)(SELECT|INSERT|UPDATE|DELETE|DROP)\s+.*\+\s*.*(request|param|input|user|req\.|params\.|query)'
+    severity: high
+    description: SQL query built with string concatenation from user input
+    cwe: CWE-89
+
+  - id: sqli-format
+    name: SQL Injection via Format String
+    category: sqli
+    # Require SQL keywords as statements (UPDATE … SET), not English "Update …".
+    pattern: '(?i)(fmt\.Sprintf|sprintf|String\.format)\s*\(\s*["''][^"'']*\b(?:SELECT\b|INSERT\b|DELETE\b|UPDATE\s+\w+\s+SET\b)'
+    severity: high
+    description: SQL query constructed with format string
+    cwe: CWE-89
+
+  - id: xss-innerhtml
+    name: DOM-based XSS via innerHTML
+    category: xss
+    pattern: '(?i)\.innerHTML\s*=\s*.*(request|param|input|user|location|document\.URL)'
+    severity: high
+    description: User-controlled data assigned to innerHTML
+    cwe: CWE-79
+
+  - id: xss-eval
+    name: XSS via eval()
+    category: xss
+    # Lowercase eval( only — avoids Go method calls like query.Eval(.
+    pattern: '\beval\s*\('
+    severity: high
+    description: Use of eval() can lead to code injection
+    cwe: CWE-95
+
+  - id: xss-dangerously
+    name: React dangerouslySetInnerHTML
+    category: xss
+    pattern: 'dangerouslySetInnerHTML'
+    severity: medium
+    description: dangerouslySetInnerHTML bypasses XSS protections
+    cwe: CWE-79
+
+  - id: path-traversal
+    name: Path Traversal
+    category: path
+    pattern: '(?i)(\.\./|\.\.\\)'
+    severity: high
+    description: Path traversal sequence detected
+    cwe: CWE-22
+
+  - id: path-join-user
+    name: Unsafe Path Join with User Input
+    category: path
+    pattern: '(?i)(filepath\.Join|path\.join|os\.path\.join)\s*\([^)]*(request|param|input|user|req\.|params\.)'
+    severity: medium
+    description: File path constructed from user input without validation
+    cwe: CWE-22
+
+  - id: ssrf-http
+    name: Potential SSRF
+    category: ssrf
+    pattern: '(?i)(http\.Get|http\.Post|fetch|urllib\.request|requests\.(get|post))\s*\([^)]*(request|param|input|user|req\.|params\.|query)'
+    severity: high
+    description: HTTP request URL may be controlled by user input
+    cwe: CWE-918
+
+  - id: cmd-inject-exec
+    name: Command Injection via exec
+    category: cmd-inject
+    pattern: '(?i)(exec\.Command|os\.system|subprocess\.(call|run|Popen)|Runtime\.getRuntime\(\)\.exec)\s*\([^)]*\+'
+    severity: critical
+    description: Shell command built with string concatenation
+    cwe: CWE-78
+
+  - id: cmd-inject-shell
+    name: Shell Command Execution
+    category: cmd-inject
+    # Grouped alternation so bare "bash"/"cmd" strings do not match.
+    pattern: '(?i)(exec\.Command|subprocess\.(?:call|run|Popen))\s*\(\s*\[?\s*["''](?:/bin/)?(?:sh|bash|cmd(?:\.exe)?)["'']'
+    severity: high
+    description: Shell invocation detected; prefer direct execution
+    cwe: CWE-78
