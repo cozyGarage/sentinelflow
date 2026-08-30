@@ -13,6 +13,7 @@ import (
 
 	"github.com/cozygarage/sentinelflow/internal/adapter"
 	"github.com/cozygarage/sentinelflow/internal/baseline"
+	"github.com/cozygarage/sentinelflow/internal/buildinfo"
 	"github.com/cozygarage/sentinelflow/internal/config"
 	"github.com/cozygarage/sentinelflow/internal/scanner/filter"
 	"github.com/cozygarage/sentinelflow/internal/scanner/types"
@@ -85,7 +86,7 @@ func (e *Engine) Scan(ctx context.Context, targetPath string) (*api.ScanResult, 
 		Metadata: api.ScanMetadata{
 			TargetPath:          targetPath,
 			StartTime:           startTime,
-			SentinelFlowVersion: "1.0.0",
+			SentinelFlowVersion: buildinfo.Version,
 		},
 	}
 

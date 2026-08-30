@@ -144,14 +144,14 @@ func (s *TerraformScanner) scanResourceRules(resources []tfResource, relPath str
 	}
 
 	for name, bucket := range buckets {
-		if !encryptionFor[name] && !resourceBodyHas(bucket.Body, "server_side_encryption_configuration") {
+		if !bucketHasProtection(bucket, name, encryptionFor) && !resourceBodyHas(bucket.Body, "server_side_encryption_configuration") {
 			findings = append(findings, tfFinding("aws-s3-no-encryption", bucket.Line, relPath, bucket,
 				"S3 Bucket Without Encryption",
 				fmt.Sprintf("S3 bucket %q does not have server-side encryption enabled", name),
 				api.SeverityHigh,
 				"Enable server-side encryption with KMS or AES256"))
 		}
-		if !publicBlockFor[name] {
+		if !bucketHasProtection(bucket, name, publicBlockFor) {
 			findings = append(findings, tfFinding("aws-s3-public-block-disabled", bucket.Line, relPath, bucket,
 				"S3 Public Access Block Disabled",
 				fmt.Sprintf("S3 bucket %q is missing public access block configuration", name),
@@ -171,27 +171,39 @@ func checkSecurityGroup(res tfResource, relPath string) []api.Finding {
 		if cidrs == nil {
 			cidrs = block["cidr_block"]
 		}
-		if !openCIDR(cidrs) {
+		ipv6 := block["ipv6_cidr_blocks"]
+		if ipv6 == nil {
+			ipv6 = block["ipv6_cidr_block"]
+		}
+		openV4 := openCIDR(cidrs)
+		openV6 := openCIDR(ipv6)
+		if !openV4 && !openV6 {
 			return
 		}
 		from := asTFInt(block["from_port"])
 		to := asTFInt(block["to_port"])
+		scope := "0.0.0.0/0"
+		if openV6 && !openV4 {
+			scope = "::/0"
+		} else if openV4 && openV6 {
+			scope = "0.0.0.0/0 and ::/0"
+		}
 		findings = append(findings, tfFinding("aws-sg-open-to-world", line, relPath, res,
 			"Security Group Open to Internet",
-			fmt.Sprintf("Security group %q allows ingress from 0.0.0.0/0", res.Name),
+			fmt.Sprintf("Security group %q allows ingress from %s", res.Name, scope),
 			api.SeverityHigh,
 			"Restrict ingress to specific IP ranges or security groups"))
 		if portInRange(22, from, to) {
 			findings = append(findings, tfFinding("aws-sg-ssh-open", line, relPath, res,
 				"SSH Port Open to Internet",
-				fmt.Sprintf("Security group %q allows SSH (port 22) from 0.0.0.0/0", res.Name),
+				fmt.Sprintf("Security group %q allows SSH (port 22) from %s", res.Name, scope),
 				api.SeverityCritical,
 				"Restrict SSH access to specific IP addresses or use bastion hosts"))
 		}
 		if portInRange(3389, from, to) {
 			findings = append(findings, tfFinding("aws-sg-rdp-open", line, relPath, res,
 				"RDP Port Open to Internet",
-				fmt.Sprintf("Security group %q allows RDP (port 3389) from 0.0.0.0/0", res.Name),
+				fmt.Sprintf("Security group %q allows RDP (port 3389) from %s", res.Name, scope),
 				api.SeverityCritical,
 				"Restrict RDP access to specific IP addresses"))
 		}
@@ -221,13 +233,40 @@ func checkSecurityGroup(res tfResource, relPath string) []api.Finding {
 func openCIDR(v interface{}) bool {
 	switch t := v.(type) {
 	case string:
-		return t == "0.0.0.0/0"
+		return t == "0.0.0.0/0" || t == "::/0"
 	case []interface{}:
 		for _, item := range t {
-			if s, ok := item.(string); ok && s == "0.0.0.0/0" {
+			if s, ok := item.(string); ok && (s == "0.0.0.0/0" || s == "::/0") {
 				return true
 			}
 		}
+	}
+	return false
+}
+
+func resolveTFBucketRef(v interface{}) string {
+	switch t := v.(type) {
+	case string:
+		s := strings.Trim(strings.TrimSpace(t), "\"")
+		if strings.HasPrefix(s, "aws_s3_bucket.") {
+			rest := strings.TrimPrefix(s, "aws_s3_bucket.")
+			parts := strings.Split(rest, ".")
+			if len(parts) >= 1 && parts[0] != "" {
+				return parts[0]
+			}
+		}
+		return s
+	default:
+		return ""
+	}
+}
+
+func bucketHasProtection(bucket tfResource, name string, protected map[string]bool) bool {
+	if protected[name] {
+		return true
+	}
+	if bucketAttr, _ := bucket.Attrs["bucket"].(string); bucketAttr != "" && protected[bucketAttr] {
+		return true
 	}
 	return false
 }
@@ -255,21 +294,6 @@ func asTFInt(v interface{}) int {
 		return i
 	default:
 		return 0
-	}
-}
-
-func resolveTFBucketRef(v interface{}) string {
-	switch t := v.(type) {
-	case string:
-		if strings.HasPrefix(t, "aws_s3_bucket.") {
-			parts := strings.Split(t, ".")
-			if len(parts) >= 2 {
-				return parts[1]
-			}
-		}
-		return t
-	default:
-		return ""
 	}
 }
 

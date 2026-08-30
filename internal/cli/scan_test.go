@@ -132,8 +132,11 @@ func TestApplyScanFlagsAllPreservesOverrides(t *testing.T) {
 		t.Fatalf("applyScanFlags: %v", err)
 	}
 
-	if !cfg.Scanners.Secrets.Enabled || !cfg.Scanners.SAST.Enabled || !cfg.Scanners.License.Enabled {
-		t.Fatal("expected --all to enable secrets/iac/deps/sast/license")
+	if !cfg.Scanners.Secrets.Enabled || !cfg.Scanners.SAST.Enabled {
+		t.Fatal("expected --all to enable secrets/iac/deps/sast")
+	}
+	if cfg.Scanners.License.Enabled {
+		t.Fatal("expected --all alone to leave license disabled (opt-in via --license)")
 	}
 	// --container-image still opts into container even when --all alone would not.
 	if !cfg.Scanners.Container.Enabled {

@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"hash/fnv"
 	"os"
 	"path/filepath"
 	"strings"
@@ -293,7 +294,7 @@ func (s *Scanner) createFinding(dep Dependency, vuln Vulnerability, basePath str
 	relPath, _ := filepath.Rel(basePath, dep.FilePath)
 
 	return api.Finding{
-		ID:          fmt.Sprintf("DEP-%s-%s", dep.Ecosystem, vuln.ID),
+		ID:          fmt.Sprintf("DEP-%s-%s-%s", dep.Ecosystem, pkgToken(dep.Name), vuln.ID),
 		Type:        api.FindingTypeVulnerability,
 		Severity:    vuln.Severity,
 		Title:       fmt.Sprintf("Vulnerable dependency: %s", dep.Name),
@@ -319,6 +320,12 @@ func formatFixedIn(fixed string) string {
 		return ""
 	}
 	return " (fixed in " + fixed + ")"
+}
+
+func pkgToken(name string) string {
+	h := fnv.New32a()
+	_, _ = h.Write([]byte(name))
+	return fmt.Sprintf("%08x", h.Sum32())
 }
 
 // GoModScanner scans Go modules
@@ -385,6 +392,52 @@ func (g *GoModScanner) Scan(ctx context.Context, path string) ([]Dependency, err
 		}
 	}
 
+	// Prefer exact versions from go.sum when present (do not expand to all
+	// transitive go.sum entries — only overlay versions for go.mod requires).
+	if sumDeps, err := parseGoSum(filepath.Join(path, "go.sum")); err == nil && len(sumDeps) > 0 {
+		sumVer := map[string]string{}
+		for _, sd := range sumDeps {
+			sumVer[sd.Name] = sd.Version
+		}
+		for i := range deps {
+			if v, ok := sumVer[deps[i].Name]; ok {
+				deps[i].Version = v
+				deps[i].FilePath = filepath.Join(path, "go.sum")
+			}
+		}
+	}
+
+	return deps, nil
+}
+
+func parseGoSum(path string) ([]Dependency, error) {
+	content, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	var deps []Dependency
+	seen := map[string]bool{}
+	for lineNum, line := range strings.Split(string(content), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) < 2 {
+			continue
+		}
+		name, version := fields[0], fields[1]
+		if strings.HasSuffix(version, "/go.mod") {
+			continue
+		}
+		if seen[name] {
+			continue
+		}
+		seen[name] = true
+		deps = append(deps, Dependency{
+			Name:      name,
+			Version:   version,
+			Ecosystem: "go",
+			FilePath:  path,
+			Line:      lineNum + 1,
+		})
+	}
 	return deps, nil
 }
 
@@ -399,6 +452,12 @@ func (n *NpmScanner) Detect(path string) bool {
 }
 
 func (n *NpmScanner) Scan(ctx context.Context, path string) ([]Dependency, error) {
+	if deps, err := n.scanLockfile(path); err == nil && len(deps) > 0 {
+		return deps, nil
+	} else if err != nil && !os.IsNotExist(err) {
+		return nil, err
+	}
+
 	pkgPath := filepath.Join(path, "package.json")
 	content, err := os.ReadFile(pkgPath)
 	if err != nil {
@@ -435,6 +494,91 @@ func (n *NpmScanner) Scan(ctx context.Context, path string) ([]Dependency, error
 		})
 	}
 
+	return deps, nil
+}
+
+// scanLockfile prefers package-lock.json / npm-shrinkwrap.json exact versions.
+func (n *NpmScanner) scanLockfile(path string) ([]Dependency, error) {
+	for _, name := range []string{"package-lock.json", "npm-shrinkwrap.json"} {
+		lockPath := filepath.Join(path, name)
+		content, err := os.ReadFile(lockPath)
+		if err != nil {
+			if os.IsNotExist(err) {
+				continue
+			}
+			return nil, err
+		}
+		deps, err := parseNpmLock(content, lockPath)
+		if err != nil {
+			return nil, fmt.Errorf("%s: %w", name, err)
+		}
+		if len(deps) > 0 {
+			return deps, nil
+		}
+	}
+	return nil, os.ErrNotExist
+}
+
+func parseNpmLock(content []byte, lockPath string) ([]Dependency, error) {
+	var lock struct {
+		Packages map[string]struct {
+			Version string `json:"version"`
+			Dev     bool   `json:"dev"`
+		} `json:"packages"`
+		Dependencies map[string]struct {
+			Version string `json:"version"`
+			Dev     bool   `json:"dev"`
+		} `json:"dependencies"`
+	}
+	if err := json.Unmarshal(content, &lock); err != nil {
+		return nil, err
+	}
+
+	var deps []Dependency
+	seen := map[string]bool{}
+
+	// lockfileVersion 2/3
+	for key, pkg := range lock.Packages {
+		if key == "" || pkg.Version == "" {
+			continue
+		}
+		name := key
+		if strings.HasPrefix(name, "node_modules/") {
+			name = strings.TrimPrefix(name, "node_modules/")
+			// nested: node_modules/foo/node_modules/bar → bar
+			if i := strings.LastIndex(name, "node_modules/"); i >= 0 {
+				name = name[i+len("node_modules/"):]
+			}
+		}
+		if seen[name] {
+			continue
+		}
+		seen[name] = true
+		deps = append(deps, Dependency{
+			Name:      name,
+			Version:   pkg.Version,
+			Ecosystem: "npm",
+			FilePath:  lockPath,
+			Dev:       pkg.Dev,
+		})
+	}
+
+	// lockfileVersion 1
+	if len(deps) == 0 {
+		for name, pkg := range lock.Dependencies {
+			if pkg.Version == "" || seen[name] {
+				continue
+			}
+			seen[name] = true
+			deps = append(deps, Dependency{
+				Name:      name,
+				Version:   pkg.Version,
+				Ecosystem: "npm",
+				FilePath:  lockPath,
+				Dev:       pkg.Dev,
+			})
+		}
+	}
 	return deps, nil
 }
 

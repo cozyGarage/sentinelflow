@@ -91,7 +91,7 @@ Scanners are registered based on configuration:
 ## Planned Features
 
 - **AI code review** — LLM-powered analysis (`scanners.ai` / `--ai`); enabling is rejected until the scanner ships.
-- **CloudFormation scanning** — Not implemented; default IaC frameworks are terraform, kubernetes, and dockerfile.
+- **CloudFormation scanning** — Not planned / unsupported; listing it under `scanners.iac.frameworks` fails validation. Defaults are terraform, kubernetes, and dockerfile.
 
 ## CI/CD Integration
 

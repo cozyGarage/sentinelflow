@@ -10,18 +10,51 @@ import (
 	"github.com/cozygarage/sentinelflow/pkg/api"
 )
 
-func TestDetectImageFromDockerfile(t *testing.T) {
+func TestDetectImageWithPlatformAndMultiStage(t *testing.T) {
 	tmpDir := t.TempDir()
-	dockerfile := `FROM nginx:1.25-alpine
-RUN apk add --no-cache curl
-COPY . /app
+	dockerfile := `FROM --platform=linux/amd64 golang:1.22 AS builder
+WORKDIR /src
+FROM --platform=linux/amd64 alpine:3.19
+COPY --from=builder /src/app /app
 `
-	os.WriteFile(filepath.Join(tmpDir, "Dockerfile"), []byte(dockerfile), 0644)
-
+	if err := os.WriteFile(filepath.Join(tmpDir, "Dockerfile"), []byte(dockerfile), 0644); err != nil {
+		t.Fatal(err)
+	}
 	s := NewScanner(&config.Config{})
 	image := s.detectImage(tmpDir)
-	if image != "nginx:1.25-alpine" {
-		t.Errorf("expected nginx:1.25-alpine, got %s", image)
+	if image != "alpine:3.19" {
+		t.Fatalf("expected final stage alpine:3.19, got %q", image)
+	}
+}
+
+func TestParseDockerfileFrom(t *testing.T) {
+	if got := parseDockerfileFrom("FROM --platform=linux/arm64 nginx:1.25"); got != "nginx:1.25" {
+		t.Fatalf("got %q", got)
+	}
+	if got := parseDockerfileFrom("FROM scratch"); got != "" {
+		t.Fatalf("scratch should be ignored, got %q", got)
+	}
+}
+
+func TestContainerFindingIDIncludesPackage(t *testing.T) {
+	s := NewScanner(config.Default())
+	report := []byte(`{
+  "Results": [{
+    "Vulnerabilities": [
+      {"VulnerabilityID":"CVE-1","PkgName":"openssl","InstalledVersion":"1","Severity":"HIGH","Description":"a"},
+      {"VulnerabilityID":"CVE-1","PkgName":"libssl","InstalledVersion":"1","Severity":"HIGH","Description":"b"}
+    ]
+  }]
+}`)
+	findings, err := s.parseTrivyOutput("img:tag", report)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(findings) != 2 {
+		t.Fatalf("expected 2 findings, got %d", len(findings))
+	}
+	if findings[0].ID == findings[1].ID {
+		t.Fatalf("same CVE in different packages must have distinct IDs: %s", findings[0].ID)
 	}
 }
 

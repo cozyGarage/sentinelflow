@@ -6,6 +6,7 @@ package main
 import (
 	"os"
 
+	"github.com/cozygarage/sentinelflow/internal/buildinfo"
 	"github.com/cozygarage/sentinelflow/internal/cli"
 )
 
@@ -17,6 +18,7 @@ var (
 )
 
 func main() {
+	buildinfo.Set(version, commit, date)
 	cli.SetVersionInfo(version, commit, date)
 
 	if err := cli.Execute(); err != nil {

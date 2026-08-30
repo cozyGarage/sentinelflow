@@ -85,7 +85,7 @@ func Generate(findings []api.Finding) *File {
 
 // HashFinding creates a stable hash for a finding
 func HashFinding(f api.Finding) string {
-	key := fmt.Sprintf("%s|%s|%s|%d", f.RuleID, f.Location.File, f.Title, f.Location.StartLine)
+	key := fmt.Sprintf("%s|%s|%s|%d|%d", f.RuleID, f.Location.File, f.Title, f.Location.StartLine, f.Location.StartCol)
 	h := sha256.Sum256([]byte(key))
 	return hex.EncodeToString(h[:8])
 }

@@ -7,13 +7,13 @@ SentinelFlow is designed to be simple yet powerful. This guide covers the most c
 | Method | Command |
 | --- | --- |
 | Source | `git clone https://github.com/cozyGarage/sentielflow && make build` |
-| Docker (local) | `docker build -t sentinelflow/sentinelflow:local .` |
 | Install script | `curl -fsSL https://raw.githubusercontent.com/cozyGarage/sentielflow/main/scripts/install.sh \| bash` (verifies `checksums.txt`; pin with `VERSION=1.1.1`) |
 | Release binary | Download from [GitHub Releases](https://github.com/cozyGarage/sentielflow/releases) |
+| Docker (optional) | `docker build -t sentinelflow/sentinelflow:local .` (prefer binary / Action / `make build`; Hub tags only when published) |
 
-**Install decision:** use the install script, release binary, Docker, Action, or `make build`. `go install` is **not supported** (module path `github.com/cozygarage/sentinelflow` ≠ GitHub repo `cozyGarage/sentielflow`). Rename is deferred; do not advertise `go install`.
+**Install decision:** prefer the install script, release binary, Action, or `make build`. Docker is optional (`docker build` locally, or Hub pull when an image is published). `go install` is **not supported** (module path `github.com/cozygarage/sentinelflow` ≠ GitHub repo `cozyGarage/sentielflow`). Rename is deferred; do not advertise `go install`.
 
-Docker one-liner (local image):
+Optional Docker (local image):
 
 ```bash
 docker build -t sentinelflow/sentinelflow:local .
@@ -44,7 +44,7 @@ Scan the current directory with all implemented scanners:
 sentinelflow scan --all .
 ```
 
-`--all` enables secrets, IaC, dependencies, SAST, and license scanning. It does **not** enable container scanning (use `--container`, requires Trivy) or AI review (`--ai` / `scanners.ai.enabled` are rejected in this release).
+`--all` enables secrets, IaC, dependencies, and SAST. License scanning is **opt-in** (`--license` or `scanners.license.enabled`); it is **not** included in `--all`. `--all` also does **not** enable container scanning (use `--container`, requires Trivy) or AI review (`--ai` / `scanners.ai.enabled` are rejected in this release).
 
 ## Selecting Scanners
 
@@ -55,7 +55,7 @@ sentinelflow scan --secrets .          # Secret detection
 sentinelflow scan --iac .              # Terraform, Kubernetes, Dockerfile
 sentinelflow scan --deps .             # Dependency vulnerabilities (OSV)
 sentinelflow scan --sast .             # OWASP-oriented static patterns
-sentinelflow scan --license .          # License policy checks
+sentinelflow scan --license .          # License policy checks (opt-in; not in --all)
 sentinelflow scan --container .        # Container image scan (requires Trivy)
 sentinelflow scan --container --container-image myapp:latest
 ```

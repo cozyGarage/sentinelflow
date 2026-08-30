@@ -481,3 +481,94 @@ resource "aws_security_group" "web" {
 	}
 }
 
+func TestTerraformIPv6OpenSG(t *testing.T) {
+	dir := t.TempDir()
+	content := `
+resource "aws_security_group" "web6" {
+  ingress {
+    from_port        = 443
+    to_port          = 443
+    protocol         = "tcp"
+    ipv6_cidr_blocks = ["::/0"]
+  }
+}
+`
+	filePath := writeTempFile(t, dir, "sg6.tf", content)
+	findings := NewTerraformScanner(&config.Config{}).ScanFile(context.Background(), filePath, dir)
+	found := false
+	for _, f := range findings {
+		if f.RuleID == "aws-sg-open-to-world" && strings.Contains(f.Description, "::/0") {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("expected ::/0 open SG finding, got %+v", findings)
+	}
+}
+
+func TestTerraformS3LiteralBucketRef(t *testing.T) {
+	dir := t.TempDir()
+	content := `
+resource "aws_s3_bucket" "logs" {
+  bucket = "company-logs"
+}
+
+resource "aws_s3_bucket_server_side_encryption_configuration" "logs" {
+  bucket = "company-logs"
+  rule {
+    apply_server_side_encryption_by_default {
+      sse_algorithm = "AES256"
+    }
+  }
+}
+
+resource "aws_s3_bucket_public_access_block" "logs" {
+  bucket = "company-logs"
+  block_public_acls = true
+}
+`
+	filePath := writeTempFile(t, dir, "s3.tf", content)
+	findings := NewTerraformScanner(&config.Config{}).ScanFile(context.Background(), filePath, dir)
+	for _, f := range findings {
+		if f.RuleID == "aws-s3-no-encryption" || f.RuleID == "aws-s3-public-block-disabled" {
+			t.Fatalf("literal bucket attr should link protection resources, got %s: %s", f.RuleID, f.Description)
+		}
+	}
+}
+
+func TestK8sMultiContainerDistinctIDs(t *testing.T) {
+	dir := t.TempDir()
+	manifest := `apiVersion: v1
+kind: Pod
+metadata:
+  name: multi
+spec:
+  containers:
+    - name: app
+      image: nginx:1.25
+      securityContext:
+        privileged: true
+    - name: sidecar
+      image: busybox:1.36
+      securityContext:
+        privileged: true
+`
+	filePath := writeTempFile(t, dir, "pod.yaml", manifest)
+	findings := NewKubernetesScanner(&config.Config{}).ScanFile(context.Background(), filePath, dir)
+	ids := map[string]bool{}
+	count := 0
+	for _, f := range findings {
+		if f.RuleID != "k8s-privileged" {
+			continue
+		}
+		count++
+		if ids[f.ID] {
+			t.Fatalf("duplicate privileged ID across containers: %s", f.ID)
+		}
+		ids[f.ID] = true
+	}
+	if count != 2 {
+		t.Fatalf("expected 2 privileged findings, got %d (%v)", count, ids)
+	}
+}
+

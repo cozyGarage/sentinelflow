@@ -58,11 +58,13 @@ Queries the [OSV API](https://osv.dev/) for Go, npm, pip, Maven, and Cargo ecosy
 
 ### Supported files
 
+Dependencies **prefer lockfiles when present** (`package-lock.json`, `npm-shrinkwrap.json`, `go.sum`, `poetry.lock`, `Pipfile.lock`, `Cargo.lock`, etc.). Range-only manifests without a lockfile are **best-effort** and may query approximate versions against OSV.
+
 | Ecosystem | Manifests / lockfiles |
 | --- | --- |
-| Go | `go.mod` |
-| npm | `package.json` |
-| Python (PyPI) | `requirements.txt`, `pyproject.toml`, `poetry.lock`, `Pipfile.lock` |
+| Go | `go.mod` (+ `go.sum` when present) |
+| npm | `package-lock.json` / `npm-shrinkwrap.json` (preferred), `package.json` fallback |
+| Python (PyPI) | `poetry.lock` / `Pipfile.lock` (preferred), `requirements.txt`, `pyproject.toml` |
 | Maven | `pom.xml` (resolves basic `${property}` versions) |
 | Cargo | `Cargo.lock` (preferred), `Cargo.toml` fallback |
 
@@ -96,6 +98,8 @@ Wraps [Trivy](https://github.com/aquasecurity/trivy) when installed. Enable with
 ---
 
 ## 6. License Scanner (`internal/scanner/license`)
+
+**Opt-in only** — enable with `--license` or `scanners.license.enabled: true`. Not part of `--all` / Action `scan-all`.
 
 Checks `package.json` and `go.mod` only. Flags:
 
@@ -144,7 +148,7 @@ Generates CycloneDX JSON from the project dependency tree via `sentinelflow sbom
 
 ---
 
-## Planned (not in this release)
+## Unsupported / not in this release
 
 - **AI code review** — Config and `--ai` flag exist for forward compatibility; enabling them is rejected until the scanner ships.
-- **CloudFormation** — Not scanned yet; omit from `scanners.iac.frameworks` (defaults are terraform, kubernetes, dockerfile only).
+- **CloudFormation** — **Not planned** for now. Listing it under `scanners.iac.frameworks` fails config validation. Defaults are terraform, kubernetes, and dockerfile only.

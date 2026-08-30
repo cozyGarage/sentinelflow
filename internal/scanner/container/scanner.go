@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"hash/fnv"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -78,16 +79,48 @@ func (s *Scanner) detectImage(path string) string {
 		return ""
 	}
 
+	var lastImage string
 	for _, line := range strings.Split(string(data), "\n") {
 		trimmed := strings.TrimSpace(line)
-		if strings.HasPrefix(strings.ToUpper(trimmed), "FROM ") {
-			parts := strings.Fields(trimmed)
-			if len(parts) >= 2 {
-				return parts[1]
-			}
+		upper := strings.ToUpper(trimmed)
+		if !strings.HasPrefix(upper, "FROM ") {
+			continue
+		}
+		if img := parseDockerfileFrom(trimmed); img != "" {
+			lastImage = img
 		}
 	}
+	return lastImage
+}
+
+// parseDockerfileFrom extracts the image reference from a FROM instruction,
+// skipping --platform/--chown-style flags and ignoring scratch.
+func parseDockerfileFrom(fromLine string) string {
+	fields := strings.Fields(fromLine)
+	if len(fields) < 2 {
+		return ""
+	}
+	// FROM [--platform=os/arch] image[:tag] [AS name]
+	for i := 1; i < len(fields); i++ {
+		f := fields[i]
+		if strings.HasPrefix(f, "--") {
+			continue
+		}
+		if strings.EqualFold(f, "AS") {
+			break
+		}
+		if strings.EqualFold(f, "scratch") {
+			return ""
+		}
+		return f
+	}
 	return ""
+}
+
+func pkgToken(name string) string {
+	h := fnv.New32a()
+	_, _ = h.Write([]byte(name))
+	return fmt.Sprintf("%08x", h.Sum32())
 }
 
 type trivyReport struct {
@@ -170,7 +203,7 @@ func (s *Scanner) parseTrivyOutput(image string, output []byte) ([]api.Finding, 
 			}
 
 			findings = append(findings, api.Finding{
-				ID:          fmt.Sprintf("CONTAINER-%s", v.VulnerabilityID),
+				ID:          fmt.Sprintf("CONTAINER-%s-%s", v.VulnerabilityID, pkgToken(v.PkgName)),
 				Type:        api.FindingTypeVulnerability,
 				Severity:    sev,
 				Title:       fmt.Sprintf("Container vulnerability: %s in %s", v.VulnerabilityID, v.PkgName),

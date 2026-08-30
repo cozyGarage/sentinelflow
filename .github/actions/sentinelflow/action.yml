@@ -16,7 +16,7 @@ inputs:
     required: false
     default: sentinelflow/sentinelflow:latest
   scan-all:
-    description: "Enable secrets/iac/deps/sast/license (not container). Set an individual scan-* input to false to opt out."
+    description: "Enable secrets/iac/deps/sast (not container, not license). Set an individual scan-* input to false to opt out."
     required: false
     default: 'true'
   scan-secrets:
@@ -36,9 +36,9 @@ inputs:
     required: false
     default: 'true'
   scan-license:
-    description: Enable license policy scanning
+    description: "Opt-in license policy scanning (not included in scan-all / --all)"
     required: false
-    default: 'true'
+    default: 'false'
   scan-container:
     description: Enable container image scanning (requires Trivy)
     required: false
@@ -148,17 +148,16 @@ runs:
       run: |
         set -euo pipefail
         ARGS=()
-        # scan-all enables the standard scanner set, but individual scan-*: false
-        # inputs opt out (per-scanner false wins over scan-all).
+        # scan-all enables secrets/iac/deps/sast (not container, not license).
+        # Individual scan-*: false inputs opt out (per-scanner false wins over scan-all).
+        # License is opt-in only and is never implied by scan-all / --all.
         if [ "${SF_SCAN_ALL}" = "true" ]; then
           if [ "${SF_SCAN_SECRETS}" = "false" ] || [ "${SF_SCAN_IAC}" = "false" ] || \
-             [ "${SF_SCAN_DEPS}" = "false" ] || [ "${SF_SCAN_SAST}" = "false" ] || \
-             [ "${SF_SCAN_LICENSE}" = "false" ]; then
+             [ "${SF_SCAN_DEPS}" = "false" ] || [ "${SF_SCAN_SAST}" = "false" ]; then
             [ "${SF_SCAN_SECRETS}" = "true" ] && ARGS+=(--secrets)
             [ "${SF_SCAN_IAC}" = "true" ] && ARGS+=(--iac)
             [ "${SF_SCAN_DEPS}" = "true" ] && ARGS+=(--deps)
             [ "${SF_SCAN_SAST}" = "true" ] && ARGS+=(--sast)
-            [ "${SF_SCAN_LICENSE}" = "true" ] && ARGS+=(--license)
           else
             ARGS+=(--all)
           fi
@@ -167,8 +166,8 @@ runs:
           [ "${SF_SCAN_IAC}" = "true" ] && ARGS+=(--iac)
           [ "${SF_SCAN_DEPS}" = "true" ] && ARGS+=(--deps)
           [ "${SF_SCAN_SAST}" = "true" ] && ARGS+=(--sast)
-          [ "${SF_SCAN_LICENSE}" = "true" ] && ARGS+=(--license)
         fi
+        [ "${SF_SCAN_LICENSE}" = "true" ] && ARGS+=(--license)
 
         if [ "${SF_SCAN_CONTAINER}" = "true" ]; then
           ARGS+=(--container)
@@ -229,8 +228,12 @@ runs:
         echo "exit-code=$EXIT_CODE" >> "$GITHUB_OUTPUT"
 
         if [ -f "$OUT_PATH" ]; then
-          COUNT=$(bash "${SF_ACTION_PATH}/scripts/count-findings.sh" "${SF_FORMAT}" "$OUT_PATH" || echo 0)
-          echo "findings-count=$COUNT" >> "$GITHUB_OUTPUT"
+          if COUNT=$(bash "${SF_ACTION_PATH}/scripts/count-findings.sh" "${SF_FORMAT}" "$OUT_PATH"); then
+            echo "findings-count=$COUNT" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::failed to count findings in ${OUT_PATH}"
+            echo "findings-count=-1" >> "$GITHUB_OUTPUT"
+          fi
         else
           echo "findings-count=0" >> "$GITHUB_OUTPUT"
         fi

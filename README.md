@@ -39,12 +39,16 @@ SentinelFlow scans your repo for leaked secrets, insecure infrastructure, vulner
 ### 60-second demo
 
 ```bash
-# From a clone
-make demo
+# From a clone (preferred)
+make build && make demo
 
-# Or Docker (no Go toolchain)
+# Or install a release binary, then:
+# sentinelflow scan --secrets --iac --sast examples/demo-project
+
+# Optional: local Docker image (Hub :latest is not always published)
+docker build -t sentinelflow/sentinelflow:local .
 docker run --rm -v "$PWD:/workspace" -w /workspace \
-  sentinelflow/sentinelflow:latest \
+  sentinelflow/sentinelflow:local \
   scan --secrets --iac --sast examples/demo-project
 ```
 
@@ -57,13 +61,13 @@ Checked-in samples: [`docs/assets/demo/`](docs/assets/demo/).
 | Method | Best for | How |
 | --- | --- | --- |
 | **Install script** | Laptops | `curl -fsSL …/scripts/install.sh \| bash` (verifies checksums) |
-| **Docker** | CI & tryouts | `docker build -t sentinelflow/sentinelflow:local .` — Hub tags when Docker credentials are configured on release |
 | **Clone + build** | Contributors | `git clone … && make build` |
-| **GitHub Action** | Pull requests | `delivery: docker` (external, after Hub publish) or `delivery: build` (this repo) |
+| **GitHub Action** | Pull requests | `delivery: build` (this repo) or `delivery: docker` when a Hub image is published |
+| **Docker** (optional) | CI when an image exists | `docker build -t sentinelflow/sentinelflow:local .` — Hub tags only when Docker credentials are configured on release |
 
-> **v1.1.1** ships GitHub Release binaries + `checksums.txt`. Docker Hub images publish when `DOCKER_USERNAME` / `DOCKER_PASSWORD` are set (see [docs/releasing.md](docs/releasing.md)).
+> **v1.1.1** ships GitHub Release binaries + `checksums.txt`. Prefer binary / Action / `make build`. Docker Hub images publish only when `DOCKER_USERNAME` / `DOCKER_PASSWORD` are set (see [docs/releasing.md](docs/releasing.md)); do not assume `:latest` is on Hub.
 >
-> **Install matrix:** binary / Docker / Action / `make build` only. `go install` is **not supported** (module path ≠ GitHub repo name).
+> **Install matrix:** binary / Action / `make build` first; Docker optional. `go install` is **not supported** (module path ≠ GitHub repo name).
 
 ### Build from source
 
@@ -74,7 +78,7 @@ make build
 ./sentinelflow version
 ```
 
-### Docker
+### Docker (optional)
 
 ```bash
 # Local image from this repo
@@ -83,11 +87,11 @@ docker run --rm -v "$PWD:/workspace" -w /workspace \
   sentinelflow/sentinelflow:local \
   scan --all --format sarif -o report.sarif
 
-# After a release is published
-docker pull sentinelflow/sentinelflow:latest
+# Only if a Hub image was published for this tag:
+# docker pull sentinelflow/sentinelflow:<tag>
 ```
 
-Compose helpers: [`docker-compose.yml`](docker-compose.yml) (`scan-html`, `scan-sarif`, `scan-markdown`).
+Compose helpers: [`docker-compose.yml`](docker-compose.yml) (`scan-html`, `scan-sarif`, `scan-markdown`) — expect a local or published image.
 
 ### Release binary
 
@@ -99,24 +103,24 @@ curl -fsSL https://raw.githubusercontent.com/cozyGarage/sentielflow/main/scripts
 
 ### GitHub Action
 
-External repos (published image):
-
-```yaml
-- uses: cozyGarage/sentielflow/.github/actions/sentinelflow@main
-  with:
-    delivery: docker
-    image: sentinelflow/sentinelflow:latest
-    fail-on: high
-    format: sarif
-    output: report.sarif
-```
-
-This repository (scan PR code):
+Same repository (preferred while Hub images are optional):
 
 ```yaml
 - uses: ./.github/actions/sentinelflow
   with:
     delivery: build
+    fail-on: high
+    format: sarif
+    output: report.sarif
+```
+
+External repos when a published image is available:
+
+```yaml
+- uses: cozyGarage/sentielflow/.github/actions/sentinelflow@main
+  with:
+    delivery: docker
+    image: sentinelflow/sentinelflow:<tag>
     fail-on: high
     format: sarif
     output: report.sarif
@@ -129,7 +133,7 @@ This repository (scan PR code):
 - **Dependencies** — OSV lookup (Go/npm/PyPI/Maven/Cargo)
 - **SAST** — OWASP-oriented static patterns
 - **Container** — Trivy when available
-- **License policy** — deny GPL/AGPL/SSPL-style licenses
+- **License policy** — opt-in (`--license`); deny GPL/AGPL/SSPL-style licenses (limited map)
 - **Policy-as-code** — embedded OPA/Rego built-ins
 - **SBOM** — CycloneDX
 - **Reports** — text, Markdown, SARIF, JSON, HTML
@@ -169,10 +173,9 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - uses: cozyGarage/sentielflow/.github/actions/sentinelflow@main
+      - uses: ./.github/actions/sentinelflow
         with:
-          delivery: docker
-          image: sentinelflow/sentinelflow:latest
+          delivery: build
           fail-on: high
           format: sarif
           output: report.sarif
@@ -182,13 +185,14 @@ jobs:
           sarif_file: report.sarif
 ```
 
-GitLab (container):
+GitLab (build from source; or use a published image when available):
 
 ```yaml
 sentinelflow:
-  image: sentinelflow/sentinelflow:latest
+  image: golang:1.25
   script:
-    - sentinelflow scan --all --format sarif -o gl-security-report.sarif
+    - go build -o sentinelflow ./cmd/sentinelflow
+    - ./sentinelflow scan --all --format sarif -o gl-security-report.sarif
   artifacts:
     reports:
       sast: gl-security-report.sarif
