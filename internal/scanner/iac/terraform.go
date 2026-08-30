@@ -248,6 +248,7 @@ func resolveTFBucketRef(v interface{}) string {
 	switch t := v.(type) {
 	case string:
 		s := strings.Trim(strings.TrimSpace(t), "\"")
+		s = stripTFIndex(s)
 		if strings.HasPrefix(s, "aws_s3_bucket.") {
 			rest := strings.TrimPrefix(s, "aws_s3_bucket.")
 			parts := strings.Split(rest, ".")
@@ -259,6 +260,14 @@ func resolveTFBucketRef(v interface{}) string {
 	default:
 		return ""
 	}
+}
+
+// stripTFIndex removes count/for_each index suffixes: name[0] / name[each.key] → name.
+func stripTFIndex(s string) string {
+	if i := strings.IndexByte(s, '['); i >= 0 {
+		return s[:i]
+	}
+	return s
 }
 
 func bucketHasProtection(bucket tfResource, name string, protected map[string]bool) bool {

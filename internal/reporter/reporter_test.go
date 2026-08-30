@@ -262,6 +262,28 @@ func TestGenerateRedactsSecretSnippets(t *testing.T) {
 	}
 }
 
+func TestGenerateRedactsSecretMetadata(t *testing.T) {
+	result := createTestResult()
+	result.Findings[0].Type = api.FindingTypeSecret
+	result.Findings[0].Scanner = "secrets"
+	result.Findings[0].Metadata = map[string]any{
+		"raw":   `token = "ghp_abcdefghijklmnopqrstuvwxyz0123456789ABCD"`,
+		"match": 0,
+	}
+
+	rep := New(nil)
+	out, err := rep.Generate(result, "json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(out, "ghp_abcdefghijklmnopqrstuvwxyz0123456789ABCD") {
+		t.Fatal("expected secret metadata string redacted in JSON report")
+	}
+	if raw, ok := result.Findings[0].Metadata["raw"].(string); !ok || !strings.Contains(raw, "ghp_") {
+		t.Fatal("Generate should not mutate caller's Metadata")
+	}
+}
+
 func TestEmptyResults(t *testing.T) {
 	result := &api.ScanResult{
 		Findings:    []api.Finding{},

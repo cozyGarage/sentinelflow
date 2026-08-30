@@ -82,3 +82,78 @@ deny_privileged[msg] {
 		t.Fatal("policy scanner missed privileged container that IaC found")
 	}
 }
+
+func TestPolicyAndIaCAgreeOnPublicS3(t *testing.T) {
+	root := t.TempDir()
+	tf := `
+resource "aws_s3_bucket" "public" {
+  bucket = "public-bucket"
+  acl    = "public-read"
+}
+`
+	if err := os.WriteFile(filepath.Join(root, "main.tf"), []byte(tf), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	iacFindings := iac.NewTerraformScanner(config.Default()).ScanFile(context.Background(), filepath.Join(root, "main.tf"), root)
+	iacHit := false
+	for _, f := range iacFindings {
+		if f.RuleID == "aws-s3-public-acl" || f.RuleID == "aws-s3-public-block-disabled" {
+			iacHit = true
+			break
+		}
+	}
+	if !iacHit {
+		t.Fatal("IaC scanner missed public S3 issues")
+	}
+
+	cfg := config.Default()
+	cfg.Policies.Enabled = true
+	cfg.Policies.Builtin = []string{"no-public-s3-buckets"}
+	cfg.Policies.Files = nil
+	ps := policy.NewScanner(cfg)
+	result, err := ps.Scan(context.Background(), root, nil)
+	if err != nil {
+		t.Fatalf("policy scan: %v", err)
+	}
+	if len(result.Findings) == 0 {
+		t.Fatal("policy scanner missed public S3 that IaC found")
+	}
+}
+
+func TestPolicyAndIaCAgreeOnUnencryptedS3(t *testing.T) {
+	root := t.TempDir()
+	tf := `
+resource "aws_s3_bucket" "data" {
+  bucket = "data-bucket"
+}
+`
+	if err := os.WriteFile(filepath.Join(root, "main.tf"), []byte(tf), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	iacFindings := iac.NewTerraformScanner(config.Default()).ScanFile(context.Background(), filepath.Join(root, "main.tf"), root)
+	iacHit := false
+	for _, f := range iacFindings {
+		if f.RuleID == "aws-s3-no-encryption" {
+			iacHit = true
+			break
+		}
+	}
+	if !iacHit {
+		t.Fatal("IaC scanner missed missing S3 encryption")
+	}
+
+	cfg := config.Default()
+	cfg.Policies.Enabled = true
+	cfg.Policies.Builtin = []string{"enforce-encryption"}
+	cfg.Policies.Files = nil
+	ps := policy.NewScanner(cfg)
+	result, err := ps.Scan(context.Background(), root, nil)
+	if err != nil {
+		t.Fatalf("policy scan: %v", err)
+	}
+	if len(result.Findings) == 0 {
+		t.Fatal("policy scanner missed unencrypted S3 that IaC found")
+	}
+}

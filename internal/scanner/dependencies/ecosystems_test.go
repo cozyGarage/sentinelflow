@@ -251,6 +251,39 @@ func TestNpmPrefersPackageLock(t *testing.T) {
 	}
 }
 
+func TestNpmPrefersYarnLock(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "package.json"), []byte(`{"dependencies":{"lodash":"^4.0.0"}}`), 0644); err != nil {
+		t.Fatal(err)
+	}
+	yarn := `# yarn lockfile v1
+
+lodash@^4.0.0:
+  version "4.17.21"
+  resolved "https://registry.yarnpkg.com/lodash/-/lodash-4.17.21.tgz#abc"
+  integrity sha512-abc
+
+"@scope/pkg@^1.0.0":
+  version "1.2.3"
+  resolved "https://registry.yarnpkg.com/@scope/pkg/-/pkg-1.2.3.tgz#def"
+  integrity sha512-def
+`
+	if err := os.WriteFile(filepath.Join(root, "yarn.lock"), []byte(yarn), 0644); err != nil {
+		t.Fatal(err)
+	}
+	deps, err := (&NpmScanner{}).Scan(context.Background(), root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]string{}
+	for _, d := range deps {
+		got[d.Name] = d.Version
+	}
+	if got["lodash"] != "4.17.21" || got["@scope/pkg"] != "1.2.3" {
+		t.Fatalf("expected yarn.lock pins, got %+v", got)
+	}
+}
+
 func TestDepFindingIDIncludesPackage(t *testing.T) {
 	s := NewScanner(config.Default())
 	a := s.createFinding(Dependency{Name: "pkg-a", Version: "1.0.0", Ecosystem: "npm", FilePath: "/tmp/package.json"}, Vulnerability{ID: "CVE-1", Severity: api.SeverityHigh}, "/tmp")

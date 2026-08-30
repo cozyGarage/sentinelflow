@@ -30,6 +30,9 @@ jobs:
       - name: Go test
         run: go test ./...
 
+      - name: govulncheck
+        run: go run golang.org/x/vuln/cmd/govulncheck@latest ./...
+
       - name: Install checksum helper test
         run: bash scripts/install_checksum_test.sh
 

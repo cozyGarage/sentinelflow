@@ -68,6 +68,17 @@ func redactResult(result *api.ScanResult) *api.ScanResult {
 			if f.Description != "" {
 				f.Description = redact.Line(f.Description)
 			}
+			if f.Metadata != nil {
+				meta := make(map[string]any, len(f.Metadata))
+				for k, v := range f.Metadata {
+					if s, ok := v.(string); ok {
+						meta[k] = redact.Line(s)
+					} else {
+						meta[k] = v
+					}
+				}
+				f.Metadata = meta
+			}
 		} else if f.Location.Snippet != "" {
 			// Soft redact assignment-like values in other scanners too.
 			f.Location.Snippet = redact.Snippet(f.Location.Snippet)
@@ -110,6 +121,9 @@ func (f *TextFormatter) Format(result *api.ScanResult) (string, error) {
 		}
 		output += fmt.Sprintf("  %s %s - %d findings in %s\n",
 			status, run.Scanner, run.FindingsCount, run.Duration.Std())
+		for _, w := range run.Warnings {
+			output += fmt.Sprintf("      warning: %s\n", w)
+		}
 	}
 
 	if len(result.Findings) > 0 {
