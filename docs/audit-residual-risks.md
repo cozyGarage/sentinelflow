@@ -17,6 +17,7 @@ Re-audit after correctness, delivery, scanner-quality waves, first release, and 
 | Container delivery | Action `scan-container` needs `delivery: build` | Docker delivery path cannot run host Trivy. `--all` does not enable container. |
 | Policy vs IaC | Remaining Rego gaps | e.g. some workload kinds / stringly YAML edge cases may still diverge. |
 | Redaction | Heuristic, not cryptographic | Reporter + secrets redact patterns; novel secret formats may still leak in snippets. |
+| SAST | Line-local regex only | Rules in `rules.yaml`; `severity`/`skip_rules` honored. No taint analysis; Go/JS/TS/Python/Java only. |
 
 ## Landed since original residual note
 
@@ -25,6 +26,7 @@ Re-audit after correctness, delivery, scanner-quality waves, first release, and 
 - Configurable scan deadline: `scan_timeout` / `--timeout`.
 - **R0:** `v1.1.0` GitHub Release binaries + checksums; install.sh repaired; Action `timeout` input; release skips Docker when Hub secrets absent.
 - **R1:** `dependencies.fail_on_error`; module-path install decision; container / baseline / SARIF CI docs.
+- **R2 (partial):** SAST FP fixes (`cmd-inject-shell`, `sqli-format`, `xss-eval`); rules moved to embedded YAML; drop SAST self-scan excludes for policy/deps/container/sast sources.
 
 ## Optional follow-ups (not blockers)
 
