@@ -41,8 +41,11 @@ func runBaseline(cmd *cobra.Command, args []string) error {
 
 	cfg, err := config.LoadFromDir(config.ConfigDirForTarget(absPath))
 	if err != nil {
-		cfg = config.Default()
+		return fmt.Errorf("failed to load config: %w", err)
 	}
+	// Always regenerate from the full finding set — filtering would shrink/empty
+	// the baseline when baseline.enabled is already true in config.
+	cfg.Baseline.Enabled = false
 
 	engine := scanner.NewEngine(cfg)
 	result, err := engine.Scan(context.Background(), absPath)

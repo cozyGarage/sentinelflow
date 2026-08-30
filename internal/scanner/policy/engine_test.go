@@ -52,22 +52,69 @@ violation[msg] {
 	}
 }
 
-func TestEvaluatePolicyNoViolations(t *testing.T) {
+func TestEvaluatePolicyIgnoresHelperSets(t *testing.T) {
 	engine := NewOPAEngine()
-	policy := `package sentinelflow.test
+	policy := `package sentinelflow.kubernetes
 
-violation[msg] {
-    input.insecure == true
-    msg := "Resource is insecure"
+workload_kinds := {"Deployment", "StatefulSet"}
+
+deny_privileged[msg] {
+	input.kind == "Pod"
+	input.spec.containers[_].securityContext.privileged == true
+	msg := "privileged container"
 }
 `
-	engine.LoadPolicy("test", policy)
+	if err := engine.LoadPolicy("no-priv", policy); err != nil {
+		t.Fatalf("load: %v", err)
+	}
 
-	result, err := engine.EvaluatePolicy("test", map[string]interface{}{"insecure": false})
+	// Non-violating input still exposes workload_kinds as a string set in OPA data.
+	result, err := engine.EvaluatePolicy("no-priv", map[string]interface{}{
+		"kind": "ConfigMap",
+		"metadata": map[string]interface{}{"name": "x"},
+	})
 	if err != nil {
-		t.Fatalf("evaluation failed: %v", err)
+		t.Fatalf("eval: %v", err)
 	}
 	if len(result.Violations) != 0 {
-		t.Errorf("expected no violations, got %d", len(result.Violations))
+		t.Fatalf("helper set must not become violations, got %+v", result.Violations)
+	}
+
+	result, err = engine.EvaluatePolicy("no-priv", map[string]interface{}{
+		"kind": "Pod",
+		"spec": map[string]interface{}{
+			"containers": []interface{}{
+				map[string]interface{}{
+					"name": "app",
+					"securityContext": map[string]interface{}{
+						"privileged": true,
+					},
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("eval privileged: %v", err)
+	}
+	if len(result.Violations) != 1 {
+		t.Fatalf("expected 1 deny violation, got %+v", result.Violations)
+	}
+}
+
+func TestIsViolationRuleKey(t *testing.T) {
+	cases := map[string]bool{
+		"deny":           true,
+		"deny_privileged": true,
+		"violation":      true,
+		"violation_msg":  true,
+		"violations":     true,
+		"workload_kinds": false,
+		"allow":          false,
+		"is_true":        false,
+	}
+	for k, want := range cases {
+		if got := isViolationRuleKey(k); got != want {
+			t.Errorf("isViolationRuleKey(%q)=%v want %v", k, got, want)
+		}
 	}
 }

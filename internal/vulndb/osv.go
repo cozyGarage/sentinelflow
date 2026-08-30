@@ -77,6 +77,9 @@ type OSVVulnerability struct {
 		Type  string `json:"type"`
 		Score string `json:"score"`
 	} `json:"severity,omitempty"`
+	DatabaseSpecific struct {
+		Severity string `json:"severity,omitempty"`
+	} `json:"database_specific,omitempty"`
 	References []struct {
 		Type string `json:"type"`
 		URL  string `json:"url"`
@@ -153,14 +156,18 @@ func (s *OSVSource) Query(ctx context.Context, ecosystem, pkg, version string) (
 				} else if score := parseCVSSBaseScore(sev.Score); score > 0 {
 					v.CVSS = score
 					v.Severity = cvssToSeverity(score)
-				} else {
-					v.Severity = "medium"
 				}
+				// If vector could not be scored, leave Severity empty for
+				// database_specific / default fallback below.
 				break
 			}
 		}
 		if v.Severity == "" {
-			v.Severity = "medium"
+			if sev := normalizeOSVSeverity(osv.DatabaseSpecific.Severity); sev != "" {
+				v.Severity = sev
+			} else {
+				v.Severity = "medium"
+			}
 		}
 
 		// Extract references
@@ -221,13 +228,58 @@ func cvssToSeverity(score float64) string {
 
 func parseCVSSBaseScore(vector string) float64 {
 	// CVSS vector format: CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H
-	parts := strings.Split(vector, "/")
-	for _, part := range parts {
-		if strings.HasPrefix(part, "CVSS:") {
+	// Approximate base score from impact metrics when a full calculator is unavailable.
+	if !strings.HasPrefix(vector, "CVSS:") {
+		return 0
+	}
+	metrics := make(map[string]string)
+	for _, part := range strings.Split(vector, "/") {
+		kv := strings.SplitN(part, ":", 2)
+		if len(kv) != 2 {
 			continue
 		}
-		// Cannot derive exact score without full calculator; return 0 to use default
-		_ = part
+		metrics[kv[0]] = kv[1]
 	}
-	return 0
+	rank := func(v string) int {
+		switch strings.ToUpper(v) {
+		case "H":
+			return 2
+		case "L":
+			return 1
+		default:
+			return 0
+		}
+	}
+	c, i, a := rank(metrics["C"]), rank(metrics["I"]), rank(metrics["A"])
+	sum := c + i + a
+	hasHigh := c == 2 || i == 2 || a == 2
+	switch {
+	case sum >= 6:
+		return 9.8
+	case sum >= 4 && hasHigh:
+		return 8.1
+	case hasHigh:
+		return 7.5
+	case sum >= 2:
+		return 5.3
+	case sum >= 1:
+		return 3.1
+	default:
+		return 0
+	}
+}
+
+func normalizeOSVSeverity(s string) string {
+	switch strings.ToLower(strings.TrimSpace(s)) {
+	case "critical":
+		return "critical"
+	case "high":
+		return "high"
+	case "medium", "moderate":
+		return "medium"
+	case "low":
+		return "low"
+	default:
+		return ""
+	}
 }
