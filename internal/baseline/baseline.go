@@ -16,8 +16,8 @@ const DefaultPath = ".sentinelflow/baseline.yaml"
 
 // File represents a baseline file
 type File struct {
-	Version  string    `yaml:"version"`
-	Findings []Entry   `yaml:"findings"`
+	Version  string  `yaml:"version"`
+	Findings []Entry `yaml:"findings"`
 }
 
 // Entry represents a baselined finding
@@ -88,6 +88,25 @@ func HashFinding(f api.Finding) string {
 	key := fmt.Sprintf("%s|%s|%s|%d|%d", f.RuleID, f.Location.File, f.Title, f.Location.StartLine, f.Location.StartCol)
 	h := sha256.Sum256([]byte(key))
 	return hex.EncodeToString(h[:8])
+}
+
+// Summary counts findings before and after baseline filtering.
+type Summary struct {
+	Total      int
+	Suppressed int
+	New        int
+}
+
+// Summarize reports how many findings a baseline kept versus suppressed.
+// New equals len(after), the set the fail gate sees.
+func Summarize(before, after []api.Finding) Summary {
+	total := len(before)
+	newCount := len(after)
+	suppressed := total - newCount
+	if suppressed < 0 {
+		suppressed = 0
+	}
+	return Summary{Total: total, Suppressed: suppressed, New: newCount}
 }
 
 // Filter removes baselined findings from the result set

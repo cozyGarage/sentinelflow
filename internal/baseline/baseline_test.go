@@ -55,6 +55,33 @@ func TestFilterDoesNotSuppressNewFindingSameRuleFile(t *testing.T) {
 	}
 }
 
+func TestSummarizeCountsSuppressedAndNew(t *testing.T) {
+	findings := []api.Finding{
+		{ID: "SEC-1", RuleID: "aws-access-key", Title: "AWS Key", Location: api.Location{File: "config.go", StartLine: 1}},
+		{ID: "SEC-2", RuleID: "github-token", Title: "GitHub Token", Location: api.Location{File: "app.go", StartLine: 5}},
+	}
+	bl := Generate(findings[:1])
+	filtered := Filter(findings, bl)
+	summary := Summarize(findings, filtered)
+	if summary.Total != 2 || summary.Suppressed != 1 || summary.New != 1 {
+		t.Fatalf("summary = %+v, want total 2 suppressed 1 new 1", summary)
+	}
+	if summary.New != len(filtered) {
+		t.Fatalf("new count %d must match filtered findings %d", summary.New, len(filtered))
+	}
+}
+
+func TestSummarizeEmptyBaselineSuppressesNothing(t *testing.T) {
+	findings := []api.Finding{
+		{ID: "SEC-1", RuleID: "aws-access-key", Location: api.Location{File: "config.go", StartLine: 1}},
+	}
+	filtered := Filter(findings, &File{Version: "1.0"})
+	summary := Summarize(findings, filtered)
+	if summary.Total != 1 || summary.Suppressed != 0 || summary.New != 1 {
+		t.Fatalf("empty baseline summary = %+v", summary)
+	}
+}
+
 func TestFilterLegacyRuleFileWhenNoIDOrHash(t *testing.T) {
 	a := api.Finding{
 		ID: "SEC-1", RuleID: "aws-access-key",

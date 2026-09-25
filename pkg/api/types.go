@@ -125,12 +125,22 @@ func (d DurationMS) Std() time.Duration {
 	return time.Duration(d)
 }
 
+// BaselineSummary counts findings before and after baseline filtering.
+// Total is the pre-filter count. New is the post-filter count the fail gate uses.
+type BaselineSummary struct {
+	Enabled    bool `json:"enabled"`
+	Total      int  `json:"total"`
+	Suppressed int  `json:"suppressed"`
+	New        int  `json:"new"`
+}
+
 // ScanResult contains the complete results of a security scan
 type ScanResult struct {
-	Findings    []Finding     `json:"findings"`
-	ScannerRuns []ScannerRun  `json:"scanner_runs"`
-	Metadata    ScanMetadata  `json:"metadata"`
-	Duration    DurationMS    `json:"duration_ms"`
+	Findings    []Finding        `json:"findings"`
+	ScannerRuns []ScannerRun     `json:"scanner_runs"`
+	Metadata    ScanMetadata     `json:"metadata"`
+	Duration    DurationMS       `json:"duration_ms"`
+	Baseline    *BaselineSummary `json:"baseline,omitempty"`
 }
 
 // ScannerRun contains information about an individual scanner execution

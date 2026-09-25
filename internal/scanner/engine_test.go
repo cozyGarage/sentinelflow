@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/cozygarage/sentinelflow/internal/baseline"
 	"github.com/cozygarage/sentinelflow/internal/config"
 	"github.com/cozygarage/sentinelflow/internal/scanner/types"
 	"github.com/cozygarage/sentinelflow/pkg/api"
@@ -162,7 +163,7 @@ type stubScanner struct {
 	err      error
 }
 
-func (s *stubScanner) Name() string             { return s.name }
+func (s *stubScanner) Name() string              { return s.name }
 func (s *stubScanner) Supports(path string) bool { return true }
 func (s *stubScanner) Scan(ctx context.Context, path string, opts interface{}) (*types.ScannerResult, error) {
 	return &types.ScannerResult{Findings: s.findings, FilesCount: 1}, s.err
@@ -191,6 +192,71 @@ func TestEnginePreservesFindingsOnScannerError(t *testing.T) {
 	}
 	if len(result.ScannerRuns) != 1 || result.ScannerRuns[0].Error == "" {
 		t.Fatalf("expected ScannerRun.Error set, got %+v", result.ScannerRuns)
+	}
+}
+
+func TestEngineBaselineSummaryKeepsOnlyNewFindings(t *testing.T) {
+	tmpDir := t.TempDir()
+	suppressed := api.Finding{
+		ID: "OLD", RuleID: "aws-access-key", Title: "old", Severity: api.SeverityCritical,
+		Location: api.Location{File: "a.go", StartLine: 1},
+	}
+	kept := api.Finding{
+		ID: "NEW", RuleID: "aws-access-key", Title: "new", Severity: api.SeverityHigh,
+		Location: api.Location{File: "a.go", StartLine: 2},
+	}
+	blPath := filepath.Join(tmpDir, "baseline.yaml")
+	if err := baseline.Save(blPath, baseline.Generate([]api.Finding{suppressed})); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := &config.Config{
+		Baseline: config.BaselineConfig{Enabled: true, File: blPath},
+	}
+	engine := NewEngine(cfg)
+	engine.scanners = []Scanner{
+		&stubScanner{name: "stub", findings: []api.Finding{suppressed, kept}},
+	}
+
+	result, err := engine.Scan(context.Background(), tmpDir)
+	if err != nil {
+		t.Fatalf("Scan failed: %v", err)
+	}
+	if len(result.Findings) != 1 || result.Findings[0].ID != "NEW" {
+		t.Fatalf("gate findings = %+v, want only NEW", result.Findings)
+	}
+	if result.Baseline == nil || !result.Baseline.Enabled {
+		t.Fatal("expected baseline summary when filtering is enabled")
+	}
+	if result.Baseline.Total != 2 || result.Baseline.Suppressed != 1 || result.Baseline.New != 1 {
+		t.Fatalf("baseline summary = %+v", result.Baseline)
+	}
+	if result.Baseline.New != len(result.Findings) {
+		t.Fatalf("new count %d must match findings the gate sees (%d)", result.Baseline.New, len(result.Findings))
+	}
+}
+
+func TestEngineBaselineMissingFileStillSummarizes(t *testing.T) {
+	tmpDir := t.TempDir()
+	finding := api.Finding{
+		ID: "F1", RuleID: "r", Title: "kept", Severity: api.SeverityHigh,
+		Location: api.Location{File: "a.go", StartLine: 1},
+	}
+	cfg := &config.Config{
+		Baseline: config.BaselineConfig{Enabled: true, File: filepath.Join(tmpDir, "missing.yaml")},
+	}
+	engine := NewEngine(cfg)
+	engine.scanners = []Scanner{&stubScanner{name: "stub", findings: []api.Finding{finding}}}
+
+	result, err := engine.Scan(context.Background(), tmpDir)
+	if err != nil {
+		t.Fatalf("Scan failed: %v", err)
+	}
+	if len(result.Findings) != 1 {
+		t.Fatalf("missing baseline should keep findings, got %+v", result.Findings)
+	}
+	if result.Baseline == nil || result.Baseline.Suppressed != 0 || result.Baseline.New != 1 || result.Baseline.Total != 1 {
+		t.Fatalf("baseline summary = %+v", result.Baseline)
 	}
 }
 

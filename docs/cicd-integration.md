@@ -64,7 +64,7 @@ External repos when a Hub image is published:
 | --- | --- | --- |
 | `delivery` | `docker` | `docker` pulls `image`; `build` compiles from the workspace (same-repo only) |
 | `image` | `sentinelflow/sentinelflow:latest` | Container image when `delivery=docker` |
-| `scan-all` | `true` | Enable secrets, IaC, deps, SAST (does **not** enable container or license). Individual `scan-*: 'false'` inputs **opt out** even when `scan-all` is true |
+| `scan-all` | `true` | Enable secrets, IaC, deps, SAST (does **not** enable container or license). Individual `scan-*: 'false'` inputs **opt out** even when `scan-all` is true. Policy stays at the config default (enabled) on that path. `scan-all: 'false'` plus selective scanners still disables policy, matching `--secrets` without `--all` |
 | `scan-secrets` | `true` | Secret scanning |
 | `scan-iac` | `true` | IaC scanning |
 | `scan-deps` | `true` | Dependency scanning |
@@ -72,7 +72,7 @@ External repos when a Hub image is published:
 | `scan-license` | `false` | License policy checks (**opt-in**; not part of `scan-all` / `--all`) |
 | `scan-container` | `false` | Container scan (requires `delivery=build` + Trivy) |
 | `container-image` | — | Image to scan when container enabled |
-| `use-baseline` | `false` | Skip baselined findings |
+| `use-baseline` | `false` | Skip baselined findings. CLI, JSON, and Markdown reports include suppressed vs new counts; the fail gate uses the new (post-filter) set |
 | `fail-on` | `high` | Pipeline failure threshold |
 | `timeout` | — | Scan deadline (`10m`, `90s`, …); empty uses config default |
 | `format` | `sarif` | Report format (`text`, `json`, `sarif`, `markdown`, `html`) |

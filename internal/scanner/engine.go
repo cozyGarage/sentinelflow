@@ -150,7 +150,16 @@ func (e *Engine) Scan(ctx context.Context, targetPath string) (*api.ScanResult, 
 		if err != nil {
 			return nil, fmt.Errorf("failed to load baseline %s: %w", blPath, err)
 		}
-		result.Findings = baseline.Filter(result.Findings, bl)
+		before := result.Findings
+		filtered := baseline.Filter(before, bl)
+		summary := baseline.Summarize(before, filtered)
+		result.Findings = filtered
+		result.Baseline = &api.BaselineSummary{
+			Enabled:    true,
+			Total:      summary.Total,
+			Suppressed: summary.Suppressed,
+			New:        summary.New,
+		}
 	}
 
 	result.Metadata.EndTime = time.Now()
