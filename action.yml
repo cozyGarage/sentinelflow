@@ -16,7 +16,7 @@ inputs:
     required: false
     default: sentinelflow/sentinelflow:latest
   scan-all:
-    description: "Enable secrets/iac/deps/sast (not container, not license). Set an individual scan-* input to false to opt out."
+    description: "Enable secrets/iac/deps/sast (not container, not license). Set an individual scan-* input to false to opt out. Policy stays enabled when scan-all is true."
     required: false
     default: 'true'
   scan-secrets:
@@ -149,18 +149,15 @@ runs:
         set -euo pipefail
         ARGS=()
         # scan-all enables secrets/iac/deps/sast (not container, not license).
-        # Individual scan-*: false inputs opt out (per-scanner false wins over scan-all).
+        # Individual scan-*: false inputs opt out via --no-* so policy stays on.
+        # Selective flags (scan-all false) still disable policy, matching the CLI.
         # License is opt-in only and is never implied by scan-all / --all.
         if [ "${SF_SCAN_ALL}" = "true" ]; then
-          if [ "${SF_SCAN_SECRETS}" = "false" ] || [ "${SF_SCAN_IAC}" = "false" ] || \
-             [ "${SF_SCAN_DEPS}" = "false" ] || [ "${SF_SCAN_SAST}" = "false" ]; then
-            [ "${SF_SCAN_SECRETS}" = "true" ] && ARGS+=(--secrets)
-            [ "${SF_SCAN_IAC}" = "true" ] && ARGS+=(--iac)
-            [ "${SF_SCAN_DEPS}" = "true" ] && ARGS+=(--deps)
-            [ "${SF_SCAN_SAST}" = "true" ] && ARGS+=(--sast)
-          else
-            ARGS+=(--all)
-          fi
+          ARGS+=(--all)
+          [ "${SF_SCAN_SECRETS}" = "false" ] && ARGS+=(--no-secrets)
+          [ "${SF_SCAN_IAC}" = "false" ] && ARGS+=(--no-iac)
+          [ "${SF_SCAN_DEPS}" = "false" ] && ARGS+=(--no-deps)
+          [ "${SF_SCAN_SAST}" = "false" ] && ARGS+=(--no-sast)
         else
           [ "${SF_SCAN_SECRETS}" = "true" ] && ARGS+=(--secrets)
           [ "${SF_SCAN_IAC}" = "true" ] && ARGS+=(--iac)

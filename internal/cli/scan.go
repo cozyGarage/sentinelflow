@@ -26,6 +26,10 @@ var (
 	scanContainer    bool
 	scanLicense      bool
 	scanAll          bool
+	noSecrets        bool
+	noIaC            bool
+	noDependencies   bool
+	noSAST           bool
 	scanPath         string
 	outputFile       string
 	failOnSeverity   string
@@ -47,6 +51,10 @@ Available scanners:
   --container    Scan container images (requires Trivy)
   --license      Check dependency licenses against policy (opt-in; not part of --all)
   --all          Enable secrets/IaC/deps/SAST (not container, license, or AI; use --container / --license to opt in)
+  --no-secrets   With --all, skip secret scanning (policy stays at the config default)
+  --no-iac       With --all, skip Infrastructure-as-Code scanning
+  --no-deps      With --all, skip dependency scanning
+  --no-sast      With --all, skip SAST
 
 Examples:
   sentinelflow scan
@@ -69,6 +77,10 @@ func init() {
 	scanCmd.Flags().StringVar(&scanTimeoutFlag, "timeout", "", "scan deadline (Go duration, e.g. 10m, 90s); overrides scan_timeout")
 	scanCmd.Flags().BoolVar(&scanAI, "ai", false, "AI-powered code review (not available in this release)")
 	scanCmd.Flags().BoolVar(&scanAll, "all", false, "enable secrets, iac, deps, and sast (not container/license/AI)")
+	scanCmd.Flags().BoolVar(&noSecrets, "no-secrets", false, "with --all, disable secret scanning (policy stays enabled)")
+	scanCmd.Flags().BoolVar(&noIaC, "no-iac", false, "with --all, disable Infrastructure-as-Code scanning (policy stays enabled)")
+	scanCmd.Flags().BoolVar(&noDependencies, "no-deps", false, "with --all, disable dependency scanning (policy stays enabled)")
+	scanCmd.Flags().BoolVar(&noSAST, "no-sast", false, "with --all, disable SAST (policy stays enabled)")
 	scanCmd.Flags().StringVarP(&outputFile, "output", "o", "", "output file path")
 	scanCmd.Flags().StringVar(&failOnSeverity, "fail-on", "", "fail if findings match severity (critical, high, medium, low)")
 }
@@ -195,6 +207,19 @@ func applyScanFlags(cfg *config.Config) error {
 		cfg.Scanners.Container.Enabled = false
 		// AI scanner is not registered in v1.0
 		cfg.Scanners.AI.Enabled = false
+		// --no-* opts out of one scanner without the selective-flag path that disables policy.
+		if noSecrets {
+			cfg.Scanners.Secrets.Enabled = false
+		}
+		if noIaC {
+			cfg.Scanners.IaC.Enabled = false
+		}
+		if noDependencies {
+			cfg.Scanners.Dependencies.Enabled = false
+		}
+		if noSAST {
+			cfg.Scanners.SAST.Enabled = false
+		}
 	} else if scanSecrets || scanIaC || scanDependencies || scanSAST || scanContainer || scanLicense {
 		// If specific flags are set, only enable those (including disabling policy —
 		// defaults leave policies.enabled=true and would otherwise still run OPA).
@@ -333,6 +358,9 @@ func printScanSummary(result *api.ScanResult) {
 
 	fmt.Println()
 	fmt.Printf("  Total findings: %d\n", len(result.Findings))
+	if result.Baseline != nil && result.Baseline.Enabled {
+		fmt.Printf("  Baseline:       %d suppressed, %d new\n", result.Baseline.Suppressed, result.Baseline.New)
+	}
 	fmt.Printf("  Scan duration:  %s\n", result.Duration.Std().Round(time.Millisecond))
 
 	if len(result.Findings) == 0 {

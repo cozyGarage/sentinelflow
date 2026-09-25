@@ -66,6 +66,14 @@ Combine flags as needed:
 sentinelflow scan --secrets --iac --deps --fail-on high
 ```
 
+Opt out of one scanner while keeping `--all` (and the default policy scanner):
+
+```bash
+sentinelflow scan --all --no-secrets .
+```
+
+`--no-secrets`, `--no-iac`, `--no-deps`, and `--no-sast` apply only with `--all`. Passing `--secrets` alone still disables policy.
+
 ## Output Formats
 
 | Format | Description | Use case |
@@ -156,6 +164,8 @@ baseline:
   enabled: true
   file: .sentinelflow/baseline.yaml
 ```
+
+When a baseline is applied, the CLI summary, JSON (`baseline`), and Markdown report show how many findings were suppressed and how many are new. **Total findings** and the fail gate use the new (post-filter) set.
 
 In GitHub Actions, set `use-baseline: 'true'` (requires the baseline file committed). See [cicd-integration.md](cicd-integration.md).
 

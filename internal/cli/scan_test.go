@@ -153,6 +153,86 @@ func TestApplyScanFlagsAllPreservesOverrides(t *testing.T) {
 	}
 }
 
+func TestApplyScanFlagsAllOptOutKeepsPolicy(t *testing.T) {
+	prevAll := scanAll
+	prevNoSecrets := noSecrets
+	prevNoIaC := noIaC
+	prevNoDeps := noDependencies
+	prevNoSAST := noSAST
+	t.Cleanup(func() {
+		scanAll = prevAll
+		noSecrets = prevNoSecrets
+		noIaC = prevNoIaC
+		noDependencies = prevNoDeps
+		noSAST = prevNoSAST
+	})
+
+	scanAll = true
+	noSecrets = true
+	noIaC = false
+	noDependencies = false
+	noSAST = false
+
+	cfg := config.Default()
+	if !cfg.Policies.Enabled {
+		t.Fatal("precondition: defaults enable policy")
+	}
+	if err := applyScanFlags(cfg); err != nil {
+		t.Fatalf("applyScanFlags: %v", err)
+	}
+	if cfg.Scanners.Secrets.Enabled {
+		t.Fatal("expected --no-secrets to disable secrets under --all")
+	}
+	if !cfg.Scanners.IaC.Enabled || !cfg.Scanners.Dependencies.Enabled || !cfg.Scanners.SAST.Enabled {
+		t.Fatal("expected other --all scanners to stay enabled")
+	}
+	if !cfg.Policies.Enabled {
+		t.Fatal("expected --all --no-secrets to leave policy enabled")
+	}
+}
+
+func TestApplyScanFlagsNoOptOutIgnoredWithoutAll(t *testing.T) {
+	prevAll := scanAll
+	prevSecrets := scanSecrets
+	prevIaC := scanIaC
+	prevDeps := scanDependencies
+	prevSAST := scanSAST
+	prevContainer := scanContainer
+	prevLicense := scanLicense
+	prevNoSecrets := noSecrets
+	t.Cleanup(func() {
+		scanAll = prevAll
+		scanSecrets = prevSecrets
+		scanIaC = prevIaC
+		scanDependencies = prevDeps
+		scanSAST = prevSAST
+		scanContainer = prevContainer
+		scanLicense = prevLicense
+		noSecrets = prevNoSecrets
+	})
+
+	scanAll = false
+	scanSecrets = false
+	scanIaC = false
+	scanDependencies = false
+	scanSAST = false
+	scanContainer = false
+	scanLicense = false
+	noSecrets = true
+
+	cfg := config.Default()
+	cfg.Scanners.Secrets.Enabled = true
+	if err := applyScanFlags(cfg); err != nil {
+		t.Fatalf("applyScanFlags: %v", err)
+	}
+	if !cfg.Scanners.Secrets.Enabled {
+		t.Fatal("expected --no-secrets without --all to leave secrets unchanged")
+	}
+	if !cfg.Policies.Enabled {
+		t.Fatal("expected --no-secrets without --all to leave policy enabled")
+	}
+}
+
 func TestApplyScanFlagsAllDoesNotEnableContainer(t *testing.T) {
 	prevAll := scanAll
 	prevImage := containerImage

@@ -100,6 +100,40 @@ func TestMarkdownFormatter(t *testing.T) {
 	}
 }
 
+func TestMarkdownFormatterBaselineSummary(t *testing.T) {
+	result := createTestResult()
+	result.Baseline = &api.BaselineSummary{Enabled: true, Total: 5, Suppressed: 3, New: 2}
+
+	output, err := (&MarkdownFormatter{}).Format(result)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(output, "| **Baselined (suppressed)** | 3 |") {
+		t.Fatalf("missing suppressed row:\n%s", output)
+	}
+	if !strings.Contains(output, "| **New findings** | **2** |") {
+		t.Fatalf("missing new findings row:\n%s", output)
+	}
+	if !strings.Contains(output, "| **Total Findings** | **2** |") {
+		t.Fatalf("total findings should stay the post-filter count:\n%s", output)
+	}
+}
+
+func TestJSONFormatterIncludesBaselineSummary(t *testing.T) {
+	result := createTestResult()
+	result.Baseline = &api.BaselineSummary{Enabled: true, Total: 4, Suppressed: 2, New: 2}
+
+	output, err := (&JSONFormatter{}).Format(result)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{`"baseline"`, `"suppressed": 2`, `"new": 2`, `"total": 4`} {
+		if !strings.Contains(output, want) {
+			t.Fatalf("JSON missing %s:\n%s", want, output)
+		}
+	}
+}
+
 func TestMarkdownFormatterEscapesUntrustedContent(t *testing.T) {
 	result := createTestResult()
 	result.Findings[0].Title = `<script>alert(1)</script>`

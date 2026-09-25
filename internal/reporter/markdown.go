@@ -29,6 +29,10 @@ func (f *MarkdownFormatter) Format(result *api.ScanResult) (string, error) {
 	md.WriteString(fmt.Sprintf("| **Scan Duration** | %s |\n", result.Duration.Std().Round(time.Millisecond)))
 	md.WriteString(fmt.Sprintf("| **Scanners Run** | %d |\n", len(result.ScannerRuns)))
 	md.WriteString(fmt.Sprintf("| **Total Findings** | **%d** |\n", totalFindings))
+	if result.Baseline != nil && result.Baseline.Enabled {
+		md.WriteString(fmt.Sprintf("| **Baselined (suppressed)** | %d |\n", result.Baseline.Suppressed))
+		md.WriteString(fmt.Sprintf("| **New findings** | **%d** |\n", result.Baseline.New))
+	}
 	md.WriteString("\n")
 
 	// Severity badges

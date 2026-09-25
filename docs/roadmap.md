@@ -96,7 +96,7 @@ Residual detail: [audit-residual-risks.md](audit-residual-risks.md). Release ste
 | Work | Why | Acceptance |
 | --- | --- | --- |
 | OSV worker pool / rate limit / offline vulndb refresh | Scale + CI stability | Configurable concurrency; documented rate behavior |
-| Findings identity + diff across runs | PR comments / trends | Stable IDs; optional “new vs baseline” summary |
+| Findings identity + diff across runs | PR comments / trends | Stable IDs done. Partial: CLI/JSON/Markdown show new vs baseline-suppressed counts |
 | Multi-repo / monorepo path filters | Enterprise layouts | `include`/`exclude` with clear precedence docs |
 | Plugin or custom rule packs (beyond Rego files) | Extensibility without forks | Documented extension point **or** “Rego-only” decision |
 | Signed releases (cosign) + Action pin-by-digest docs | Supply chain story | Cosign verify in install notes |

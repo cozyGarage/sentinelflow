@@ -11,8 +11,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Dead-code round 2: drop unused API helpers, unread reporting knobs, orphan scripts/fixtures; slim ScanOptions / vulndb / buildinfo / reporter / SBOM / policy embed leftovers
 
+### Added
+
+- Baseline scans report suppressed vs new finding counts in the CLI summary, JSON (`baseline`), and Markdown
+
 ### Fixed
 
+- Action `scan-all` with an individual `scan-*: false` opt-out keeps policy enabled (`--all --no-*` instead of selective flags that disable OPA)
 - Load `.sentinelflow.yaml` and relative baseline paths from the scan target (not only process CWD)
 - Action: `scan-*: false` opts out even when `scan-all: true`
 - `count-findings.sh` counts real JSON `findings` / SARIF `results` (and text/markdown totals)
