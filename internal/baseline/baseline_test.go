@@ -42,12 +42,12 @@ func TestFilterByIDDoesNotCrossFilesWhenIDsDiffer(t *testing.T) {
 func TestFilterDoesNotSuppressNewFindingSameRuleFile(t *testing.T) {
 	a := api.Finding{
 		ID: "SEC-aws-1", RuleID: "aws-access-key", Title: "AWS Key",
-		Location: api.Location{File: "config.go", StartLine: 1, Snippet: "key = \"first\""},
+		Location:  api.Location{File: "config.go", StartLine: 1, Snippet: "key = \"first\""},
 		ValueHash: "aaaa",
 	}
 	b := api.Finding{
 		ID: "SEC-aws-20", RuleID: "aws-access-key", Title: "AWS Key",
-		Location: api.Location{File: "config.go", StartLine: 20, Snippet: "key = \"other\""},
+		Location:  api.Location{File: "config.go", StartLine: 20, Snippet: "key = \"other\""},
 		ValueHash: "bbbb",
 	}
 	bl := Generate([]api.Finding{a})
@@ -135,5 +135,17 @@ func TestFilterLegacyRuleFileWhenNoIDOrHash(t *testing.T) {
 	filtered := Filter([]api.Finding{a, b}, bl)
 	if len(filtered) != 0 {
 		t.Fatalf("legacy rule:file entries should still suppress, got %+v", filtered)
+	}
+}
+
+func TestFilterLegacyRuleFileUsesExactRuleAndFile(t *testing.T) {
+	finding := api.Finding{
+		ID: "SEC-1", RuleID: "r", Location: api.Location{File: "x:y", StartLine: 1},
+	}
+	bl := &File{Findings: []Entry{{RuleID: "r:x", File: "y"}}}
+
+	filtered := Filter([]api.Finding{finding}, bl)
+	if len(filtered) != 1 || filtered[0].ID != finding.ID {
+		t.Fatalf("legacy entry for another rule/file pair must not suppress this finding, got %+v", filtered)
 	}
 }
