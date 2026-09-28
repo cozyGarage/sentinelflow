@@ -3,7 +3,7 @@ module github.com/cozygarage/sentinelflow
 go 1.26.0
 
 require (
-	github.com/fatih/color v1.18.0
+	github.com/fatih/color v1.19.0
 	github.com/open-policy-agent/opa v1.21.0
 	github.com/owenrumney/go-sarif/v2 v2.3.0
 	github.com/pelletier/go-toml/v2 v2.4.3
