@@ -394,18 +394,27 @@ func (g *GoModScanner) Scan(ctx context.Context, path string) ([]Dependency, err
 		}
 	}
 
-	// Prefer exact versions from go.sum when present (do not expand to all
-	// transitive go.sum entries — only overlay versions for go.mod requires).
+	// Overlay exact versions from go.sum onto go.mod requires, then append
+	// remaining go.sum modules (transitive dependencies) with fixed versions.
 	if sumDeps, err := parseGoSum(filepath.Join(path, "go.sum")); err == nil && len(sumDeps) > 0 {
 		sumVer := map[string]string{}
 		for _, sd := range sumDeps {
 			sumVer[sd.Name] = sd.Version
 		}
+		seen := map[string]bool{}
 		for i := range deps {
 			if v, ok := sumVer[deps[i].Name]; ok {
 				deps[i].Version = v
 				deps[i].FilePath = filepath.Join(path, "go.sum")
 			}
+			seen[deps[i].Name] = true
+		}
+		for _, sd := range sumDeps {
+			if seen[sd.Name] {
+				continue
+			}
+			seen[sd.Name] = true
+			deps = append(deps, sd)
 		}
 	}
 
@@ -666,4 +675,3 @@ func parseNpmLock(content []byte, lockPath string) ([]Dependency, error) {
 	}
 	return deps, nil
 }
-

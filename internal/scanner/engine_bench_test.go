@@ -127,7 +127,7 @@ func BenchmarkFileCollection(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_, _ = engine.collectFiles(context.Background(), tmpDir)
+		_, _, _ = engine.collectFiles(context.Background(), tmpDir)
 	}
 }
 

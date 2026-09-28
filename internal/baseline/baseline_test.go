@@ -42,11 +42,13 @@ func TestFilterByIDDoesNotCrossFilesWhenIDsDiffer(t *testing.T) {
 func TestFilterDoesNotSuppressNewFindingSameRuleFile(t *testing.T) {
 	a := api.Finding{
 		ID: "SEC-aws-1", RuleID: "aws-access-key", Title: "AWS Key",
-		Location: api.Location{File: "config.go", StartLine: 1},
+		Location: api.Location{File: "config.go", StartLine: 1, Snippet: "key = \"first\""},
+		ValueHash: "aaaa",
 	}
 	b := api.Finding{
 		ID: "SEC-aws-20", RuleID: "aws-access-key", Title: "AWS Key",
-		Location: api.Location{File: "config.go", StartLine: 20},
+		Location: api.Location{File: "config.go", StartLine: 20, Snippet: "key = \"other\""},
+		ValueHash: "bbbb",
 	}
 	bl := Generate([]api.Finding{a})
 	filtered := Filter([]api.Finding{a, b}, bl)
@@ -79,6 +81,44 @@ func TestSummarizeEmptyBaselineSuppressesNothing(t *testing.T) {
 	summary := Summarize(findings, filtered)
 	if summary.Total != 1 || summary.Suppressed != 0 || summary.New != 1 {
 		t.Fatalf("empty baseline summary = %+v", summary)
+	}
+}
+
+func TestFilterV2FingerprintSurvivesLineMove(t *testing.T) {
+	a := api.Finding{
+		ID: "SEC-1", RuleID: "aws-access-key", Title: "AWS Key",
+		ValueHash: "deadbeef",
+		Location:  api.Location{File: "config.go", StartLine: 1, Snippet: "AKIA***"},
+	}
+	moved := a
+	moved.ID = "SEC-1-moved"
+	moved.Location.StartLine = 80
+	moved.Location.StartCol = 12
+
+	bl := Generate([]api.Finding{a})
+	if bl.Version != VersionV2 {
+		t.Fatalf("expected v2 baseline, got %s", bl.Version)
+	}
+	if bl.Findings[0].Fingerprint == "" {
+		t.Fatal("expected fingerprint on generated entry")
+	}
+	filtered := Filter([]api.Finding{moved}, bl)
+	if len(filtered) != 0 {
+		t.Fatalf("moved finding should still match v2 fingerprint, got %+v", filtered)
+	}
+}
+
+func TestFilterExpiredEntryDoesNotSuppress(t *testing.T) {
+	a := api.Finding{
+		ID: "SEC-1", RuleID: "aws-access-key", Title: "AWS Key",
+		ValueHash: "deadbeef",
+		Location:  api.Location{File: "config.go", StartLine: 1, Snippet: "AKIA***"},
+	}
+	bl := Generate([]api.Finding{a})
+	bl.Findings[0].Expires = "2000-01-01"
+	filtered := Filter([]api.Finding{a}, bl)
+	if len(filtered) != 1 {
+		t.Fatalf("expired entry must not suppress, got %+v", filtered)
 	}
 }
 

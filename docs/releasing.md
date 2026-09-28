@@ -10,7 +10,7 @@ GoReleaser publishes GitHub Release assets (`checksums.txt` + platform archives)
 | `DOCKER_USERNAME` | Optional | Docker Hub username for `sentinelflow/sentinelflow` |
 | `DOCKER_PASSWORD` | Optional | Docker Hub access token (or password) |
 
-Pinned tooling: `goreleaser/goreleaser-action@v6.3.0` + GoReleaser CLI `v2.9.0`.
+Pinned tooling: `goreleaser/goreleaser-action` and GoReleaser CLI `v2.9.0` (SHA-pinned in the workflow). Workflows also pin `actions/*` by commit SHA; Dependabot updates `.github/dependabot.yml`.
 
 ## Cut a release
 
@@ -24,8 +24,10 @@ git push origin v1.1.1
 Watch the **Release** workflow. On success:
 
 - GitHub Release `v1.1.1` includes binaries + `checksums.txt` (primary install path)
+- Keyless Cosign signatures: `checksums.txt.sig` + `checksums.txt.pem`
+- SLSA provenance attestation on `checksums.txt`
+- CycloneDX + SPDX SBOMs and an artifact self-scan report
 - If Docker Hub secrets are present: `sentinelflow/sentinelflow:v1.1.1`, `:v1`, `:v1.1`, `:latest`
-- Install path: `curl -fsSL …/scripts/install.sh | bash` (verifies checksums)
 
 ## Verify
 
@@ -33,10 +35,15 @@ Watch the **Release** workflow. On success:
 VERSION=1.1.1 ./scripts/install.sh
 ./bin/sentinelflow version
 
+# Optional — verify checksums.txt with Cosign (needs cosign + the .sig/.pem assets):
+# VERIFY_SIGNATURE=1 VERSION=1.1.1 ./scripts/install.sh
+
 # Optional — only if Docker Hub publish ran for this tag:
 # docker pull sentinelflow/sentinelflow:v1.1.1
 # docker run --rm sentinelflow/sentinelflow:v1.1.1 version
 ```
+
+The release workflow runs `scan-artifact` on the published Linux binary (`--fail-on critical`) and attaches `artifact-scan.json`.
 
 ## Module path decision
 

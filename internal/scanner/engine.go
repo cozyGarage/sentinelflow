@@ -7,15 +7,18 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"strings"
 	"sync"
 	"time"
 
 	"github.com/cozygarage/sentinelflow/internal/adapter"
+	"github.com/cozygarage/sentinelflow/internal/adapter/external"
 	"github.com/cozygarage/sentinelflow/internal/baseline"
 	"github.com/cozygarage/sentinelflow/internal/buildinfo"
 	"github.com/cozygarage/sentinelflow/internal/config"
+	"github.com/cozygarage/sentinelflow/internal/scanner/diff"
 	"github.com/cozygarage/sentinelflow/internal/scanner/filter"
+	"github.com/cozygarage/sentinelflow/internal/scanner/fingerprint"
+	"github.com/cozygarage/sentinelflow/internal/scanner/suppress"
 	"github.com/cozygarage/sentinelflow/internal/scanner/types"
 	"github.com/cozygarage/sentinelflow/pkg/api"
 )
@@ -27,6 +30,8 @@ type Scanner = adapter.Scanner
 type Engine struct {
 	config   *config.Config
 	scanners []Scanner
+	Staged   bool
+	DiffBase string
 }
 
 // NewEngine creates a new scanning engine with configured scanners
@@ -35,6 +40,10 @@ func NewEngine(cfg *config.Config) *Engine {
 		config:   cfg,
 		scanners: []Scanner{},
 	}
+	if cfg == nil {
+		return e
+	}
+	e.DiffBase = cfg.DiffBase
 
 	if cfg.Scanners.Secrets.Enabled {
 		e.scanners = append(e.scanners, adapter.NewSecretsAdapter(cfg))
@@ -57,6 +66,12 @@ func NewEngine(cfg *config.Config) *Engine {
 	if cfg.Scanners.License.Enabled {
 		e.scanners = append(e.scanners, adapter.NewLicenseAdapter(cfg))
 	}
+	if cfg.Scanners.Artifacts.Enabled {
+		e.scanners = append(e.scanners, adapter.NewArtifactsAdapter(cfg))
+	}
+	for _, ext := range external.Adapters(cfg) {
+		e.scanners = append(e.scanners, ext)
+	}
 
 	return e
 }
@@ -69,7 +84,7 @@ func (e *Engine) Scan(ctx context.Context, targetPath string) (*api.ScanResult, 
 		return nil, fmt.Errorf("target path does not exist: %s", targetPath)
 	}
 
-	files, err := e.collectFiles(ctx, targetPath)
+	files, skipped, err := e.collectFiles(ctx, targetPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to collect files: %w", err)
 	}
@@ -77,6 +92,7 @@ func (e *Engine) Scan(ctx context.Context, targetPath string) (*api.ScanResult, 
 	result := &api.ScanResult{
 		Findings:    []api.Finding{},
 		ScannerRuns: []api.ScannerRun{},
+		Skipped:     skipped,
 		Metadata: api.ScanMetadata{
 			TargetPath:          targetPath,
 			StartTime:           startTime,
@@ -94,6 +110,10 @@ func (e *Engine) Scan(ctx context.Context, targetPath string) (*api.ScanResult, 
 	opts := types.ScanOptions{
 		Files:       files,
 		Concurrency: concurrency,
+		MaxFileSize: e.config.EffectiveMaxFileSize(),
+		Skipped:     skipped,
+		DiffBase:    e.diffBase(),
+		Staged:      e.Staged,
 	}
 
 	var wg sync.WaitGroup
@@ -118,8 +138,6 @@ func (e *Engine) Scan(ctx context.Context, targetPath string) (*api.ScanResult, 
 			if err != nil {
 				run.Error = err.Error()
 			}
-			// Preserve findings even when the scanner also returns an error
-			// (e.g. partial OSV failures) so CI sees real issues + ScannerRun.Error.
 			if scanResult != nil {
 				run.FilesCount = scanResult.FilesCount
 				run.FindingsCount = len(scanResult.Findings)
@@ -137,6 +155,23 @@ func (e *Engine) Scan(ctx context.Context, targetPath string) (*api.ScanResult, 
 	}
 
 	wg.Wait()
+
+	fingerprint.Ensure(result.Findings)
+
+	kept, inline := suppress.Filter(result.Findings, targetPath)
+	result.Findings = kept
+
+	if e.diffBase() != "" || e.Staged {
+		changed, derr := diff.Collect(diff.Spec{
+			Root:   targetPath,
+			Base:   e.diffBase(),
+			Staged: e.Staged,
+		})
+		if derr != nil {
+			return nil, fmt.Errorf("diff filter: %w", derr)
+		}
+		result.Findings = diff.Filter(result.Findings, changed)
+	}
 
 	if e.config.Baseline.Enabled {
 		blPath := e.config.Baseline.File
@@ -159,6 +194,25 @@ func (e *Engine) Scan(ctx context.Context, targetPath string) (*api.ScanResult, 
 			Total:      summary.Total,
 			Suppressed: summary.Suppressed,
 			New:        summary.New,
+			Inline:     len(inline),
+		}
+	} else if len(inline) > 0 {
+		result.Baseline = &api.BaselineSummary{
+			Enabled:    false,
+			Total:      len(kept) + len(inline),
+			Suppressed: len(inline),
+			New:        len(kept),
+			Inline:     len(inline),
+		}
+	}
+
+	if len(skipped) > 0 {
+		var skipMsgs []string
+		for _, s := range skipped {
+			skipMsgs = append(skipMsgs, fmt.Sprintf("%s (%s)", s.Path, s.Reason))
+		}
+		if len(result.ScannerRuns) > 0 {
+			result.ScannerRuns[0].Warnings = append(result.ScannerRuns[0].Warnings, skipMsgs...)
 		}
 	}
 
@@ -168,12 +222,26 @@ func (e *Engine) Scan(ctx context.Context, targetPath string) (*api.ScanResult, 
 	return result, nil
 }
 
-func (e *Engine) collectFiles(ctx context.Context, targetPath string) ([]string, error) {
+func (e *Engine) diffBase() string {
+	if e.DiffBase != "" {
+		return e.DiffBase
+	}
+	if e.config != nil {
+		return e.config.DiffBase
+	}
+	return ""
+}
+
+func (e *Engine) collectFiles(ctx context.Context, targetPath string) ([]string, []api.SkippedFile, error) {
 	var files []string
+	var skipped []api.SkippedFile
+	maxSize := e.config.EffectiveMaxFileSize()
 
 	err := filepath.WalkDir(targetPath, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
-			return err
+			rel, _ := filepath.Rel(targetPath, path)
+			skipped = append(skipped, api.SkippedFile{Path: filepath.ToSlash(rel), Reason: "unreadable: " + err.Error()})
+			return nil
 		}
 		select {
 		case <-ctx.Done():
@@ -188,7 +256,6 @@ func (e *Engine) collectFiles(ctx context.Context, targetPath string) ([]string,
 				name == "dist" || name == "build" || name == ".cache" {
 				return filepath.SkipDir
 			}
-			// Skip Go testdata and bundled sample trees (path-scoped, not bare name matches).
 			if path != targetPath && (name == "testdata" || filter.IsBundledSampleDir(targetPath, path)) {
 				return filepath.SkipDir
 			}
@@ -197,9 +264,16 @@ func (e *Engine) collectFiles(ctx context.Context, targetPath string) ([]string,
 
 		info, err := d.Info()
 		if err != nil {
+			rel, _ := filepath.Rel(targetPath, path)
+			skipped = append(skipped, api.SkippedFile{Path: filepath.ToSlash(rel), Reason: "unreadable"})
 			return nil
 		}
-		if info.Size() > 5*1024*1024 {
+		if info.Size() > maxSize {
+			rel, _ := filepath.Rel(targetPath, path)
+			skipped = append(skipped, api.SkippedFile{
+				Path:   filepath.ToSlash(rel),
+				Reason: fmt.Sprintf("exceeds max_file_size (%d bytes)", maxSize),
+			})
 			return nil
 		}
 
@@ -212,36 +286,12 @@ func (e *Engine) collectFiles(ctx context.Context, targetPath string) ([]string,
 		return nil
 	})
 
-	return files, err
+	return files, skipped, err
 }
 
 func (e *Engine) shouldSkip(path string) bool {
+	if e.config == nil {
+		return filter.ShouldSkip(path, nil)
+	}
 	return filter.ShouldSkip(path, e.config.Scanners.Exclude)
-}
-
-func (e *Engine) collectGitMetadata(path string, meta *api.ScanMetadata) {
-	gitDir := filepath.Join(path, ".git")
-	if _, err := os.Stat(gitDir); os.IsNotExist(err) {
-		return
-	}
-
-	headFile := filepath.Join(gitDir, "HEAD")
-	if data, err := os.ReadFile(headFile); err == nil {
-		content := string(data)
-		if len(content) > 16 && content[:16] == "ref: refs/heads/" {
-			meta.GitBranch = content[16 : len(content)-1]
-		}
-	}
-
-	if meta.GitBranch != "" {
-		refFile := filepath.Join(gitDir, "refs", "heads", meta.GitBranch)
-		if data, err := os.ReadFile(refFile); err == nil {
-			commit := strings.TrimSpace(string(data))
-			if len(commit) >= 40 {
-				meta.GitCommit = commit[:40]
-			} else if commit != "" {
-				meta.GitCommit = commit
-			}
-		}
-	}
 }

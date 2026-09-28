@@ -73,9 +73,13 @@ func NewClient(opts ...Option) (*Client, error) {
 		client.sources = append(client.sources, NewOSVSource(client.client))
 	}
 
-	// Initialize in-memory cache if not provided
+	// Initialize cache: prefer disk, fall back to memory.
 	if client.cache == nil {
-		client.cache = NewMemoryCache()
+		if dc, err := NewDiskCache(""); err == nil {
+			client.cache = dc
+		} else {
+			client.cache = NewMemoryCache()
+		}
 	}
 
 	return client, nil

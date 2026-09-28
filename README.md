@@ -62,7 +62,7 @@ Checked-in samples: [`docs/assets/demo/`](docs/assets/demo/).
 | --- | --- | --- |
 | **Install script** | Laptops | `curl -fsSL …/scripts/install.sh \| bash` (verifies checksums) |
 | **Clone + build** | Contributors | `git clone … && make build` |
-| **GitHub Action** | Pull requests | `delivery: build` (this repo) or `delivery: docker` when a Hub image is published |
+| **GitHub Action** | Pull requests | `delivery: release` (external; verifies checksums) or `delivery: build` (this repo) |
 | **Docker** (optional) | CI when an image exists | `docker build -t sentinelflow/sentinelflow:local .` — Hub tags only when Docker credentials are configured on release |
 
 > **v1.1.1** ships GitHub Release binaries + `checksums.txt`. Prefer binary / Action / `make build`. Docker Hub images publish only when `DOCKER_USERNAME` / `DOCKER_PASSWORD` are set (see [docs/releasing.md](docs/releasing.md)); do not assume `:latest` is on Hub.
@@ -114,13 +114,24 @@ Same repository (preferred while Hub images are optional):
     output: report.sarif
 ```
 
+External repos (no Docker Hub required):
+
+```yaml
+- uses: cozyGarage/sentielflow@v1.1.1
+  with:
+    delivery: release
+    fail-on: high
+    format: sarif
+    output: report.sarif
+```
+
 External repos when a published image is available:
 
 ```yaml
-- uses: cozyGarage/sentielflow/.github/actions/sentinelflow@main
+- uses: cozyGarage/sentielflow@v1.1.1
   with:
     delivery: docker
-    image: sentinelflow/sentinelflow:<tag>
+    image: sentinelflow/sentinelflow:v1.1.1
     fail-on: high
     format: sarif
     output: report.sarif
@@ -128,15 +139,16 @@ External repos when a published image is available:
 
 ## Features
 
-- **Secret scanning** — tokens, passwords, entropy, optional git history
+- **Secret scanning** — tokens, passwords, entropy, optional git history and live verify
 - **Infrastructure-as-Code** — Terraform, Kubernetes, Dockerfiles
-- **Dependencies** — OSV lookup (Go/npm/PyPI/Maven/Cargo)
-- **SAST** — OWASP-oriented static patterns
+- **Dependencies** — OSV batch lookup (Go including transitives / npm / PyPI / Maven / Cargo / RubyGems)
+- **SAST** — OWASP regex rules + native Go AST sinks
+- **Artifacts** — binaries and archives (SCA, secrets, hardening, malware heuristics)
 - **Container** — Trivy when available
 - **License policy** — opt-in (`--license`); deny GPL/AGPL/SSPL-style licenses (limited map)
 - **Policy-as-code** — embedded OPA/Rego built-ins
-- **SBOM** — CycloneDX
-- **Reports** — text, Markdown, SARIF, JSON, HTML
+- **SBOM** — CycloneDX + SPDX; ingest CycloneDX for vuln matching
+- **Reports** — text, Markdown, SARIF 2.1.0, JSON, HTML, JUnit, GitLab
 
 > AI-powered review is **planned**. `--ai` / `scanners.ai.enabled` are rejected in this release.
 

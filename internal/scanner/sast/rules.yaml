@@ -46,10 +46,15 @@ rules:
   - id: path-traversal
     name: Path Traversal
     category: path
-    pattern: '(?i)(\.\./|\.\.\\)'
+    languages: [go, python, javascript, java]
+    # Require a file-open/read sink on the same line, not every "../" import.
+    pattern: '(?i)(os\.Open(?:File)?|os\.ReadFile|ioutil\.ReadFile|os\.ReadDir|open\(|fopen\(|fs\.readFile|path\.join|filepath\.Join).*(?:\.\./|\.\.\\)'
+    pattern-not: '(?i)(go\s+"|\.\./vendor/)'
     severity: high
-    description: Path traversal sequence detected
+    description: Path traversal sequence used with a file-open sink
     cwe: CWE-22
+    owasp: A01:2021
+    confidence: 0.75
 
   - id: path-join-user
     name: Unsafe Path Join with User Input

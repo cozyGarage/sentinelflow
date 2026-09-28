@@ -36,6 +36,12 @@ var (
 	containerImage   string
 	useBaseline      bool
 	scanTimeoutFlag  string
+	scanArtifacts    bool
+	scanStaged       bool
+	diffBase         string
+	scanSBOM         string
+	verifySecrets    bool
+	emitAnnotations  bool
 )
 
 var scanCmd = &cobra.Command{
@@ -50,17 +56,26 @@ Available scanners:
   --sast         Static application security testing (OWASP patterns)
   --container    Scan container images (requires Trivy)
   --license      Check dependency licenses against policy (opt-in; not part of --all)
-  --all          Enable secrets/IaC/deps/SAST (not container, license, or AI; use --container / --license to opt in)
-  --no-secrets   With --all, skip secret scanning (policy stays at the config default)
-  --no-iac       With --all, skip Infrastructure-as-Code scanning
-  --no-deps      With --all, skip dependency scanning
-  --no-sast      With --all, skip SAST
+  --artifacts    Scan binaries/archives (opt-in; not part of --all)
+  --all          Enable secrets/IaC/deps/SAST (not container, license, artifacts, or AI)
+  --staged       Limit findings to git staged files (pre-commit)
+  --diff-base    Limit findings to files/lines changed since a git ref
+  --sbom         Scan a CycloneDX SBOM file for vulnerable components
+  --verify-secrets  Opt-in live secret verification (network)
+
+Exit codes:
+  0  pass
+  1  findings exceeded fail_on gates
+  2  scanner or configuration error
+  3  scan timed out
 
 Examples:
   sentinelflow scan
   sentinelflow scan ./src --secrets --iac
   sentinelflow scan --all --format sarif -o report.sarif
-  sentinelflow scan --fail-on high`,
+  sentinelflow scan --fail-on high
+  sentinelflow scan --diff-base origin/main
+  sentinelflow scan --staged --secrets --iac --fail-on high`,
 	RunE:         runScan,
 	SilenceUsage: true, // gate failures and scan errors print the message without cobra Usage spam
 }
@@ -72,9 +87,15 @@ func init() {
 	scanCmd.Flags().BoolVar(&scanSAST, "sast", false, "static application security testing")
 	scanCmd.Flags().BoolVar(&scanContainer, "container", false, "scan container images")
 	scanCmd.Flags().BoolVar(&scanLicense, "license", false, "check dependency licenses (opt-in; not included in --all)")
+	scanCmd.Flags().BoolVar(&scanArtifacts, "artifacts", false, "scan binaries and archives (opt-in; not included in --all)")
 	scanCmd.Flags().StringVar(&containerImage, "container-image", "", "container image to scan")
 	scanCmd.Flags().BoolVar(&useBaseline, "baseline", false, "apply baseline filtering")
 	scanCmd.Flags().StringVar(&scanTimeoutFlag, "timeout", "", "scan deadline (Go duration, e.g. 10m, 90s); overrides scan_timeout")
+	scanCmd.Flags().BoolVar(&scanStaged, "staged", false, "limit findings to git staged files")
+	scanCmd.Flags().StringVar(&diffBase, "diff-base", "", "limit findings to files/lines changed since this git ref")
+	scanCmd.Flags().StringVar(&scanSBOM, "sbom", "", "scan a CycloneDX JSON SBOM for vulnerable components")
+	scanCmd.Flags().BoolVar(&verifySecrets, "verify-secrets", false, "opt-in live verification of detected secrets (network)")
+	scanCmd.Flags().BoolVar(&emitAnnotations, "emit-annotations", false, "print GitHub Actions workflow annotations")
 	scanCmd.Flags().BoolVar(&scanAI, "ai", false, "AI-powered code review (not available in this release)")
 	scanCmd.Flags().BoolVar(&scanAll, "all", false, "enable secrets, iac, deps, and sast (not container/license/AI)")
 	scanCmd.Flags().BoolVar(&noSecrets, "no-secrets", false, "with --all, disable secret scanning (policy stays enabled)")
@@ -118,7 +139,11 @@ func runScan(cmd *cobra.Command, args []string) error {
 		return err
 	}
 	if err := cfg.Validate(); err != nil {
-		return fmt.Errorf("invalid configuration: %w", err)
+		return api.ErrTool(fmt.Sprintf("invalid configuration: %v", err))
+	}
+
+	if scanSBOM != "" {
+		return runScanSBOM(cmd, cfg, scanSBOM)
 	}
 
 	// Prefer config reporting format unless --format was explicitly set
@@ -130,13 +155,15 @@ func runScan(cmd *cobra.Command, args []string) error {
 
 	// Create scanner engine
 	engine := scanner.NewEngine(cfg)
+	engine.Staged = scanStaged
+	engine.DiffBase = cfg.DiffBase
 
 	// Print scan header
 	printScanHeader(absPath, cfg)
 
 	timeout, err := cfg.ScanTimeoutDuration()
 	if err != nil {
-		return fmt.Errorf("invalid configuration: %w", err)
+		return api.ErrTool(fmt.Sprintf("invalid configuration: %v", err))
 	}
 
 	// Run scan with timeout
@@ -146,9 +173,9 @@ func runScan(cmd *cobra.Command, args []string) error {
 	result, err := engine.Scan(ctx, absPath)
 	if err != nil {
 		if ctx.Err() == context.DeadlineExceeded {
-			return fmt.Errorf("scan timed out after %s: %w", timeout, err)
+			return api.ErrTimeout(fmt.Sprintf("scan timed out after %s: %v", timeout, err))
 		}
-		return fmt.Errorf("scan failed: %w", err)
+		return api.ErrTool(fmt.Sprintf("scan failed: %v", err))
 	}
 
 	result.Metadata.SentinelFlowVersion = GetVersion()
@@ -158,34 +185,41 @@ func runScan(cmd *cobra.Command, args []string) error {
 	rep := reporter.New(cfg)
 	report, err := rep.Generate(result, format)
 	if err != nil {
-		return fmt.Errorf("failed to generate report: %w", err)
+		return api.ErrTool(fmt.Sprintf("failed to generate report: %v", err))
 	}
 
 	// Output report
 	if outputFile != "" {
 		if dir := filepath.Dir(outputFile); dir != "" && dir != "." {
 			if err := os.MkdirAll(dir, 0755); err != nil {
-				return fmt.Errorf("failed to create output directory: %w", err)
+				return api.ErrTool(fmt.Sprintf("failed to create output directory: %v", err))
 			}
 		}
 		if err := os.WriteFile(outputFile, []byte(report), 0644); err != nil {
-			return fmt.Errorf("failed to write report: %w", err)
+			return api.ErrTool(fmt.Sprintf("failed to write report: %v", err))
 		}
 		fmt.Printf("\n%s Report saved to %s\n", color.GreenString("✓"), outputFile)
 	} else {
 		fmt.Println(report)
 	}
 
+	if emitAnnotations || cfg.Reporting.EmitAnnotations {
+		fmt.Print(reporter.GitHubAnnotations(result))
+	}
+	if p := os.Getenv("GITHUB_STEP_SUMMARY"); p != "" {
+		_ = reporter.AppendGitHubSummary(p, result)
+	}
+
 	// Print summary
 	printScanSummary(result)
 
 	if err := scannerErrors(result, cfg); err != nil {
-		return err
+		return api.ErrTool(err.Error())
 	}
 
 	// Check fail conditions
 	if shouldFail(result, cfg) {
-		return fmt.Errorf("scan failed due to findings exceeding threshold")
+		return api.ErrFindings("scan failed due to findings exceeding threshold")
 	}
 
 	return nil
@@ -205,6 +239,7 @@ func applyScanFlags(cfg *config.Config) error {
 		cfg.Scanners.License.Enabled = false
 		// Container needs Trivy (+ usually an image); keep opt-in via --container.
 		cfg.Scanners.Container.Enabled = false
+		cfg.Scanners.Artifacts.Enabled = false
 		// AI scanner is not registered in v1.0
 		cfg.Scanners.AI.Enabled = false
 		// --no-* opts out of one scanner without the selective-flag path that disables policy.
@@ -220,7 +255,7 @@ func applyScanFlags(cfg *config.Config) error {
 		if noSAST {
 			cfg.Scanners.SAST.Enabled = false
 		}
-	} else if scanSecrets || scanIaC || scanDependencies || scanSAST || scanContainer || scanLicense {
+	} else if scanSecrets || scanIaC || scanDependencies || scanSAST || scanContainer || scanLicense || scanArtifacts {
 		// If specific flags are set, only enable those (including disabling policy —
 		// defaults leave policies.enabled=true and would otherwise still run OPA).
 		cfg.Scanners.Secrets.Enabled = scanSecrets
@@ -230,15 +265,19 @@ func applyScanFlags(cfg *config.Config) error {
 		cfg.Scanners.SAST.Enabled = scanSAST
 		cfg.Scanners.Container.Enabled = scanContainer
 		cfg.Scanners.License.Enabled = scanLicense
+		cfg.Scanners.Artifacts.Enabled = scanArtifacts
 		cfg.Policies.Enabled = false
 	}
 
-	// --container / --license must still work with --all.
+	// --container / --license / --artifacts must still work with --all.
 	if scanContainer {
 		cfg.Scanners.Container.Enabled = true
 	}
 	if scanLicense {
 		cfg.Scanners.License.Enabled = true
+	}
+	if scanArtifacts {
+		cfg.Scanners.Artifacts.Enabled = true
 	}
 
 	if containerImage != "" {
@@ -252,6 +291,16 @@ func applyScanFlags(cfg *config.Config) error {
 
 	if scanTimeoutFlag != "" {
 		cfg.ScanTimeout = scanTimeoutFlag
+	}
+
+	if diffBase != "" {
+		cfg.DiffBase = diffBase
+	}
+	if verifySecrets {
+		cfg.Scanners.Secrets.Verify = true
+	}
+	if emitAnnotations {
+		cfg.Reporting.EmitAnnotations = true
 	}
 
 	// Override fail-on severity
@@ -314,6 +363,9 @@ func printScanHeader(path string, cfg *config.Config) {
 	if cfg.Scanners.License.Enabled {
 		scanners = append(scanners, "license")
 	}
+	if cfg.Scanners.Artifacts.Enabled {
+		scanners = append(scanners, "artifacts")
+	}
 	if cfg.Policies.Enabled {
 		scanners = append(scanners, "policy")
 	}
@@ -360,6 +412,12 @@ func printScanSummary(result *api.ScanResult) {
 	fmt.Printf("  Total findings: %d\n", len(result.Findings))
 	if result.Baseline != nil && result.Baseline.Enabled {
 		fmt.Printf("  Baseline:       %d suppressed, %d new\n", result.Baseline.Suppressed, result.Baseline.New)
+	}
+	if result.Baseline != nil && result.Baseline.Inline > 0 {
+		fmt.Printf("  Inline ignore:  %d\n", result.Baseline.Inline)
+	}
+	if n := len(result.Skipped); n > 0 {
+		fmt.Printf("  Skipped files:  %d\n", n)
 	}
 	fmt.Printf("  Scan duration:  %s\n", result.Duration.Std().Round(time.Millisecond))
 

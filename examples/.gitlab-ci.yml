@@ -13,11 +13,11 @@ sentinelflow-scan:
   image: golang:${GO_VERSION}
   extends: .sentinelflow_build
   script:
-    - ./sentinelflow scan --all --format sarif -o gl-sast-report.sarif --fail-on high
+    - ./sentinelflow scan --all --format gitlab-sast -o gl-sast-report.json --fail-on high
     - ./sentinelflow scan --all --format markdown -o report.md || true
   artifacts:
     reports:
-      sast: gl-sast-report.sarif
+      sast: gl-sast-report.json
     paths:
       - report.md
     expire_in: 1 week

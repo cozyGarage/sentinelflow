@@ -45,7 +45,7 @@ func TestDetectSQLInjection(t *testing.T) {
 func TestDetectPathTraversal(t *testing.T) {
 	s := NewScanner(config.Default())
 	tmpDir := t.TempDir()
-	writeScanFile(t, tmpDir, "file.go", `path := baseDir + "/../etc/passwd"`)
+	writeScanFile(t, tmpDir, "file.go", `os.Open(baseDir + "/../etc/passwd")`)
 
 	result, err := s.Scan(context.Background(), tmpDir, nil)
 	if err != nil {
@@ -234,5 +234,54 @@ func TestFixtureCorpus(t *testing.T) {
 		if f.Location.File == "clean.go" {
 			t.Errorf("unexpected finding in clean.go: %s", f.RuleID)
 		}
+	}
+}
+
+func TestGoASTNonConstantExec(t *testing.T) {
+	s := NewScanner(config.Default())
+	tmpDir := t.TempDir()
+	writeScanFile(t, tmpDir, "exec.go", `package p
+import "os/exec"
+func run(bin string) { _ = exec.Command(bin, "-h") }
+func ctx(bin string) { _ = exec.CommandContext(ctx, bin, "-h") }
+func ok() { _ = exec.CommandContext(ctx, "git", "status") }
+`)
+	result, err := s.Scan(context.Background(), tmpDir, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if findingRules(result)["go-ast-exec-nonconst"] < 2 {
+		t.Fatalf("expected Command and CommandContext non-const, got %+v", findingRules(result))
+	}
+}
+
+func TestGoASTSQLNonConstant(t *testing.T) {
+	s := NewScanner(config.Default())
+	tmpDir := t.TempDir()
+	writeScanFile(t, tmpDir, "sql.go", `package p
+func q(db *sql.DB, q string) { _, _ = db.Query(q) }
+func osv(client *C, n, v string) { _, _ = client.Query(ctx, n, v) }
+`)
+	result, err := s.Scan(context.Background(), tmpDir, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if findingRules(result)["go-ast-sql-nonconst"] != 1 {
+		t.Fatalf("expected only db.Query, got %+v", findingRules(result))
+	}
+}
+
+func TestPathTraversalIgnoresRelativeImport(t *testing.T) {
+	s := NewScanner(config.Default())
+	tmpDir := t.TempDir()
+	writeScanFile(t, tmpDir, "imp.go", `package p
+import "../vendor/foo"
+`)
+	result, err := s.Scan(context.Background(), tmpDir, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if findingRules(result)["path-traversal"] != 0 {
+		t.Fatal("relative import must not match path-traversal")
 	}
 }

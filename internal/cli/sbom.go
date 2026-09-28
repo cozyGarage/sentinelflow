@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/fatih/color"
@@ -14,6 +15,7 @@ import (
 )
 
 var sbomOutput string
+var sbomFormat string
 
 var sbomCmd = &cobra.Command{
 	Use:   "sbom [path]",
@@ -25,6 +27,7 @@ var sbomCmd = &cobra.Command{
 
 func init() {
 	sbomCmd.Flags().StringVarP(&sbomOutput, "output", "o", "sbom.json", "SBOM output file")
+	sbomCmd.Flags().StringVar(&sbomFormat, "sbom-format", "cyclonedx", "SBOM format: cyclonedx or spdx")
 }
 
 func runSBOM(cmd *cobra.Command, args []string) error {
@@ -50,8 +53,14 @@ func runSBOM(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("SBOM generation failed: %w", err)
 	}
 
-	if err := sc.WriteJSON(result.Document, sbomOutput); err != nil {
-		return fmt.Errorf("failed to write SBOM: %w", err)
+	if strings.EqualFold(sbomFormat, "spdx") {
+		if err := sc.WriteSPDX(result.Document, sbomOutput); err != nil {
+			return fmt.Errorf("failed to write SBOM: %w", err)
+		}
+	} else {
+		if err := sc.WriteJSON(result.Document, sbomOutput); err != nil {
+			return fmt.Errorf("failed to write SBOM: %w", err)
+		}
 	}
 
 	fmt.Printf("%s SBOM saved to %s\n", color.GreenString("✓"), sbomOutput)

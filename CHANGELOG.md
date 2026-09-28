@@ -7,11 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Distinct CI exit codes: `0` pass, `1` findings gate, `2` scanner/config error, `3` timeout
+- Line-independent finding fingerprints and baseline v2 (`reason`, `expires`; v1 files still load)
+- Inline `sentinelflow:ignore` suppressions; skip warnings for oversized/unreadable files
+- Git metadata via `git rev-parse` and CI env (`GITHUB_SHA`, `CI_COMMIT_SHA`, …)
+- SARIF 2.1.0 fields GitHub code scanning uses (`partialFingerprints`, `security-severity`, CWE tags, `automationDetails`, `toolExecutionNotifications`) plus a schema-checked golden test
+- `--diff-base` / `--staged`; pre-commit hook uses `--staged`
+- Action `delivery: release` (checksum-verified GitHub Release binary); default image is a version tag; SHA-pinned workflows and Dependabot
+- GitLab SAST/dependency reports, JUnit XML, `--emit-annotations`, GitHub job summary
+- Keyless Cosign signatures and SLSA provenance on release checksums; release SBOMs; `scan-artifact` on published binaries
+- Optional external adapters (Semgrep, gitleaks, Grype, Syft, Trivy `fs`, YARA) with `auto|required|off`
+- SAST rules.yaml v2, native Go AST sinks, secret provider coverage + `--verify-secrets`
+- OSV `querybatch`, retries, disk cache, `sentinelflow db update`, Go transitive deps from `go.sum`
+- SBOM ingest (`scan --sbom`) and SPDX output; Cargo/poetry/Gemfile lock versions
+- Artifact/binary scanner: magic-byte classifier, safe unpacker, component SCA, binary secrets, ELF/PE/Mach-O hardening, malware heuristics
+- Labeled precision/recall corpus, fuzz targets for unpacker/lockfiles/ELF-PE, and a small-tree perf budget test
+
 ### Changed
 
 - Dead-code round 2: drop unused API helpers, unread reporting knobs, orphan scripts/fixtures; slim ScanOptions / vulndb / buildinfo / reporter / SBOM / policy embed leftovers
+- Document `scan_staged_only` as not implemented; clarify secrets `patterns` are regexes
+- SAST rules load from embedded `rules.yaml`; `path-traversal` restricted to file-open sinks; secrets deduped per value
 
-### Added
+### Added (prior)
 
 - Baseline scans report suppressed vs new finding counts in the CLI summary, JSON (`baseline`), and Markdown
 

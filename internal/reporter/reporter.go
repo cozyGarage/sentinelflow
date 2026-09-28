@@ -31,6 +31,9 @@ func New(_ *config.Config) *Reporter {
 	r.formatters["json"] = &JSONFormatter{}
 	r.formatters["sarif"] = &SARIFFormatter{}
 	r.formatters["html"] = &HTMLFormatter{}
+	r.formatters["junit"] = &JUnitFormatter{}
+	r.formatters["gitlab-sast"] = &GitLabSASTFormatter{}
+	r.formatters["gitlab-deps"] = &GitLabDepsFormatter{}
 
 	return r
 }

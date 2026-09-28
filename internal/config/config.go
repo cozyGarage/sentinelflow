@@ -16,29 +16,61 @@ const AINotAvailableMessage = "AI-powered code review is not available in this r
 
 // Config represents the SentinelFlow configuration
 type Config struct {
-	Version      string         `yaml:"version" mapstructure:"version"`
-	ScanTimeout  string         `yaml:"scan_timeout" mapstructure:"scan_timeout"` // e.g. "10m", "90s"
-	Scanners     ScannersConfig `yaml:"scanners" mapstructure:"scanners"`
-	Policies     PoliciesConfig `yaml:"policies" mapstructure:"policies"`
-	Reporting    ReportConfig   `yaml:"reporting" mapstructure:"reporting"`
-	FailOn       FailOnConfig   `yaml:"fail_on" mapstructure:"fail_on"`
-	Git          GitConfig      `yaml:"git" mapstructure:"git"`
-	Baseline     BaselineConfig `yaml:"baseline" mapstructure:"baseline"`
+	Version     string         `yaml:"version" mapstructure:"version"`
+	ScanTimeout string         `yaml:"scan_timeout" mapstructure:"scan_timeout"` // e.g. "10m", "90s"
+	Scanners    ScannersConfig `yaml:"scanners" mapstructure:"scanners"`
+	Policies    PoliciesConfig `yaml:"policies" mapstructure:"policies"`
+	Reporting   ReportConfig   `yaml:"reporting" mapstructure:"reporting"`
+	FailOn      FailOnConfig   `yaml:"fail_on" mapstructure:"fail_on"`
+	Git         GitConfig      `yaml:"git" mapstructure:"git"`
+	Baseline    BaselineConfig `yaml:"baseline" mapstructure:"baseline"`
+	DiffBase    string         `yaml:"diff_base" mapstructure:"diff_base"`
 }
 
 // ScannersConfig contains settings for all scanners
 type ScannersConfig struct {
-	Concurrency  int                 `yaml:"concurrency" mapstructure:"concurrency"`
+	Concurrency int `yaml:"concurrency" mapstructure:"concurrency"`
 	// Exclude is a global path skip list applied by the engine (and shared walks).
 	// Secrets-specific skips belong in scanners.secrets.allowlist.
-	Exclude      []string            `yaml:"exclude" mapstructure:"exclude"`
-	Secrets      SecretsConfig      `yaml:"secrets" mapstructure:"secrets"`
-	IaC          IaCConfig          `yaml:"iac" mapstructure:"iac"`
-	Dependencies DependenciesConfig `yaml:"dependencies" mapstructure:"dependencies"`
-	SAST         SASTConfig         `yaml:"sast" mapstructure:"sast"`
-	Container    ContainerConfig    `yaml:"container" mapstructure:"container"`
-	License      LicenseConfig      `yaml:"license" mapstructure:"license"`
-	AI           AIConfig           `yaml:"ai" mapstructure:"ai"`
+	Exclude []string `yaml:"exclude" mapstructure:"exclude"`
+	// MaxFileSize is the engine walk limit in bytes (default 5 MiB). Oversized
+	// files are skipped with a warning rather than silently dropped.
+	MaxFileSize  int64               `yaml:"max_file_size" mapstructure:"max_file_size"`
+	Secrets      SecretsConfig       `yaml:"secrets" mapstructure:"secrets"`
+	IaC          IaCConfig           `yaml:"iac" mapstructure:"iac"`
+	Dependencies DependenciesConfig  `yaml:"dependencies" mapstructure:"dependencies"`
+	SAST         SASTConfig          `yaml:"sast" mapstructure:"sast"`
+	Container    ContainerConfig     `yaml:"container" mapstructure:"container"`
+	License      LicenseConfig       `yaml:"license" mapstructure:"license"`
+	Artifacts    ArtifactsConfig     `yaml:"artifacts" mapstructure:"artifacts"`
+	External     ExternalToolsConfig `yaml:"external" mapstructure:"external"`
+	AI           AIConfig            `yaml:"ai" mapstructure:"ai"`
+}
+
+// ArtifactsConfig configures binary/archive scanning.
+type ArtifactsConfig struct {
+	Enabled           bool     `yaml:"enabled" mapstructure:"enabled"`
+	Paths             []string `yaml:"paths" mapstructure:"paths"`
+	Checks            []string `yaml:"checks" mapstructure:"checks"`
+	MaxArchiveDepth   int      `yaml:"max_archive_depth" mapstructure:"max_archive_depth"`
+	MaxExtractedBytes int64    `yaml:"max_extracted_bytes" mapstructure:"max_extracted_bytes"`
+	MinStringLen      int      `yaml:"min_string_len" mapstructure:"min_string_len"`
+}
+
+// ExternalToolConfig is the adapter mode for an optional CLI tool.
+type ExternalToolConfig struct {
+	Mode  string   `yaml:"mode" mapstructure:"mode"` // auto | required | off
+	Rules []string `yaml:"rules" mapstructure:"rules"`
+}
+
+// ExternalToolsConfig configures optional third-party scanners.
+type ExternalToolsConfig struct {
+	Semgrep  ExternalToolConfig `yaml:"semgrep" mapstructure:"semgrep"`
+	Gitleaks ExternalToolConfig `yaml:"gitleaks" mapstructure:"gitleaks"`
+	Grype    ExternalToolConfig `yaml:"grype" mapstructure:"grype"`
+	Syft     ExternalToolConfig `yaml:"syft" mapstructure:"syft"`
+	TrivyFS  ExternalToolConfig `yaml:"trivy_fs" mapstructure:"trivy_fs"`
+	YARA     ExternalToolConfig `yaml:"yara" mapstructure:"yara"`
 }
 
 // SecretsConfig configures the secret scanner
@@ -50,6 +82,7 @@ type SecretsConfig struct {
 	ScanGitHistory   bool     `yaml:"scan_git_history" mapstructure:"scan_git_history"`
 	MaxHistoryDepth  int      `yaml:"max_history_depth" mapstructure:"max_history_depth"`
 	Concurrency      int      `yaml:"concurrency" mapstructure:"concurrency"`
+	Verify           bool     `yaml:"verify" mapstructure:"verify"`
 }
 
 // IaCConfig configures the Infrastructure-as-Code scanner
@@ -72,6 +105,10 @@ type DependenciesConfig struct {
 	// error (e.g. OSV network blips). Default true. Set false to keep findings
 	// and report ScannerRun.Error without failing CI solely for transport errors.
 	FailOnError *bool `yaml:"fail_on_error" mapstructure:"fail_on_error"`
+	// Offline uses only the on-disk OSV cache / db update directory.
+	Offline bool `yaml:"offline" mapstructure:"offline"`
+	// CacheDir overrides the default on-disk vulnerability cache.
+	CacheDir string `yaml:"cache_dir" mapstructure:"cache_dir"`
 }
 
 // DependenciesFailOnError returns whether dependency scanner errors should fail the CLI.
@@ -131,7 +168,8 @@ type PoliciesConfig struct {
 
 // ReportConfig configures report generation
 type ReportConfig struct {
-	Format string `yaml:"format" mapstructure:"format"`
+	Format          string `yaml:"format" mapstructure:"format"`
+	EmitAnnotations bool   `yaml:"emit_annotations" mapstructure:"emit_annotations"`
 }
 
 // FailOnConfig configures when the scan should fail
@@ -220,6 +258,7 @@ func Default() *Config {
 		ScanTimeout: "10m",
 		Scanners: ScannersConfig{
 			Concurrency: 8,
+			MaxFileSize: 5 * 1024 * 1024,
 			Exclude: []string{
 				"test/**",
 				"**/testdata/**",
@@ -261,6 +300,22 @@ func Default() *Config {
 			License: LicenseConfig{
 				Enabled: false,
 				Denied:  []string{"GPL-3.0", "AGPL-3.0", "SSPL-1.0"},
+			},
+			Artifacts: ArtifactsConfig{
+				Enabled:           false,
+				Paths:             []string{"dist/**", "build/**", "**/*.jar", "**/*.whl", "**/*.war", "**/*.tar", "**/*.tar.gz", "**/*.tgz"},
+				Checks:            []string{"components", "secrets", "hardening"},
+				MaxArchiveDepth:   3,
+				MaxExtractedBytes: 1 << 30,
+				MinStringLen:      8,
+			},
+			External: ExternalToolsConfig{
+				Semgrep:  ExternalToolConfig{Mode: "off"},
+				Gitleaks: ExternalToolConfig{Mode: "off"},
+				Grype:    ExternalToolConfig{Mode: "off"},
+				Syft:     ExternalToolConfig{Mode: "off"},
+				TrivyFS:  ExternalToolConfig{Mode: "off"},
+				YARA:     ExternalToolConfig{Mode: "off"},
 			},
 			AI: AIConfig{
 				Enabled:     false,
@@ -307,6 +362,7 @@ func (c *Config) Validate() error {
 	}
 	validFormats := map[string]bool{
 		"": true, "text": true, "json": true, "sarif": true, "markdown": true, "html": true,
+		"junit": true, "gitlab-sast": true, "gitlab-deps": true,
 	}
 
 	c.FailOn.Severity = strings.ToLower(strings.TrimSpace(c.FailOn.Severity))
@@ -332,7 +388,29 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("invalid scanners.container.severity %q", c.Scanners.Container.Severity)
 	}
 	if !validFormats[c.Reporting.Format] {
-		return fmt.Errorf("invalid reporting.format %q (expected text, json, sarif, markdown, or html)", c.Reporting.Format)
+		return fmt.Errorf("invalid reporting.format %q (expected text, json, sarif, markdown, html, junit, gitlab-sast, or gitlab-deps)", c.Reporting.Format)
+	}
+	if c.Scanners.MaxFileSize < 0 {
+		return fmt.Errorf("scanners.max_file_size must be >= 0")
+	}
+	for _, tool := range []struct {
+		name string
+		mode string
+	}{
+		{"semgrep", c.Scanners.External.Semgrep.Mode},
+		{"gitleaks", c.Scanners.External.Gitleaks.Mode},
+		{"grype", c.Scanners.External.Grype.Mode},
+		{"syft", c.Scanners.External.Syft.Mode},
+		{"trivy_fs", c.Scanners.External.TrivyFS.Mode},
+		{"yara", c.Scanners.External.YARA.Mode},
+	} {
+		mode := strings.ToLower(strings.TrimSpace(tool.mode))
+		if mode == "" {
+			continue
+		}
+		if mode != "auto" && mode != "required" && mode != "off" {
+			return fmt.Errorf("invalid scanners.external.%s.mode %q (expected auto, required, or off)", tool.name, tool.mode)
+		}
 	}
 	if c.Scanners.Secrets.EntropyThreshold < 0 {
 		return fmt.Errorf("scanners.secrets.entropy_threshold must be >= 0")

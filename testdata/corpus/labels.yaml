@@ -1,0 +1,15 @@
+# Labeled corpus for precision/recall. Paths are relative to this directory.
+# expect: true means a finding with this scanner+rule in that file is a true positive.
+findings:
+  - scanner: secrets
+    rule: aws-access-key
+    file: secrets/leaked.env
+    expect: true
+  - scanner: sast
+    rule: path-traversal
+    file: sast/vuln.go
+    expect: true
+  - scanner: sast
+    rule: go-ast-exec-nonconst
+    file: sast/vuln.go
+    expect: true

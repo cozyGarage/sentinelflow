@@ -18,7 +18,9 @@ import (
 	"sync"
 
 	"github.com/cozygarage/sentinelflow/internal/config"
+	"github.com/cozygarage/sentinelflow/internal/scanner/filetype"
 	"github.com/cozygarage/sentinelflow/internal/scanner/filter"
+	"github.com/cozygarage/sentinelflow/internal/scanner/fingerprint"
 	"github.com/cozygarage/sentinelflow/internal/scanner/redact"
 	"github.com/cozygarage/sentinelflow/internal/scanner/types"
 	"github.com/cozygarage/sentinelflow/pkg/api"
@@ -59,16 +61,13 @@ func (s *Scanner) Name() string {
 
 // Supports returns true for files that should be scanned for secrets
 func (s *Scanner) Supports(path string) bool {
-	ext := strings.ToLower(filepath.Ext(path))
-	binaryExts := map[string]bool{
-		".exe": true, ".dll": true, ".so": true, ".dylib": true,
-		".png": true, ".jpg": true, ".jpeg": true, ".gif": true,
-		".ico": true, ".svg": true, ".woff": true, ".woff2": true,
-		".ttf": true, ".eot": true, ".pdf": true, ".zip": true,
-		".tar": true, ".gz": true, ".rar": true, ".7z": true,
-		".mp3": true, ".mp4": true, ".avi": true, ".mov": true,
+	switch filetype.Detect(path) {
+	case filetype.KindELF, filetype.KindPE, filetype.KindMachO, filetype.KindZip,
+		filetype.KindGzip, filetype.KindTar, filetype.KindPDF, filetype.KindBinary:
+		return false
+	default:
+		return true
 	}
-	return !binaryExts[ext]
 }
 
 // ScannerResult contains scan results
@@ -146,13 +145,19 @@ func (s *Scanner) Scan(ctx context.Context, path string, opts interface{}) (*Sca
 	})
 
 	if s.shouldScanGitHistory(path) {
-		historyFindings, err := s.scanGitHistory(ctx, path)
+		diffBase := ""
+		if so, ok := types.AsScanOptions(opts); ok {
+			diffBase = so.DiffBase
+		}
+		historyFindings, err := s.scanGitHistory(ctx, path, diffBase)
 		if err != nil {
 			scanErrs = append(scanErrs, fmt.Sprintf("git history: %v", err))
 		} else {
 			result.Findings = append(result.Findings, historyFindings...)
 		}
 	}
+
+	result.Findings = dedupeSecrets(result.Findings)
 
 	if len(scanErrs) > 0 {
 		return result, fmt.Errorf("secrets scan errors (%d): %s", len(scanErrs), strings.Join(scanErrs, "; "))
@@ -169,6 +174,12 @@ func (s *Scanner) scanFile(ctx context.Context, filePath, basePath string) ([]ap
 	defer file.Close()
 
 	return s.scanReader(ctx, file, filePath, basePath)
+}
+
+// ScanReader scans content from a reader for secrets. Exported so the artifacts
+// scanner can reuse the same matchers on extracted strings and archive members.
+func (s *Scanner) ScanReader(ctx context.Context, r io.Reader, filePath, basePath string) ([]api.Finding, error) {
+	return s.scanReader(ctx, r, filePath, basePath)
 }
 
 // scanReader scans content from a reader for secrets
@@ -230,6 +241,10 @@ func (s *Scanner) scanReader(ctx context.Context, r io.Reader, filePath, basePat
 				}
 				relPath = filepath.ToSlash(relPath)
 
+				hashSrc := secretValue
+				if len(secretValue) < 8 || len(secretValue)+4 < len(secret) {
+					hashSrc = secret
+				}
 				finding := api.Finding{
 					ID:          fmt.Sprintf("SEC-%s-%s-%d-%d", pattern.ID, pathToken(relPath), lineNum, start+1),
 					Type:        api.FindingTypeSecret,
@@ -248,6 +263,19 @@ func (s *Scanner) scanReader(ctx context.Context, r io.Reader, filePath, basePat
 					Scanner:     "secrets",
 					RuleID:      pattern.ID,
 					Confidence:  0.9,
+					ValueHash:   fingerprint.ValueHash(hashSrc),
+					CWE:         []string{"CWE-798"},
+				}
+				finding.Fingerprint = fingerprint.Of(finding)
+
+				if s.config != nil && s.config.Scanners.Secrets.Verify {
+					keep, warn := applyLiveVerify(ctx, &finding, secretValue)
+					if warn != "" {
+						fmt.Fprintf(os.Stderr, "warning: secrets: %s\n", warn)
+					}
+					if !keep {
+						continue
+					}
 				}
 
 				findings = append(findings, finding)
@@ -477,7 +505,82 @@ func (s *Scanner) loadPatterns() []*SecretPattern {
 			Description: "Telegram bot token found in code",
 			Keywords:    []string{"telegram", "bot"},
 		},
+		{
+			ID:          "openai-api-key",
+			Name:        "OpenAI API Key",
+			Pattern:     regexp.MustCompile(`sk-[A-Za-z0-9]{20,}`),
+			Severity:    api.SeverityCritical,
+			Description: "OpenAI API key found in code",
+			Keywords:    []string{"openai", "sk-"},
+		},
+		{
+			ID:          "anthropic-api-key",
+			Name:        "Anthropic API Key",
+			Pattern:     regexp.MustCompile(`sk-ant-[A-Za-z0-9\-_]{20,}`),
+			Severity:    api.SeverityCritical,
+			Description: "Anthropic API key found in code",
+			Keywords:    []string{"anthropic", "sk-ant"},
+		},
+		{
+			ID:          "huggingface-token",
+			Name:        "Hugging Face Token",
+			Pattern:     regexp.MustCompile(`hf_[A-Za-z0-9]{20,}`),
+			Severity:    api.SeverityHigh,
+			Description: "Hugging Face access token found in code",
+			Keywords:    []string{"huggingface", "hf_"},
+		},
+		{
+			ID:          "digitalocean-token",
+			Name:        "DigitalOcean Token",
+			Pattern:     regexp.MustCompile(`dop_v1_[a-f0-9]{64}`),
+			Severity:    api.SeverityHigh,
+			Description: "DigitalOcean personal access token found",
+			Keywords:    []string{"digitalocean", "dop_v1"},
+		},
+		{
+			ID:             "cloudflare-token",
+			Name:           "Cloudflare API Token",
+			Pattern:        regexp.MustCompile(`(?i)cloudflare[^\n]{0,40}(api[_-]?token|api[_-]?key)[^\n]{0,20}[=:]["']?([A-Za-z0-9\-_]{20,})["']?`),
+			Severity:       api.SeverityHigh,
+			Description:    "Cloudflare API token found",
+			Keywords:       []string{"cloudflare"},
+			RequireKeyword: true,
+		},
 	}
+}
+
+func dedupeSecrets(findings []api.Finding) []api.Finding {
+	type key struct{ file, val string }
+	best := map[key]api.Finding{}
+	order := []key{}
+	rank := func(rule string) int {
+		switch rule {
+		case "generic-secret", "generic-api-key", "high-entropy":
+			return 0
+		default:
+			return 1
+		}
+	}
+	for _, f := range findings {
+		val := f.ValueHash
+		if val == "" {
+			val = f.Location.Snippet
+		}
+		k := key{f.Location.File, val}
+		if cur, ok := best[k]; ok {
+			if rank(f.RuleID) > rank(cur.RuleID) {
+				best[k] = f
+			}
+			continue
+		}
+		best[k] = f
+		order = append(order, k)
+	}
+	out := make([]api.Finding, 0, len(order))
+	for _, k := range order {
+		out = append(out, best[k])
+	}
+	return out
 }
 
 // collectFiles recursively collects files from a directory
@@ -616,11 +719,14 @@ func (s *Scanner) checkHighEntropy(line string, lineNum int, filePath, basePath 
 					Scanner:     "secrets",
 					RuleID:      "high-entropy",
 					Confidence:  0.7,
+					ValueHash:   fingerprint.ValueHash(secret),
+					CWE:         []string{"CWE-798"},
 					Metadata: map[string]any{
 						"entropy": entropy,
 						"match":   matchIdx,
 					},
 				}
+				finding.Fingerprint = fingerprint.Of(finding)
 
 				findings = append(findings, finding)
 			}
@@ -666,13 +772,19 @@ func (s *Scanner) shouldScanGitHistory(path string) bool {
 }
 
 // scanGitHistory scans past commits for secrets using patch hunks (added lines only).
-func (s *Scanner) scanGitHistory(ctx context.Context, path string) ([]api.Finding, error) {
+func (s *Scanner) scanGitHistory(ctx context.Context, path, diffBase string) ([]api.Finding, error) {
 	depth := secretsHistoryDepth(s.config)
 	if depth <= 0 {
 		depth = 50
 	}
 
-	cmd := exec.CommandContext(ctx, "git", "-C", path, "log", "-p", "--pretty=format:COMMIT:%H", "--unified=0", "-n", strconv.Itoa(depth))
+	args := []string{"-C", path, "log", "-p", "--pretty=format:COMMIT:%H", "--unified=0"}
+	if strings.TrimSpace(diffBase) != "" {
+		args = append(args, diffBase+"..HEAD")
+	} else {
+		args = append(args, "-n", strconv.Itoa(depth))
+	}
+	cmd := exec.CommandContext(ctx, "git", args...)
 	output, err := cmd.Output()
 	if err != nil {
 		return nil, fmt.Errorf("git log failed: %w", err)

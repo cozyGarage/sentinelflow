@@ -5,6 +5,7 @@ import (
 	"context"
 
 	"github.com/cozygarage/sentinelflow/internal/config"
+	"github.com/cozygarage/sentinelflow/internal/scanner/artifacts"
 	"github.com/cozygarage/sentinelflow/internal/scanner/container"
 	"github.com/cozygarage/sentinelflow/internal/scanner/dependencies"
 	"github.com/cozygarage/sentinelflow/internal/scanner/iac"
@@ -35,7 +36,7 @@ func NewSecretsAdapter(cfg *config.Config) *SecretsAdapter {
 	return &SecretsAdapter{scanner: secrets.NewScanner(cfg)}
 }
 
-func (a *SecretsAdapter) Name() string             { return a.scanner.Name() }
+func (a *SecretsAdapter) Name() string              { return a.scanner.Name() }
 func (a *SecretsAdapter) Supports(path string) bool { return a.scanner.Supports(path) }
 func (a *SecretsAdapter) Scan(ctx context.Context, path string, opts interface{}) (*ScannerResult, error) {
 	return a.scanner.Scan(ctx, path, opts)
@@ -51,7 +52,7 @@ func NewIaCAdapter(cfg *config.Config) *IaCAdapter {
 	return &IaCAdapter{scanner: iac.NewScanner(cfg)}
 }
 
-func (a *IaCAdapter) Name() string             { return a.scanner.Name() }
+func (a *IaCAdapter) Name() string              { return a.scanner.Name() }
 func (a *IaCAdapter) Supports(path string) bool { return a.scanner.Supports(path) }
 func (a *IaCAdapter) Scan(ctx context.Context, path string, opts interface{}) (*ScannerResult, error) {
 	return a.scanner.Scan(ctx, path, opts)
@@ -67,7 +68,7 @@ func NewDependenciesAdapter(cfg *config.Config) *DependenciesAdapter {
 	return &DependenciesAdapter{scanner: dependencies.NewScanner(cfg)}
 }
 
-func (a *DependenciesAdapter) Name() string             { return a.scanner.Name() }
+func (a *DependenciesAdapter) Name() string              { return a.scanner.Name() }
 func (a *DependenciesAdapter) Supports(path string) bool { return a.scanner.Supports(path) }
 func (a *DependenciesAdapter) Scan(ctx context.Context, path string, opts interface{}) (*ScannerResult, error) {
 	return a.scanner.Scan(ctx, path, opts)
@@ -83,7 +84,7 @@ func NewPolicyAdapter(cfg *config.Config) *PolicyAdapter {
 	return &PolicyAdapter{scanner: policy.NewScanner(cfg)}
 }
 
-func (a *PolicyAdapter) Name() string             { return a.scanner.Name() }
+func (a *PolicyAdapter) Name() string              { return a.scanner.Name() }
 func (a *PolicyAdapter) Supports(path string) bool { return a.scanner.Supports(path) }
 func (a *PolicyAdapter) Scan(ctx context.Context, path string, opts interface{}) (*ScannerResult, error) {
 	return a.scanner.Scan(ctx, path, opts)
@@ -98,7 +99,7 @@ func NewSASTAdapter(cfg *config.Config) *SASTAdapter {
 	return &SASTAdapter{scanner: sast.NewScanner(cfg)}
 }
 
-func (a *SASTAdapter) Name() string             { return a.scanner.Name() }
+func (a *SASTAdapter) Name() string              { return a.scanner.Name() }
 func (a *SASTAdapter) Supports(path string) bool { return a.scanner.Supports(path) }
 func (a *SASTAdapter) Scan(ctx context.Context, path string, opts interface{}) (*ScannerResult, error) {
 	return a.scanner.Scan(ctx, path, opts)
@@ -113,7 +114,7 @@ func NewContainerAdapter(cfg *config.Config) *ContainerAdapter {
 	return &ContainerAdapter{scanner: container.NewScanner(cfg)}
 }
 
-func (a *ContainerAdapter) Name() string             { return a.scanner.Name() }
+func (a *ContainerAdapter) Name() string              { return a.scanner.Name() }
 func (a *ContainerAdapter) Supports(path string) bool { return a.scanner.Supports(path) }
 func (a *ContainerAdapter) Scan(ctx context.Context, path string, opts interface{}) (*ScannerResult, error) {
 	return a.scanner.Scan(ctx, path, opts)
@@ -128,8 +129,23 @@ func NewLicenseAdapter(cfg *config.Config) *LicenseAdapter {
 	return &LicenseAdapter{scanner: license.NewScanner(cfg)}
 }
 
-func (a *LicenseAdapter) Name() string             { return a.scanner.Name() }
+func (a *LicenseAdapter) Name() string              { return a.scanner.Name() }
 func (a *LicenseAdapter) Supports(path string) bool { return a.scanner.Supports(path) }
 func (a *LicenseAdapter) Scan(ctx context.Context, path string, opts interface{}) (*ScannerResult, error) {
+	return a.scanner.Scan(ctx, path, opts)
+}
+
+// ArtifactsAdapter wraps the artifact/binary scanner.
+type ArtifactsAdapter struct {
+	scanner *artifacts.Scanner
+}
+
+func NewArtifactsAdapter(cfg *config.Config) *ArtifactsAdapter {
+	return &ArtifactsAdapter{scanner: artifacts.NewScanner(cfg)}
+}
+
+func (a *ArtifactsAdapter) Name() string              { return a.scanner.Name() }
+func (a *ArtifactsAdapter) Supports(path string) bool { return a.scanner.Supports(path) }
+func (a *ArtifactsAdapter) Scan(ctx context.Context, path string, opts interface{}) (*ScannerResult, error) {
 	return a.scanner.Scan(ctx, path, opts)
 }

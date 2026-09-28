@@ -487,8 +487,8 @@ func (c *CargoScanner) scanToml(path string) ([]Dependency, error) {
 	}
 
 	var doc struct {
-		Dependencies    map[string]interface{} `toml:"dependencies"`
-		DevDependencies map[string]interface{} `toml:"dev-dependencies"`
+		Dependencies      map[string]interface{} `toml:"dependencies"`
+		DevDependencies   map[string]interface{} `toml:"dev-dependencies"`
 		BuildDependencies map[string]interface{} `toml:"build-dependencies"`
 	}
 	if err := toml.Unmarshal(content, &doc); err != nil {

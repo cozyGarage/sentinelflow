@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# Count findings in SentinelFlow reports (json, sarif, text, markdown, html).
+# Count findings in SentinelFlow reports (json, sarif, text, markdown, html, junit, gitlab-*).
 # Safe under `set -e` / `pipefail`: zero matches exits 0 with count 0.
 set -euo pipefail
 
 usage() {
-  echo "usage: count-findings.sh <json|sarif|text|markdown|html> <report-file>" >&2
+  echo "usage: count-findings.sh <json|sarif|text|markdown|html|junit|gitlab-sast|gitlab-deps> <report-file>" >&2
   exit 2
 }
 
@@ -44,6 +44,26 @@ print(total)
 PY
 }
 
+count_gitlab() {
+  python3 - "$1" <<'PY'
+import json, sys
+path = sys.argv[1]
+with open(path, encoding="utf-8") as f:
+    data = json.load(f)
+vulns = data.get("vulnerabilities")
+print(len(vulns) if isinstance(vulns, list) else 0)
+PY
+}
+
+count_junit() {
+  python3 - "$1" <<'PY'
+import sys, re
+text = open(sys.argv[1], encoding="utf-8").read()
+fails = re.findall(r"<failure\b", text)
+print(len(fails))
+PY
+}
+
 count_textish() {
   # Prefer explicit "Total Findings: N" (text) or table "| **Total Findings** | **N** |" (markdown).
   local n
@@ -57,6 +77,12 @@ case "$format" in
     ;;
   sarif)
     count_sarif "$file" 2>/dev/null || echo 0
+    ;;
+  gitlab-sast|gitlab-deps)
+    count_gitlab "$file" 2>/dev/null || echo 0
+    ;;
+  junit)
+    count_junit "$file" 2>/dev/null || echo 0
     ;;
   text|markdown|html)
     count_textish "$file"

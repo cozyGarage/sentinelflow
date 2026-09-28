@@ -71,6 +71,9 @@ const (
 	FindingTypeMisconfiguration FindingType = "misconfiguration"
 	FindingTypePolicyViolation  FindingType = "policy_violation"
 	FindingTypeInsecureCode     FindingType = "insecure_code"
+	FindingTypeHardening        FindingType = "hardening"
+	FindingTypeMalware          FindingType = "malware"
+	FindingTypeComponent        FindingType = "component"
 )
 
 // Location represents where a finding was discovered
@@ -81,6 +84,9 @@ type Location struct {
 	StartCol  int    `json:"start_col,omitempty"`
 	EndCol    int    `json:"end_col,omitempty"`
 	Snippet   string `json:"snippet,omitempty"`
+	// ArtifactPath is a nested member path (archive!/inner!/file) when the
+	// finding lives inside a binary or archive rather than a source file.
+	ArtifactPath string `json:"artifact_path,omitempty"`
 }
 
 // Finding represents a single security issue discovered during scanning
@@ -100,6 +106,19 @@ type Finding struct {
 	CVE         string         `json:"cve,omitempty"`
 	CVSS        float64        `json:"cvss,omitempty"`
 	CWE         []string       `json:"cwe,omitempty"`
+	OWASP       []string       `json:"owasp,omitempty"`
+	// Fingerprint is a line-independent identity (rule + path + snippet/value
+	// hash). Used by baseline v2 and SARIF partialFingerprints.
+	Fingerprint string `json:"fingerprint,omitempty"`
+	// ValueHash is a hex digest of a secret/component value used for
+	// fingerprints without persisting the raw secret.
+	ValueHash string `json:"value_hash,omitempty"`
+}
+
+// SkippedFile records a path the engine declined to scan.
+type SkippedFile struct {
+	Path   string `json:"path"`
+	Reason string `json:"reason"`
 }
 
 // DurationMS is a time.Duration that JSON-encodes as milliseconds.
@@ -132,6 +151,7 @@ type BaselineSummary struct {
 	Total      int  `json:"total"`
 	Suppressed int  `json:"suppressed"`
 	New        int  `json:"new"`
+	Inline     int  `json:"inline,omitempty"`
 }
 
 // ScanResult contains the complete results of a security scan
@@ -141,6 +161,7 @@ type ScanResult struct {
 	Metadata    ScanMetadata     `json:"metadata"`
 	Duration    DurationMS       `json:"duration_ms"`
 	Baseline    *BaselineSummary `json:"baseline,omitempty"`
+	Skipped     []SkippedFile    `json:"skipped,omitempty"`
 }
 
 // ScannerRun contains information about an individual scanner execution

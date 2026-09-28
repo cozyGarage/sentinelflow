@@ -24,7 +24,7 @@ jobs:
       security-events: write
       pull-requests: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           fetch-depth: 0
 
@@ -36,51 +36,69 @@ jobs:
           format: sarif
           output: report.sarif
 
-      - uses: github/codeql-action/upload-sarif@v3
+      - uses: github/codeql-action/upload-sarif@60168efe1c415ce0f5521ea06d5c2062adbeed1b # v3.28.17
         if: always()
         with:
           sarif_file: report.sarif
           category: sentinelflow
 ```
 
-External repos when a Hub image is published:
+External repos without Docker Hub — **`delivery: release`** downloads the GitHub Release binary and verifies `checksums.txt`:
 
 ```yaml
-      - uses: cozyGarage/sentielflow/.github/actions/sentinelflow@main
+      - uses: cozyGarage/sentielflow@v1.1.1
         with:
-          delivery: docker
-          image: sentinelflow/sentinelflow:<tag>
+          delivery: release
           scan-all: 'true'
           fail-on: high
           format: sarif
           output: report.sarif
 ```
 
-`delivery: build` is preferred for this repo (and whenever Hub tags are absent). `delivery: docker` pulls `image` for **external** repos **once** a release image is published. `delivery: build` only works when the SentinelFlow source tree is in the workspace.
+External repos when a Hub image is published:
+
+```yaml
+      - uses: cozyGarage/sentielflow@v1.1.1
+        with:
+          delivery: docker
+          image: sentinelflow/sentinelflow:v1.1.1
+          scan-all: 'true'
+          fail-on: high
+          format: sarif
+          output: report.sarif
+```
+
+`delivery: build` is preferred for this repo. `delivery: release` is the default for external repos (no Hub required). `delivery: docker` pulls `image` once a release image is published. `delivery: build` only works when the SentinelFlow source tree is in the workspace.
+
+Third-party `uses:` in this repository are pinned by commit SHA (Dependabot keeps them current). When you copy snippets, prefer SHA pins over floating tags.
 
 ### Action inputs
 
 | Input | Default | Description |
 | --- | --- | --- |
-| `delivery` | `docker` | `docker` pulls `image`; `build` compiles from the workspace (same-repo only) |
-| `image` | `sentinelflow/sentinelflow:latest` | Container image when `delivery=docker` |
-| `scan-all` | `true` | Enable secrets, IaC, deps, SAST (does **not** enable container or license). Individual `scan-*: 'false'` inputs **opt out** even when `scan-all` is true. Policy stays at the config default (enabled) on that path. `scan-all: 'false'` plus selective scanners still disables policy, matching `--secrets` without `--all` |
+| `delivery` | `release` | `release` downloads a GitHub Release binary and verifies `checksums.txt`; `docker` pulls `image`; `build` compiles from the workspace (same-repo only) |
+| `image` | `sentinelflow/sentinelflow:v1.1.1` | Container image when `delivery=docker` |
+| `version` | action ref / latest | Release tag for `delivery=release` |
+| `scan-all` | `true` | Enable secrets, IaC, deps, SAST (does **not** enable container, license, or artifacts). Individual `scan-*: 'false'` inputs **opt out** even when `scan-all` is true. Policy stays at the config default (enabled) on that path. `scan-all: 'false'` plus selective scanners still disables policy, matching `--secrets` without `--all` |
 | `scan-secrets` | `true` | Secret scanning |
 | `scan-iac` | `true` | IaC scanning |
 | `scan-deps` | `true` | Dependency scanning |
 | `scan-sast` | `true` | OWASP SAST rules |
 | `scan-license` | `false` | License policy checks (**opt-in**; not part of `scan-all` / `--all`) |
-| `scan-container` | `false` | Container scan (requires `delivery=build` + Trivy) |
+| `scan-artifacts` | `false` | Binary/archive scanning (**opt-in**; not part of `scan-all`) |
+| `scan-container` | `false` | Container scan (requires `delivery=build` or `release` + Trivy) |
 | `container-image` | — | Image to scan when container enabled |
 | `use-baseline` | `false` | Skip baselined findings. CLI, JSON, and Markdown reports include suppressed vs new counts; the fail gate uses the new (post-filter) set |
 | `fail-on` | `high` | Pipeline failure threshold |
 | `timeout` | — | Scan deadline (`10m`, `90s`, …); empty uses config default |
-| `format` | `sarif` | Report format (`text`, `json`, `sarif`, `markdown`, `html`) |
+| `diff-base` | — | Limit findings to files/lines changed since this git ref |
+| `emit-annotations` | `false` | Print GitHub workflow annotations |
+| `format` | `sarif` | Report format (`text`, `json`, `sarif`, `markdown`, `html`, `junit`, `gitlab-sast`, `gitlab-deps`) |
 | `output` | `report.sarif` | Output file path |
 
 ### Container scanning in CI
 
-`scan-container` needs Trivy on the runner. Use `delivery: build` (this repo or a checkout that can `go build`). The Docker delivery image does not include Trivy.
+`scan-container` needs Trivy on the runner. Use `delivery: build` or `delivery: release` (host binary). The Docker delivery image does not include Trivy.
 
 ```yaml
       - uses: ./.github/actions/sentinelflow
@@ -121,7 +139,7 @@ Use `delivery: build` instead when no Hub image is available.
 Upload even when the security gate fails so findings still land in the GitHub Security tab:
 
 ```yaml
-      - uses: github/codeql-action/upload-sarif@v3
+      - uses: github/codeql-action/upload-sarif@60168efe1c415ce0f5521ea06d5c2062adbeed1b # v3.28.17
         if: always()
         with:
           sarif_file: report.sarif
@@ -169,11 +187,13 @@ sentinelflow:
   image: golang:1.25
   script:
     - go build -o sentinelflow ./cmd/sentinelflow
-    - ./sentinelflow scan --all --format sarif -o gl-sast-report.sarif --fail-on high
+    - ./sentinelflow scan --all --format gitlab-sast -o gl-sast-report.json --fail-on high
+    - ./sentinelflow scan --deps --format gitlab-deps -o gl-dependency-scanning-report.json || true
     - ./sentinelflow sbom -o sbom.json
   artifacts:
     reports:
-      sast: gl-sast-report.sarif
+      sast: gl-sast-report.json
+      dependency_scanning: gl-dependency-scanning-report.json
     paths:
       - sbom.json
 ```
@@ -201,7 +221,14 @@ Prefer `make build` / install script when you do not need a container.
 
 ## Exit codes
 
-SentinelFlow exits with code `1` when findings exceed the `--fail-on` threshold. Use this to gate merges.
+| Code | Meaning |
+| --- | --- |
+| `0` | Pass |
+| `1` | Findings exceeded `--fail-on` |
+| `2` | Scanner or configuration error |
+| `3` | Timeout |
+
+Gate on `1` for “risk found”. Treat `2`/`3` as infrastructure failures, not a clean bill of health.
 
 ## Recommended settings
 

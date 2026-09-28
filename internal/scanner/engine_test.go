@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/cozygarage/sentinelflow/internal/baseline"
 	"github.com/cozygarage/sentinelflow/internal/config"
@@ -99,7 +100,7 @@ func TestCollectFilesSkipsHidden(t *testing.T) {
 	cfg := &config.Config{}
 	engine := NewEngine(cfg)
 
-	files, err := engine.collectFiles(context.Background(), tmpDir)
+	files, _, err := engine.collectFiles(context.Background(), tmpDir)
 	if err != nil {
 		t.Fatalf("Failed to collect files: %v", err)
 	}
@@ -299,5 +300,64 @@ resource "aws_s3_bucket" "public" {
 	}
 	if len(result.Findings) == 0 {
 		t.Fatal("expected IaC findings under test/** despite secrets allowlist")
+	}
+}
+
+func TestCollectFilesRecordsOversized(t *testing.T) {
+	tmpDir := t.TempDir()
+	big := filepath.Join(tmpDir, "blob.bin")
+	if err := os.WriteFile(big, make([]byte, 2048), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(tmpDir, "ok.go"), []byte("package main\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	cfg := config.Default()
+	cfg.Scanners.MaxFileSize = 512
+	engine := NewEngine(cfg)
+	files, skipped, err := engine.collectFiles(context.Background(), tmpDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(skipped) == 0 {
+		t.Fatal("expected oversized skip warning")
+	}
+	foundOK := false
+	for _, f := range files {
+		if filepath.Base(f) == "ok.go" {
+			foundOK = true
+		}
+		if filepath.Base(f) == "blob.bin" {
+			t.Fatal("oversized file should not be collected")
+		}
+	}
+	if !foundOK {
+		t.Fatal("expected ok.go to be collected")
+	}
+}
+
+func TestPerfBudgetSmallTree(t *testing.T) {
+	if testing.Short() {
+		t.Skip("perf budget")
+	}
+	tmpDir := t.TempDir()
+	for i := 0; i < 80; i++ {
+		name := filepath.Join(tmpDir, fmt.Sprintf("f%02d.go", i))
+		if err := os.WriteFile(name, []byte("package p\nfunc F() {}\n"), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	cfg := config.Default()
+	cfg.Scanners.Dependencies.Enabled = false
+	cfg.Policies.Enabled = false
+	cfg.Scanners.IaC.Enabled = false
+	cfg.Scanners.SAST.Enabled = false
+	engine := NewEngine(cfg)
+	start := time.Now()
+	if _, err := engine.Scan(context.Background(), tmpDir); err != nil {
+		t.Fatal(err)
+	}
+	if d := time.Since(start); d > 5*time.Second {
+		t.Fatalf("perf budget exceeded: scanned 80 files in %s (budget 5s)", d)
 	}
 }

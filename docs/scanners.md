@@ -6,14 +6,17 @@ This guide explains how each scanner in SentinelFlow v1.0 works.
 
 ### Detection
 
-1. **Regex matching** — Patterns for AWS, GCP, GitHub, Stripe, and other common credential formats.
+1. **Regex matching** — Patterns for AWS, GCP, GitHub, Stripe, OpenAI, Anthropic, Hugging Face, DigitalOcean, Cloudflare, and other common credential formats.
 2. **Entropy analysis** — Shannon entropy threshold (default `4.5`) for high-randomness strings.
 3. **Keyword prefilter** — For patterns that embed keywords (generic secrets, AWS secret key assignments, etc.), the line must contain a keyword before the regex runs.
-4. **Custom patterns** — Optional `.sentinelflow/patterns.yaml` under the **scan root** (not process CWD), plus optional regex strings in `scanners.secrets.patterns`.
+4. **Deduping** — One secret value at a location is reported once (named provider beats generic/entropy).
+5. **Magic-byte skip** — ELF/PE/Mach-O/archives are skipped here; the artifacts scanner handles binaries.
+6. **Custom patterns** — Optional `.sentinelflow/patterns.yaml` under the **scan root** (not process CWD), plus optional regex strings in `scanners.secrets.patterns`.
+7. **Live verify** — `--verify-secrets` / `scanners.secrets.verify` (network, off by default).
 
 ### Git history
 
-When `scan_git_history` or `git.scan_history` is enabled, the scanner walks recent commits with `git log -p` and scans **added patch lines** only (not full historical blobs). Findings are deduplicated across commits.
+When `scan_git_history` or `git.scan_history` is enabled, the scanner walks recent commits with `git log -p` and scans **added patch lines** only (not full historical blobs). Findings are deduplicated across commits. With `--diff-base`, history is limited to `base..HEAD`.
 
 ### Concurrency
 
@@ -54,7 +57,7 @@ Config knobs:
 
 ### Data source
 
-Queries the [OSV API](https://osv.dev/) for Go, npm, pip, Maven, and Cargo ecosystems (auto-detected from lockfiles and manifests).
+Queries the [OSV API](https://osv.dev/) (`/v1/querybatch`, retries, on-disk cache) for Go, npm, pip, Maven, Cargo, and RubyGems ecosystems (auto-detected from lockfiles and manifests). `sentinelflow db update` downloads ecosystem zips for offline/air-gapped CI.
 
 ### Supported files
 
@@ -82,19 +85,21 @@ Unpinned or URL-based Python/Cargo requirements without a concrete version are s
 
 ## 4. SAST Scanner (`internal/scanner/sast`)
 
-OWASP-oriented regex rules for SQL injection, XSS, path traversal, SSRF, and command injection. Rules load from embedded `rules.yaml` (not Go string literals) so self-scan does not match detector text.
+OWASP-oriented regex rules for SQL injection, XSS, path traversal, SSRF, and command injection. Rules load from embedded `rules.yaml` (schema v2: `languages`, `paths`, `pattern-not`, `cwe`, `owasp`, `confidence`) so self-scan does not match detector text.
 
 **Languages with shared sinks today:** Go, JavaScript/TypeScript, Python, Java. Other extensions are not claimed until language-specific rules exist.
 
+A native Go AST pass flags `exec.Command` / SQL `Query`/`Exec` with non-constant arguments.
+
 **Config:** `scanners.sast.severity` and `skip_rules` are honored (same behavior as IaC). Default concurrency is 8 workers.
 
-**Limits:** line-local regex only — no taint/dataflow. Prefer `skip_rules` / baseline for known noise rather than disabling the scanner.
+**Limits:** regex is still line-local — no general taint/dataflow. Use the Semgrep adapter (`scanners.external.semgrep.mode: auto`) when installed. Prefer `skip_rules` / `sentinelflow:ignore` / baseline for known noise.
 
 ---
 
 ## 5. Container Scanner (`internal/scanner/container`)
 
-Wraps [Trivy](https://github.com/aquasecurity/trivy) when installed. Enable with `--container` and optionally `--container-image`. Used in CI via the composite action with `scan-container: true`.
+Wraps [Trivy](https://github.com/aquasecurity/trivy) when installed. Enable with `--container` and optionally `--container-image`. A filesystem path uses `trivy fs`. There is also an optional `trivy_fs` external adapter. Used in CI via the composite action with `scan-container: true`.
 
 ---
 
@@ -145,7 +150,21 @@ See [Policy Authoring](policies.md) for Rego examples. Sample inputs live under 
 
 ## 8. SBOM (`internal/scanner/sbom`)
 
-Generates CycloneDX JSON via `sentinelflow sbom` from `go.mod`, `package-lock.json`, and `Cargo.lock` (missing files skipped; corrupt lockfiles fail).
+Generates CycloneDX or SPDX JSON via `sentinelflow sbom` from `go.mod`, npm lockfiles, `Cargo.lock` (with versions), `poetry.lock`, and `Gemfile.lock`. `sentinelflow scan --sbom file.cdx.json` queries OSV for listed components.
+
+---
+
+## 9. Artifact scanner (`internal/scanner/artifacts`)
+
+Opt-in (`--artifacts` / `sentinelflow scan-artifact`). Classifies files by magic bytes, unpacks archives with zip-slip / zip-bomb guards, catalogs Go buildinfo / JAR / wheel / npm / dpkg / apk components into the shared OSV matcher, extracts printable strings for secret matching, and runs ELF/PE/Mach-O hardening checks. Malware heuristics and YARA are opt-in (`checks: [malware]` / `scanners.external.yara`).
+
+Nested members use `Location.ArtifactPath` (for example `app.war!/WEB-INF/lib/x.jar!/pom.properties`).
+
+---
+
+## 10. External adapters (`internal/adapter/external`)
+
+Optional PATH tools: Semgrep, gitleaks, Grype, Syft, Trivy `fs`, YARA. Mode `auto` (warn if missing), `required` (error), or `off` (default).
 
 ---
 
@@ -153,3 +172,4 @@ Generates CycloneDX JSON via `sentinelflow sbom` from `go.mod`, `package-lock.js
 
 - **AI code review** — Config and `--ai` flag exist for forward compatibility; enabling them is rejected until the scanner ships.
 - **CloudFormation** — **Not planned** for now. Listing it under `scanners.iac.frameworks` fails config validation. Defaults are terraform, kubernetes, and dockerfile only.
+- **Dynamic malware detonation** — Heuristics and optional YARA only; no sandbox execution.

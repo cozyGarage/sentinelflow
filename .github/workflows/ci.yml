@@ -19,10 +19,10 @@ jobs:
       contents: read
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
       - name: Setup Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@0aaccfd150d50ccaeb58ebd88d36e91967a5f35b # v5.4.0
         with:
           go-version-file: go.mod
           cache: true
@@ -36,7 +36,7 @@ jobs:
       - name: Install checksum helper test
         run: bash scripts/install_checksum_test.sh
 
-      - name: Findings count helper (json/sarif/text)
+      - name: Findings count helper (json/sarif/text/junit/gitlab)
         run: |
           set -euo pipefail
           echo '{"findings":[]}' > /tmp/empty.json
@@ -47,3 +47,7 @@ jobs:
           test "$(bash scripts/count-findings.sh sarif /tmp/three.sarif)" = "3"
           printf '%s\n' 'Total Findings: 4' > /tmp/text.out
           test "$(bash scripts/count-findings.sh text /tmp/text.out)" = "4"
+          printf '%s\n' '{"vulnerabilities":[{},{}]}' > /tmp/gl.json
+          test "$(bash scripts/count-findings.sh gitlab-sast /tmp/gl.json)" = "2"
+          printf '%s\n' '<?xml version="1.0"?><testsuite tests="1"><testcase name="a"><failure message="x"/></testcase></testsuite>' > /tmp/j.xml
+          test "$(bash scripts/count-findings.sh junit /tmp/j.xml)" = "1"

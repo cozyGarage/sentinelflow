@@ -1,6 +1,9 @@
 package reporter
 
 import (
+	"encoding/json"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -243,6 +246,164 @@ func TestTextFormatter(t *testing.T) {
 	}
 }
 
+func TestSARIFHasFingerprintsAndSecuritySeverity(t *testing.T) {
+	result := createTestResult()
+	result.Findings[0].Fingerprint = "abc123"
+	result.Findings[0].CWE = []string{"CWE-798"}
+	result.Findings[0].CVSS = 9.1
+	result.ScannerRuns[0].Error = "partial"
+	output, err := (&SARIFFormatter{}).Format(result)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		"partialFingerprints", "security-severity", "CWE-798", "automationDetails",
+	} {
+		if !strings.Contains(output, want) {
+			t.Errorf("SARIF missing %s", want)
+		}
+	}
+}
+
+func TestSARIFSchemaAndGolden(t *testing.T) {
+	result := createTestResult()
+	result.Findings[0].Fingerprint = "fp-secret"
+	result.Findings[0].CWE = []string{"CWE-798"}
+	result.Findings[0].OWASP = []string{"A07:2021"}
+	result.Findings[1].Fingerprint = "fp-iac"
+	result.Findings[1].CWE = []string{"CWE-732"}
+	result.Skipped = []api.SkippedFile{{Path: "big.bin", Reason: "exceeds max_file_size"}}
+	result.ScannerRuns[0].Error = "partial"
+	result.Metadata.TargetPath = "/repo"
+	result.Metadata.StartTime = time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
+	result.Metadata.EndTime = time.Date(2026, 1, 2, 3, 5, 5, 0, time.UTC)
+
+	output, err := (&SARIFFormatter{}).Format(result)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var doc map[string]any
+	if err := json.Unmarshal([]byte(output), &doc); err != nil {
+		t.Fatal(err)
+	}
+	validateSARIF210(t, doc)
+
+	goldenPath := filepath.Join("testdata", "sarif-golden.json")
+	if os.Getenv("UPDATE_GOLDEN") == "1" {
+		if err := os.MkdirAll(filepath.Dir(goldenPath), 0755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(goldenPath, prettyJSON(t, doc), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	want, err := os.ReadFile(goldenPath)
+	if err != nil {
+		t.Fatalf("golden missing (%v); run UPDATE_GOLDEN=1 go test ./internal/reporter -run TestSARIFSchemaAndGolden", err)
+	}
+	got := prettyJSON(t, doc)
+	if string(got) != string(want) {
+		t.Fatalf("SARIF golden mismatch\n--- got ---\n%s\n--- want ---\n%s", got, want)
+	}
+}
+
+func prettyJSON(t *testing.T, v any) []byte {
+	t.Helper()
+	b, err := json.MarshalIndent(v, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return append(b, '\n')
+}
+
+func validateSARIF210(t *testing.T, doc map[string]any) {
+	t.Helper()
+	if doc["version"] != "2.1.0" {
+		t.Fatalf("version=%v", doc["version"])
+	}
+	runs, _ := doc["runs"].([]any)
+	if len(runs) == 0 {
+		t.Fatal("no runs")
+	}
+	run, _ := runs[0].(map[string]any)
+	if run["automationDetails"] == nil {
+		t.Fatal("missing automationDetails")
+	}
+	if run["originalUriBaseIds"] == nil {
+		t.Fatal("missing originalUriBaseIds")
+	}
+	invs, _ := run["invocations"].([]any)
+	if len(invs) == 0 {
+		t.Fatal("missing invocations")
+	}
+	inv, _ := invs[0].(map[string]any)
+	notes, _ := inv["toolExecutionNotifications"].([]any)
+	if len(notes) == 0 {
+		t.Fatal("expected toolExecutionNotifications for scanner error/skip")
+	}
+	results, _ := run["results"].([]any)
+	if len(results) == 0 {
+		t.Fatal("no results")
+	}
+	res0, _ := results[0].(map[string]any)
+	if res0["partialFingerprints"] == nil {
+		t.Fatal("missing partialFingerprints")
+	}
+	driver, _ := run["tool"].(map[string]any)["driver"].(map[string]any)
+	rules, _ := driver["rules"].([]any)
+	if len(rules) == 0 {
+		t.Fatal("missing rules")
+	}
+	rule, _ := rules[0].(map[string]any)
+	props, _ := rule["properties"].(map[string]any)
+	if props["security-severity"] == nil {
+		t.Fatal("missing rule properties.security-severity")
+	}
+	if props["tags"] == nil {
+		t.Fatal("missing rule properties.tags")
+	}
+}
+
+func TestGitLabAndJUnitFormats(t *testing.T) {
+	result := createTestResult()
+	sastJSON, err := (&GitLabSASTFormatter{}).Format(result)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(sastJSON, `"type": "sast"`) {
+		t.Fatalf("gitlab sast: %s", sastJSON)
+	}
+	xml, err := (&JUnitFormatter{}).Format(result)
+	if err != nil || !strings.Contains(xml, "<failure") {
+		t.Fatalf("junit: %v %s", err, xml)
+	}
+	md, err := (&MarkdownFormatter{}).Format(result)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tmp := t.TempDir()
+	p := filepath.Join(tmp, "summary.md")
+	if err := AppendGitHubSummary(p, result); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := os.ReadFile(p)
+	if !strings.Contains(string(got), "SentinelFlow") {
+		t.Fatalf("summary: %s", md)
+	}
+}
+
+func TestJUnitAndGitHubAnnotations(t *testing.T) {
+	result := createTestResult()
+	xml, err := (&JUnitFormatter{}).Format(result)
+	if err != nil || !strings.Contains(xml, "<testsuite") {
+		t.Fatalf("junit: %v %s", err, xml)
+	}
+	ann := GitHubAnnotations(result)
+	if !strings.Contains(ann, "::error") {
+		t.Fatalf("annotations: %s", ann)
+	}
+}
+
 func TestSARIFFormatter(t *testing.T) {
 	result := createTestResult()
 	formatter := &SARIFFormatter{}
@@ -353,6 +514,8 @@ func TestEmptyResults(t *testing.T) {
 		&JSONFormatter{},
 		&HTMLFormatter{},
 		&SARIFFormatter{},
+		&JUnitFormatter{},
+		&GitLabSASTFormatter{},
 	}
 
 	for _, formatter := range formatters {

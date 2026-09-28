@@ -123,13 +123,13 @@ type trivyReport struct {
 	Results []struct {
 		Target          string `json:"Target"`
 		Vulnerabilities []struct {
-			VulnerabilityID  string  `json:"VulnerabilityID"`
-			PkgName          string  `json:"PkgName"`
-			InstalledVersion string  `json:"InstalledVersion"`
-			FixedVersion     string  `json:"FixedVersion"`
-			Severity         string  `json:"Severity"`
-			Title            string  `json:"Title"`
-			Description      string  `json:"Description"`
+			VulnerabilityID  string `json:"VulnerabilityID"`
+			PkgName          string `json:"PkgName"`
+			InstalledVersion string `json:"InstalledVersion"`
+			FixedVersion     string `json:"FixedVersion"`
+			Severity         string `json:"Severity"`
+			Title            string `json:"Title"`
+			Description      string `json:"Description"`
 			CVSS             map[string]struct {
 				V3Score float64 `json:"V3Score"`
 			} `json:"CVSS"`
@@ -143,6 +143,9 @@ func (s *Scanner) runTrivy(ctx context.Context, image string) ([]api.Finding, er
 	}
 
 	cmd := exec.CommandContext(ctx, "trivy", "image", "--format", "json", "--quiet", "--", image)
+	if s.config.Scanners.Container.Image == "" && looksLikePath(image) {
+		cmd = exec.CommandContext(ctx, "trivy", "fs", "--format", "json", "--quiet", image)
+	}
 	output, runErr := cmd.Output()
 
 	var findings []api.Finding
@@ -235,3 +238,6 @@ func validateImageRef(image string) error {
 	return nil
 }
 
+func looksLikePath(image string) bool {
+	return strings.HasPrefix(image, "/") || strings.HasPrefix(image, ".") || strings.Contains(image, string(os.PathSeparator))
+}

@@ -12,6 +12,7 @@ Run `sentinelflow init` to generate a starter configuration.
 | --- | --- | --- | --- |
 | `version` | string | `"1.0"` | Configuration schema version |
 | `scan_timeout` | string | `"10m"` | Overall scan deadline (Go duration). Overridable with `--timeout` |
+| `diff_base` | string | — | Limit findings to files/lines changed since this git ref (`--diff-base`) |
 
 ## Scanners
 
@@ -21,6 +22,7 @@ Run `sentinelflow init` to generate a starter configuration.
 | --- | --- | --- | --- |
 | `concurrency` | int | `8` | Default worker concurrency for file scanners |
 | `exclude` | []string | `test/**`, `**/testdata/**` | Global path globs skipped by the engine walk (all scanners). Prefer this over stuffing skips into the secrets allowlist. |
+| `max_file_size` | int | `5242880` (5 MiB) | Engine walk size cap. Oversized files are skipped with a warning (`skipped` in JSON/SARIF). |
 
 ### Secrets (`scanners.secrets`)
 
@@ -32,6 +34,9 @@ Run `sentinelflow init` to generate a starter configuration.
 | `entropy_threshold` | float | `4.5` | Minimum Shannon entropy to flag |
 | `scan_git_history` | bool | `false` | Scan git history for secrets |
 | `max_history_depth` | int | `50` | Max commits to scan in history |
+| `verify` | bool | `false` | Opt-in live verification (`--verify-secrets`; network) |
+
+`--diff-base <ref>` limits history scanning to `ref..HEAD` in pull requests.
 
 ### IaC (`scanners.iac`)
 
@@ -52,8 +57,12 @@ Run `sentinelflow init` to generate a starter configuration.
 | `ignore_dev` | bool | `false` | Skip dev dependencies |
 | `ignore_cves` | []string | — | CVE, GHSA, GO-, or OSV IDs to ignore |
 | `fail_on_error` | bool | `true` | Fail the CLI when the dependencies scanner errors (e.g. OSV network blips). Set `false` to keep any findings and print a warning instead of failing solely for transport errors |
+| `offline` | bool | `false` | Use only the on-disk OSV cache (`sentinelflow db update`) |
+| `cache_dir` | string | user cache | Override on-disk vulnerability cache directory |
 
 Default stays strict for security. Soft-fail is for flaky CI networks only — findings that were collected still go through `fail_on`.
+
+Go modules include **transitive** entries from `go.sum` (fixed versions). OSV queries use `/v1/querybatch` with retry/backoff and an on-disk cache.
 
 When lockfiles are present (`package-lock.json`, `npm-shrinkwrap.json`, `go.sum`, `poetry.lock`, `Pipfile.lock`, `Cargo.lock`, …), the scanner prefers them. Range-only manifests without a lockfile are best-effort / may query approximate versions.
 
@@ -66,7 +75,31 @@ When lockfiles are present (`package-lock.json`, `npm-shrinkwrap.json`, `go.sum`
 | `skip_rules` | []string | — | Rule IDs (or finding IDs) to ignore |
 | `concurrency` | int | `8` | Worker pool size for file scanning |
 
-Built-in rules: `sqli-concat`, `sqli-format`, `xss-innerhtml`, `xss-eval`, `xss-dangerously`, `path-traversal`, `path-join-user`, `ssrf-http`, `cmd-inject-exec`, `cmd-inject-shell`.
+Built-in rules: `sqli-concat`, `sqli-format`, `xss-innerhtml`, `xss-eval`, `xss-dangerously`, `path-traversal`, `path-join-user`, `ssrf-http`, `cmd-inject-exec`, `cmd-inject-shell`. Rules support `languages`, `paths`, `pattern-not`, `cwe`, `owasp`, and `confidence`. A native Go AST pass flags non-constant `exec.Command` / SQL `Query`/`Exec` arguments (`go-ast-exec-nonconst`, `go-ast-sql-nonconst`).
+
+### Artifacts (`scanners.artifacts`)
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `enabled` | bool | `false` | Opt-in binary/archive scanning (`--artifacts` / `scan-artifact`). Not part of `--all` |
+| `paths` | []string | `dist/**`, `build/**`, jars/wheels/tars | Extra globs under the scan root |
+| `checks` | []string | `components`, `secrets`, `hardening` | Include `malware` to enable heuristics |
+| `max_archive_depth` | int | `3` | Nested archive limit |
+| `max_extracted_bytes` | int | `1GiB` | Zip-bomb cap |
+| `min_string_len` | int | `8` | Minimum printable string length for binary secrets |
+
+### External adapters (`scanners.external`)
+
+Each tool is `{ mode: auto\|required\|off }`. `auto` warns if the binary is missing; `required` fails the scan; `off` skips. Defaults are **off** so self-scan stays hermetic.
+
+| Key | Binary |
+| --- | --- |
+| `semgrep` | `semgrep` |
+| `gitleaks` | `gitleaks` |
+| `grype` | `grype` |
+| `syft` | `syft` |
+| `trivy_fs` | `trivy fs` |
+| `yara` | `yara` (`rules` globs) |
 
 ### Container (`scanners.container`)
 
@@ -125,8 +158,9 @@ Built-in policies:
 | Field | Type | Default | Description |
 | --- | --- | --- | --- |
 | `format` | string | `text` | Default output format (`--format` / `-f` overrides) |
+| `emit_annotations` | bool | `false` | Print GitHub Actions workflow annotations |
 
-Supported formats: `text`, `json`, `sarif`, `markdown`, `html`. Remediation text is always included when present on a finding. GitHub annotations and SARIF upload are workflow/Action concerns, not config knobs.
+Supported formats: `text`, `json`, `sarif`, `markdown`, `html`, `junit`, `gitlab-sast`, `gitlab-deps`. Remediation text is always included when present on a finding. GitHub job summaries are written automatically when `$GITHUB_STEP_SUMMARY` is set.
 
 ## Fail Conditions (`fail_on`)
 

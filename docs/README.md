@@ -12,7 +12,7 @@ Welcome to the SentinelFlow v1.0 documentation.
 | [Policy Authoring](policies.md) | Writing and testing OPA/Rego policies |
 | [CI/CD Integration](cicd-integration.md) | GitHub Actions, GitLab CI, Docker |
 | [Releasing](releasing.md) | `v*` tags, Docker Hub secrets, install checksums |
-| [Roadmap](roadmap.md) | Post-audit release trains (R0–R3) |
+| [Roadmap](roadmap.md) | Robustness trains R2–R6 (gate, CI, code depth, artifacts, quality) |
 | [Audit residual risks](audit-residual-risks.md) | Known gaps after the audit improvement cycle |
 | [Architecture](architecture.md) | Engine design and scan pipeline |
 

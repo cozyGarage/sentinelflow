@@ -3,6 +3,7 @@ package demo
 import (
 	"fmt"
 	"net/http"
+	"os"
 	"os/exec"
 	"path/filepath"
 )
@@ -16,7 +17,9 @@ func sqliFormat(id string) {
 }
 
 func pathTrav() string {
-	return base + "/../etc/passwd"
+	f, _ := os.Open(base + "/../etc/passwd")
+	_ = f
+	return base + "/safe"
 }
 
 func pathJoin(request struct{ Path string }) string {

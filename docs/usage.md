@@ -58,6 +58,12 @@ sentinelflow scan --sast .             # OWASP-oriented static patterns
 sentinelflow scan --license .          # License policy checks (opt-in; not in --all)
 sentinelflow scan --container .        # Container image scan (requires Trivy)
 sentinelflow scan --container --container-image myapp:latest
+sentinelflow scan --artifacts .        # Binaries and archives (opt-in; not in --all)
+sentinelflow scan --diff-base origin/main
+sentinelflow scan --staged --secrets --iac --fail-on high
+sentinelflow scan --sbom sbom.cdx.json
+sentinelflow scan-artifact dist/app
+
 ```
 
 Combine flags as needed:
@@ -80,14 +86,32 @@ sentinelflow scan --all --no-secrets .
 | --- | --- | --- |
 | `text` (default) | Human-readable console output | Local development |
 | `json` | Machine-readable findings | Automation, dashboards |
-| `sarif` | Static Analysis Results Format | GitHub/GitLab Security tab |
-| `markdown` | Styled report | PR comments, wikis |
+| `sarif` | SARIF 2.1.0 (fingerprints, CWE, security-severity) | GitHub code scanning |
+| `markdown` | Styled report | PR comments, job summary |
 | `html` | Browser-friendly report | Sharing with stakeholders |
+| `junit` | JUnit XML | Generic CI test reports |
+| `gitlab-sast` | GitLab `gl-sast-report.json` | GitLab SAST widget |
+| `gitlab-deps` | GitLab `gl-dependency-scanning-report.json` | GitLab dependency scanning |
 
 ```bash
 sentinelflow scan --all -f sarif -o report.sarif
 sentinelflow scan --all -f markdown -o report.md
+sentinelflow scan --all -f junit -o report.xml
+sentinelflow scan --all -f gitlab-sast -o gl-sast-report.json
 ```
+
+`--emit-annotations` prints GitHub workflow commands (`::error file=…`). In GitHub Actions the CLI also appends a Markdown summary to `$GITHUB_STEP_SUMMARY` when that file is set.
+
+## Exit codes
+
+| Code | Meaning |
+| --- | --- |
+| `0` | Pass — no gate tripped |
+| `1` | Findings exceeded `--fail-on` / `fail_on` gates |
+| `2` | Scanner or configuration error |
+| `3` | Scan timed out |
+
+Do not treat every non-zero exit as “vulnerabilities found”; `2` and `3` mean the tool did not finish cleanly.
 
 ## Failure Thresholds
 
@@ -127,11 +151,22 @@ sentinelflow policy generate my-custom-rule
 
 ## Supply Chain
 
-Generate a CycloneDX SBOM:
+Generate a CycloneDX or SPDX SBOM, scan an existing SBOM, or refresh the offline OSV cache:
 
 ```bash
 sentinelflow sbom -o sbom.json
+sentinelflow sbom --sbom-format spdx -o sbom.spdx.json
+sentinelflow scan --sbom sbom.json --fail-on high
+sentinelflow db update --ecosystem Go
 ```
+
+Inline suppressions (same line or the line above):
+
+```
+os.Open(p) // sentinelflow:ignore path-traversal -- test fixture
+```
+
+`--verify-secrets` is opt-in live verification against provider APIs (network). Off by default.
 
 ## Git Hooks
 
@@ -166,6 +201,8 @@ baseline:
 ```
 
 When a baseline is applied, the CLI summary, JSON (`baseline`), and Markdown report show how many findings were suppressed and how many are new. **Total findings** and the fail gate use the new (post-filter) set.
+
+Baseline v2 matches line-independent fingerprints (`rule + path + value/snippet hash`) and supports `reason` and `expires`. v1 files still load.
 
 In GitHub Actions, set `use-baseline: 'true'` (requires the baseline file committed). See [cicd-integration.md](cicd-integration.md).
 

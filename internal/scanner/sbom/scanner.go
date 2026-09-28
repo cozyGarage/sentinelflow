@@ -80,7 +80,9 @@ func (s *Scanner) Generate(ctx context.Context, path string) (*ScannerResult, er
 	}{
 		{"go.mod", s.parseGoMod},
 		{"package-lock.json", s.parsePackageLock},
-		{"Cargo.lock", s.parseCargoLock},
+		{"Cargo.lock", parseCargoLock},
+		{"poetry.lock", parsePoetryLock},
+		{"Gemfile.lock", parseGemfileLock},
 	}
 	for _, p := range parsers {
 		comps, err := p.fn(path)
@@ -193,7 +195,7 @@ func (s *Scanner) parsePackageLock(path string) ([]Component, error) {
 	return components, nil
 }
 
-func (s *Scanner) parseCargoLock(path string) ([]Component, error) {
+func parseCargoLock(path string) ([]Component, error) {
 	lockPath := filepath.Join(path, "Cargo.lock")
 	data, err := os.ReadFile(lockPath)
 	if err != nil {
@@ -201,16 +203,91 @@ func (s *Scanner) parseCargoLock(path string) ([]Component, error) {
 	}
 
 	var components []Component
-	for _, line := range strings.Split(string(data), "\n") {
-		trimmed := strings.TrimSpace(line)
-		if strings.HasPrefix(trimmed, "name = ") {
-			name := strings.Trim(strings.TrimPrefix(trimmed, "name = "), `"`)
+	var name, version string
+	flush := func() {
+		if name != "" && version != "" {
 			components = append(components, Component{
-				Type: "library",
-				Name: name,
-				PURL: fmt.Sprintf("pkg:cargo/%s", name),
+				Type: "library", Name: name, Version: version,
+				PURL: fmt.Sprintf("pkg:cargo/%s@%s", name, version),
 			})
 		}
+		name, version = "", ""
+	}
+	for _, line := range strings.Split(string(data), "\n") {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "[[package]]" {
+			flush()
+			continue
+		}
+		if strings.HasPrefix(trimmed, "name = ") {
+			name = strings.Trim(strings.TrimPrefix(trimmed, "name = "), `"`)
+		}
+		if strings.HasPrefix(trimmed, "version = ") {
+			version = strings.Trim(strings.TrimPrefix(trimmed, "version = "), `"`)
+		}
+	}
+	flush()
+	return components, nil
+}
+
+func parsePoetryLock(path string) ([]Component, error) {
+	data, err := os.ReadFile(filepath.Join(path, "poetry.lock"))
+	if err != nil {
+		return nil, err
+	}
+	var components []Component
+	var name, version string
+	flush := func() {
+		if name != "" && version != "" {
+			components = append(components, Component{
+				Type: "library", Name: name, Version: version,
+				PURL: fmt.Sprintf("pkg:pypi/%s@%s", name, version),
+			})
+		}
+		name, version = "", ""
+	}
+	for _, line := range strings.Split(string(data), "\n") {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "[[package]]" {
+			flush()
+			continue
+		}
+		if strings.HasPrefix(trimmed, "name = ") {
+			name = strings.Trim(strings.TrimPrefix(trimmed, "name = "), `"`)
+		}
+		if strings.HasPrefix(trimmed, "version = ") {
+			version = strings.Trim(strings.TrimPrefix(trimmed, "version = "), `"`)
+		}
+	}
+	flush()
+	return components, nil
+}
+
+func parseGemfileLock(path string) ([]Component, error) {
+	data, err := os.ReadFile(filepath.Join(path, "Gemfile.lock"))
+	if err != nil {
+		return nil, err
+	}
+	var components []Component
+	inSpecs := false
+	for _, line := range strings.Split(string(data), "\n") {
+		if strings.TrimSpace(line) == "GEM" {
+			inSpecs = false
+			continue
+		}
+		if strings.HasPrefix(line, "    ") && !strings.HasPrefix(line, "      ") {
+			fields := strings.Fields(strings.TrimSpace(line))
+			if len(fields) >= 2 && strings.HasPrefix(fields[1], "(") {
+				ver := strings.Trim(fields[1], "()")
+				components = append(components, Component{
+					Type: "library", Name: fields[0], Version: ver,
+					PURL: fmt.Sprintf("pkg:gem/%s@%s", fields[0], ver),
+				})
+			}
+			inSpecs = true
+		}
+		_ = inSpecs
 	}
 	return components, nil
 }
+

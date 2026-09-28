@@ -11,7 +11,7 @@ SentinelFlow is a Go-based security scanner for CI/CD pipelines. For detailed di
 │  CLI (Cobra)  →  Config (Viper)  →  Scanner Engine               │
 │                          ↓                                       │
 │    ┌─────────┬─────────┬─────────┬─────────┬─────────┬────────┐ │
-│    │ Secrets │   IaC   │  Deps   │  SAST   │Container│ License │ │
+│    │ Secrets │   IaC   │  Deps   │  SAST   │Artifacts│ License │ │
 │    └────┬────┴────┬────┴────┬────┴────┬────┴────┬────┴───┬────┘ │
 │         └─────────┴─────────┴─────────┴─────────┴──────────┘      │
 │                          ↓                                       │
@@ -29,12 +29,14 @@ SentinelFlow is a Go-based security scanner for CI/CD pipelines. For detailed di
 | Secret Scanner | Regex, Shannon entropy, git history |
 | IaC Scanner | Terraform, Kubernetes YAML, Dockerfile rules |
 | Dependency Scanner | Lockfile parsing + OSV API |
-| SAST | OWASP-oriented regex rules |
-| Container | Trivy integration |
+| SAST | OWASP regex rules v2 + Go AST sinks |
+| Artifacts | Magic-byte classifier, unpacker, SCA, hardening, malware heuristics |
+| Container | Trivy integration (`image` / `fs`) |
 | License | Manifest parsing + deny list |
+| External adapters | Optional Semgrep, gitleaks, Grype, Syft, Trivy fs, YARA |
 | Policy Engine | Open Policy Agent (Rego) |
-| SBOM | CycloneDX generation |
-| Reports | Text, JSON, SARIF, Markdown, HTML |
+| SBOM | CycloneDX + SPDX generation; CycloneDX ingest |
+| Reports | Text, JSON, SARIF 2.1.0, Markdown, HTML, JUnit, GitLab |
 
 ## Directory Structure
 
@@ -50,6 +52,9 @@ sentinelflow/
 │   │   ├── secrets/
 │   │   ├── iac/
 │   │   ├── dependencies/
+│   │   ├── artifacts/
+│   │   ├── unpack/
+│   │   ├── filetype/
 │   │   ├── sast/
 │   │   ├── container/
 │   │   ├── license/
@@ -70,11 +75,11 @@ sentinelflow/
 
 The engine (`internal/scanner/engine.go`) orchestrates enabled scanners concurrently:
 
-1. Collect files from the target path (skipping `.git`, `node_modules`, etc.)
+1. Collect files from the target path (skipping `.git`, `node_modules`, `dist`/`build` for source scanners; oversized files are recorded as skips)
 2. Run each enabled scanner in parallel
-3. Apply baseline filtering when configured
-4. Aggregate findings into a single `ScanResult`
-5. Pass results to the reporter
+3. Apply inline `sentinelflow:ignore`, `--diff-base`/`--staged`, then baseline v2
+4. Aggregate findings into a single `ScanResult` (exit `0`/`1`/`2`/`3`)
+5. Pass results to the reporter (SARIF fingerprints, GitLab, JUnit, job summary)
 
 Scanners are registered based on configuration:
 
@@ -86,6 +91,8 @@ Scanners are registered based on configuration:
 | `scanners.sast.enabled` | SAST |
 | `scanners.container.enabled` | Container |
 | `scanners.license.enabled` | License |
+| `scanners.artifacts.enabled` | Artifacts |
+| `scanners.external.*` | Optional adapters |
 | `policies.enabled` | Policy (OPA) |
 
 ## Planned Features

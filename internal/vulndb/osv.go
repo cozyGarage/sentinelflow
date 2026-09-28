@@ -1,7 +1,6 @@
 package vulndb
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -104,26 +103,9 @@ func (s *OSVSource) Query(ctx context.Context, ecosystem, pkg, version string) (
 	}
 
 	apiURL := s.baseURL + "/v1/query"
-	httpReq, err := http.NewRequestWithContext(ctx, "POST", apiURL, bytes.NewReader(reqBody))
-	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
-	}
-
-	httpReq.Header.Set("Content-Type", "application/json")
-
-	resp, err := s.client.Do(httpReq)
-	if err != nil {
-		return nil, fmt.Errorf("failed to query OSV: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("OSV API returned status %d", resp.StatusCode)
-	}
-
 	var osvResp OSVResponse
-	if err := json.NewDecoder(resp.Body).Decode(&osvResp); err != nil {
-		return nil, fmt.Errorf("failed to decode response: %w", err)
+	if err := s.doJSON(ctx, "POST", apiURL, reqBody, &osvResp); err != nil {
+		return nil, fmt.Errorf("failed to query OSV: %w", err)
 	}
 
 	// Convert OSV vulnerabilities to our format
@@ -184,6 +166,9 @@ func (s *OSVSource) Query(ctx context.Context, ecosystem, pkg, version string) (
 							Introduced: event.Introduced,
 							Fixed:      event.Fixed,
 						})
+					}
+					if event.Fixed != "" {
+						v.Fixed = append(v.Fixed, event.Fixed)
 					}
 				}
 			}

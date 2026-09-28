@@ -48,6 +48,7 @@ demo: build
 
 scan-self: build
 	./$(BINARY_NAME) scan --all .
+	./$(BINARY_NAME) scan-artifact ./$(BINARY_NAME) --fail-on critical || true
 
 lint:
 	@echo "Running lint (requires golangci-lint)..."

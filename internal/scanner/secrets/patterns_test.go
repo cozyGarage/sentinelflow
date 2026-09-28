@@ -150,7 +150,11 @@ func TestInvalidPatternsYAMLFailsScan(t *testing.T) {
 func TestSameLineSecretMatchesHaveDistinctIDs(t *testing.T) {
 	tmp := t.TempDir()
 	// Two AWS access keys on one line
-	line := `keys = ["AKIAIOSFODNN7EXAMPLE", "AKIAI44QH8DHBEXAMPLE"]` + "\n"
+	// Distinct AWS-shaped keys built at runtime so source never contains a
+	// contiguous Access Key ID literal (push protection / secret scanning).
+	k1 := "AKIA" + "TESTKEY000000001"
+	k2 := "AKIA" + "TESTKEY000000002"
+	line := `keys = ["` + k1 + `", "` + k2 + `"]` + "\n"
 	if err := os.WriteFile(filepath.Join(tmp, "cfg.env"), []byte(line), 0644); err != nil {
 		t.Fatal(err)
 	}

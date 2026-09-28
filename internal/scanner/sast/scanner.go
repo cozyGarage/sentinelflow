@@ -17,6 +17,7 @@ import (
 
 	"github.com/cozygarage/sentinelflow/internal/config"
 	"github.com/cozygarage/sentinelflow/internal/scanner/filter"
+	"github.com/cozygarage/sentinelflow/internal/scanner/fingerprint"
 	"github.com/cozygarage/sentinelflow/internal/scanner/redact"
 	"github.com/cozygarage/sentinelflow/internal/scanner/types"
 	"github.com/cozygarage/sentinelflow/pkg/api"
@@ -37,9 +38,14 @@ type Rule struct {
 	Name        string
 	Category    string
 	Pattern     *regexp.Regexp
+	PatternNot  *regexp.Regexp
+	Languages   []string
+	Paths       []string
 	Severity    api.Severity
 	Description string
 	CWE         string
+	OWASP       string
+	Confidence  float64
 }
 
 type ruleFile struct {
@@ -47,13 +53,18 @@ type ruleFile struct {
 }
 
 type ruleDef struct {
-	ID          string `yaml:"id"`
-	Name        string `yaml:"name"`
-	Category    string `yaml:"category"`
-	Pattern     string `yaml:"pattern"`
-	Severity    string `yaml:"severity"`
-	Description string `yaml:"description"`
-	CWE         string `yaml:"cwe"`
+	ID          string   `yaml:"id"`
+	Name        string   `yaml:"name"`
+	Category    string   `yaml:"category"`
+	Pattern     string   `yaml:"pattern"`
+	PatternNot  string   `yaml:"pattern-not"`
+	Languages   []string `yaml:"languages"`
+	Paths       []string `yaml:"paths"`
+	Severity    string   `yaml:"severity"`
+	Description string   `yaml:"description"`
+	CWE         string   `yaml:"cwe"`
+	OWASP       string   `yaml:"owasp"`
+	Confidence  float64  `yaml:"confidence"`
 }
 
 // ScannerResult contains scan results
@@ -89,15 +100,22 @@ func (s *Scanner) Scan(ctx context.Context, path string, opts interface{}) (*Sca
 	}
 
 	var scanFiles []string
+	var warnings []string
 	for _, file := range files {
 		if !s.Supports(file) {
 			continue
 		}
 		if info, err := os.Stat(file); err == nil && info.Size() > 1*1024*1024 {
+			rel := file
+			if r, err := filepath.Rel(path, file); err == nil {
+				rel = r
+			}
+			warnings = append(warnings, fmt.Sprintf("skipped %s (exceeds 1MB)", filepath.ToSlash(rel)))
 			continue
 		}
 		scanFiles = append(scanFiles, file)
 	}
+	result.Warnings = warnings
 	result.FilesCount = len(scanFiles)
 
 	concurrency := types.EffectiveConcurrency(opts, s.config.Scanners.SAST.Concurrency, 8)
@@ -120,6 +138,12 @@ func (s *Scanner) Scan(ctx context.Context, path string, opts interface{}) (*Sca
 	})
 
 	result.Findings = s.filterFindings(result.Findings)
+	if astFindings, err := s.scanGoAST(ctx, scanFiles, path); err != nil {
+		scanErrs = append(scanErrs, err.Error())
+	} else {
+		result.Findings = append(result.Findings, astFindings...)
+		result.Findings = s.filterFindings(result.Findings)
+	}
 
 	if len(scanErrs) > 0 {
 		return result, fmt.Errorf("sast scan errors (%d): %s", len(scanErrs), strings.Join(scanErrs, "; "))
@@ -183,7 +207,13 @@ func (s *Scanner) scanFile(ctx context.Context, filePath, basePath string) ([]ap
 		}
 
 		for _, rule := range s.rules {
+			if !languageMatches(rule, filePath) {
+				continue
+			}
 			if locs := rule.Pattern.FindAllStringIndex(line, -1); len(locs) > 0 {
+				if rule.PatternNot != nil && rule.PatternNot.MatchString(line) {
+					continue
+				}
 				relPath := filePath
 				if rel, err := filepath.Rel(basePath, filePath); err == nil {
 					relPath = rel
@@ -191,7 +221,19 @@ func (s *Scanner) scanFile(ctx context.Context, filePath, basePath string) ([]ap
 				relPath = filepath.ToSlash(relPath)
 
 				for _, loc := range locs {
-					findings = append(findings, api.Finding{
+					conf := rule.Confidence
+					if conf == 0 {
+						conf = 0.8
+					}
+					cwe := []string{}
+					if rule.CWE != "" {
+						cwe = []string{rule.CWE}
+					}
+					owasp := []string{}
+					if rule.OWASP != "" {
+						owasp = []string{rule.OWASP}
+					}
+					finding := api.Finding{
 						ID:          fmt.Sprintf("SAST-%s-%s-%d", rule.ID, pathToken(relPath), lineNum),
 						Type:        api.FindingTypeInsecureCode,
 						Severity:    rule.Severity,
@@ -208,9 +250,12 @@ func (s *Scanner) scanFile(ctx context.Context, filePath, basePath string) ([]ap
 						Remediation: remediationFor(rule.Category),
 						Scanner:     "sast",
 						RuleID:      rule.ID,
-						CWE:         []string{rule.CWE},
-						Confidence:  0.8,
-					})
+						CWE:         cwe,
+						OWASP:       owasp,
+						Confidence:  conf,
+					}
+					finding.Fingerprint = fingerprint.Of(finding)
+					findings = append(findings, finding)
 				}
 			}
 		}
@@ -259,6 +304,23 @@ func (s *Scanner) isComment(line string) bool {
 		strings.HasPrefix(trimmed, "/*") || strings.HasPrefix(trimmed, "*")
 }
 
+func languageMatches(rule Rule, path string) bool {
+	if len(rule.Languages) == 0 {
+		return true
+	}
+	ext := strings.ToLower(filepath.Ext(path))
+	lang := map[string]string{
+		".go": "go", ".py": "python", ".js": "javascript", ".jsx": "javascript",
+		".ts": "javascript", ".tsx": "javascript", ".java": "java",
+	}[ext]
+	for _, l := range rule.Languages {
+		if strings.EqualFold(l, lang) {
+			return true
+		}
+	}
+	return false
+}
+
 func pathToken(relPath string) string {
 	h := fnv.New32a()
 	_, _ = h.Write([]byte(relPath))
@@ -304,14 +366,26 @@ func parseRules(data []byte) ([]Rule, error) {
 		if err != nil {
 			return nil, fmt.Errorf("rule %s: %w", def.ID, err)
 		}
+		var not *regexp.Regexp
+		if strings.TrimSpace(def.PatternNot) != "" {
+			not, err = regexp.Compile(def.PatternNot)
+			if err != nil {
+				return nil, fmt.Errorf("rule %s pattern-not: %w", def.ID, err)
+			}
+		}
 		out = append(out, Rule{
 			ID:          def.ID,
 			Name:        def.Name,
 			Category:    def.Category,
 			Pattern:     re,
+			PatternNot:  not,
+			Languages:   def.Languages,
+			Paths:       def.Paths,
 			Severity:    api.ParseSeverity(def.Severity),
 			Description: def.Description,
 			CWE:         def.CWE,
+			OWASP:       def.OWASP,
+			Confidence:  def.Confidence,
 		})
 	}
 	return out, nil

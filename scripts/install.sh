@@ -28,6 +28,41 @@ detect_arch() {
   esac
 }
 
+github_curl() {
+  local url="$1"
+  local dest="$2"
+  local args=(-fsSL)
+  if [[ -n "${GITHUB_TOKEN:-}" ]]; then
+    args+=(-H "Authorization: Bearer ${GITHUB_TOKEN}" -H "Accept: application/vnd.github+json")
+  fi
+  curl "${args[@]}" "${url}" -o "${dest}"
+}
+
+verify_cosign() {
+  local checksums="$1"
+  local sig="${checksums}.sig"
+  local cert="${checksums}.pem"
+  if [[ "${VERIFY_SIGNATURE:-0}" != "1" ]]; then
+    return 0
+  fi
+  if ! command -v cosign >/dev/null 2>&1; then
+    echo "VERIFY_SIGNATURE=1 but cosign is not installed" >&2
+    exit 1
+  fi
+  if [[ ! -f "${sig}" || ! -f "${cert}" ]]; then
+    echo "missing ${sig} or ${cert} for keyless verification" >&2
+    exit 1
+  fi
+  local identity="${COSIGN_IDENTITY_REGEXP:-https://github.com/${REPO}/.*}"
+  local issuer="${COSIGN_OIDC_ISSUER:-https://token.actions.githubusercontent.com}"
+  cosign verify-blob \
+    --certificate "${cert}" \
+    --signature "${sig}" \
+    --certificate-identity-regexp "${identity}" \
+    --certificate-oidc-issuer "${issuer}" \
+    "${checksums}"
+}
+
 sha256_file() {
   local file="$1"
   if command -v sha256sum >/dev/null 2>&1; then
@@ -68,12 +103,11 @@ verify_checksum() {
 }
 
 if [[ -z "${VERSION}" ]]; then
-  if ! RELEASE_JSON="$(curl -fsSL "https://api.github.com/repos/${REPO}/releases/latest" 2>/dev/null)"; then
-    RELEASE_JSON=""
+  RELEASE_JSON_FILE="$(mktemp)"
+  if github_curl "https://api.github.com/repos/${REPO}/releases/latest" "${RELEASE_JSON_FILE}"; then
+    VERSION="$(sed -n 's/.*"tag_name":[[:space:]]*"\([^"]*\)".*/\1/p' "${RELEASE_JSON_FILE}" | head -n1)"
   fi
-  VERSION="$(printf '%s' "${RELEASE_JSON}" \
-    | sed -n 's/.*"tag_name":[[:space:]]*"\([^"]*\)".*/\1/p' \
-    | head -n1)"
+  rm -f "${RELEASE_JSON_FILE}"
 fi
 
 # Normalize: allow VERSION=v1.0.0 or 1.0.0
@@ -103,19 +137,24 @@ TMP="$(mktemp -d)"
 trap 'rm -rf "${TMP}"' EXIT
 
 echo "Downloading ${URL}"
-if ! curl -fsSL "${URL}" -o "${TMP}/${ASSET}"; then
+if ! github_curl "${URL}" "${TMP}/${ASSET}"; then
   echo "Download failed. Check that release v${VERSION} exists and includes ${ASSET}." >&2
   exit 1
 fi
 
 if [[ "${SKIP_CHECKSUM}" != "1" ]]; then
   echo "Downloading ${CHECKSUMS_URL}"
-  if ! curl -fsSL "${CHECKSUMS_URL}" -o "${TMP}/checksums.txt"; then
+  if ! github_curl "${CHECKSUMS_URL}" "${TMP}/checksums.txt"; then
     echo "Failed to download checksums.txt for v${VERSION}." >&2
     echo "Set SKIP_CHECKSUM=1 to bypass (not recommended)." >&2
     exit 1
   fi
   verify_checksum "${ASSET}" "${TMP}/${ASSET}" "${TMP}/checksums.txt"
+  if [[ "${VERIFY_SIGNATURE:-0}" == "1" ]]; then
+    github_curl "https://github.com/${REPO}/releases/download/v${VERSION}/checksums.txt.sig" "${TMP}/checksums.txt.sig" || true
+    github_curl "https://github.com/${REPO}/releases/download/v${VERSION}/checksums.txt.pem" "${TMP}/checksums.txt.pem" || true
+    verify_cosign "${TMP}/checksums.txt"
+  fi
 fi
 
 mkdir -p "${INSTALL_DIR}"

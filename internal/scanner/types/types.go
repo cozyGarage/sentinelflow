@@ -13,6 +13,10 @@ import (
 type ScanOptions struct {
 	Files       []string
 	Concurrency int
+	MaxFileSize int64
+	Skipped     []api.SkippedFile
+	DiffBase    string
+	Staged      bool
 }
 
 // ScannerResult is the standard result type returned by scanners.

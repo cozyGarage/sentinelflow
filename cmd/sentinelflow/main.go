@@ -4,10 +4,12 @@
 package main
 
 import (
+	"errors"
 	"os"
 
 	"github.com/cozygarage/sentinelflow/internal/buildinfo"
 	"github.com/cozygarage/sentinelflow/internal/cli"
+	"github.com/cozygarage/sentinelflow/pkg/api"
 )
 
 // Version information (set by build flags)
@@ -22,6 +24,10 @@ func main() {
 	cli.SetVersionInfo(version, commit, date)
 
 	if err := cli.Execute(); err != nil {
-		os.Exit(1)
+		var ee *api.ExitError
+		if errors.As(err, &ee) {
+			os.Exit(ee.ExitCode())
+		}
+		os.Exit(api.ExitTool)
 	}
 }

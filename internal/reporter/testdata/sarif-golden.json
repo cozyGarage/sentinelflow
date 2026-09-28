@@ -1,0 +1,149 @@
+{
+  "$schema": "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json",
+  "runs": [
+    {
+      "automationDetails": {
+        "id": "sentinelflow/1.0.0"
+      },
+      "invocations": [
+        {
+          "executionSuccessful": true,
+          "toolExecutionNotifications": [
+            {
+              "level": "error",
+              "message": {
+                "text": "secrets: partial"
+              }
+            },
+            {
+              "level": "warning",
+              "message": {
+                "text": "skipped big.bin (exceeds max_file_size)"
+              }
+            }
+          ]
+        }
+      ],
+      "originalUriBaseIds": {
+        "REPO_ROOT": {
+          "uri": "file:///repo"
+        }
+      },
+      "results": [
+        {
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "config.go",
+                  "uriBaseId": "REPO_ROOT"
+                },
+                "region": {
+                  "endLine": 10,
+                  "startLine": 10
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "Found AWS access key in source code"
+          },
+          "partialFingerprints": {
+            "primaryLocationLineHash": "fp-secret"
+          },
+          "properties": {
+            "confidence": 0.95,
+            "fingerprint": "fp-secret",
+            "scanner": "secrets",
+            "type": "secret"
+          },
+          "ruleId": "aws-access-key",
+          "ruleIndex": 0
+        },
+        {
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "main.tf",
+                  "uriBaseId": "REPO_ROOT"
+                },
+                "region": {
+                  "endLine": 18,
+                  "startLine": 15
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "S3 bucket has public read ACL"
+          },
+          "partialFingerprints": {
+            "primaryLocationLineHash": "fp-iac"
+          },
+          "properties": {
+            "confidence": 1,
+            "fingerprint": "fp-iac",
+            "scanner": "iac",
+            "type": "misconfiguration"
+          },
+          "ruleId": "aws-s3-public-acl",
+          "ruleIndex": 1
+        }
+      ],
+      "tool": {
+        "driver": {
+          "informationUri": "https://github.com/cozyGarage/sentielflow",
+          "name": "SentinelFlow",
+          "rules": [
+            {
+              "fullDescription": {
+                "text": "Found AWS access key in source code"
+              },
+              "help": {
+                "text": "Remove hardcoded credentials and use environment variables"
+              },
+              "id": "aws-access-key",
+              "properties": {
+                "security-severity": "9.5",
+                "tags": [
+                  "security",
+                  "secrets",
+                  "CWE-798",
+                  "A07:2021"
+                ]
+              },
+              "shortDescription": {
+                "text": "Hardcoded AWS Access Key"
+              }
+            },
+            {
+              "fullDescription": {
+                "text": "S3 bucket has public read ACL"
+              },
+              "help": {
+                "text": "Set ACL to 'private'"
+              },
+              "id": "aws-s3-public-acl",
+              "properties": {
+                "security-severity": "8.0",
+                "tags": [
+                  "security",
+                  "iac",
+                  "CWE-732"
+                ]
+              },
+              "shortDescription": {
+                "text": "Public S3 Bucket"
+              }
+            }
+          ],
+          "version": "1.0.0"
+        }
+      }
+    }
+  ],
+  "version": "2.1.0"
+}

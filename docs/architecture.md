@@ -19,26 +19,29 @@ graph LR
         S1["Secrets Scanner"]
         S2["IaC Scanner"]
         S3["Dependency Scanner"]
-        S4["SAST Scanner"]
+        S4["SAST / Go AST"]
         S5["License Scanner"]
         S6["Policy Engine (OPA)"]
+        S7["Artifacts"]
+        S8["External adapters"]
     end
 
     subgraph "External Feeds"
-        VDB["OSV.dev API"]
-        CACHE["In-Memory Cache"]
+        VDB["OSV.dev querybatch"]
+        CACHE["Disk + memory cache"]
     end
 
-    SRC --> S1 & S2 & S3 & S4 & S5
-    CFG --> S1 & S2 & S3 & S4 & S5 & S6
+    SRC --> S1 & S2 & S3 & S4 & S5 & S7
+    CFG --> S1 & S2 & S3 & S4 & S5 & S6 & S7 & S8
     VDB --> CACHE --> S3
+    S7 --> CACHE
 
-    S1 & S2 & S3 & S4 & S5 & S6 --> AGG["Result Aggregator"]
+    S1 & S2 & S3 & S4 & S5 & S6 & S7 & S8 --> AGG["Suppressions + gate"]
 
     subgraph "Output Layer"
         AGG --> R1["SARIF (GitHub)"]
-        AGG --> R2["Markdown (PR)"]
-        AGG --> R3["HTML / JSON"]
+        AGG --> R2["Markdown / job summary"]
+        AGG --> R3["JSON / HTML / JUnit / GitLab"]
     end
 ```
 
@@ -70,7 +73,7 @@ sequenceDiagram
         else Cache Miss
             C->>OSV: Query Vulnerabilities
             OSV-->>C: Vulnerability JSON
-            C->>C: Store in memory cache (TTL 24h)
+            C->>C: Store in disk cache (TTL) + memory
             C-->>CLI: Return findings
         end
     end

@@ -40,7 +40,7 @@ var hookInstallCmd = &cobra.Command{
 
 		block := fmt.Sprintf(`%s
 %s
-exec "%s" scan --secrets --iac --fail-on high
+exec "%s" scan --secrets --iac --staged --fail-on high
 %s
 `, hookBeginMarker, hookMarker, exe, hookEndMarker)
 

@@ -8,15 +8,19 @@ branding:
 
 inputs:
   delivery:
-    description: How to obtain SentinelFlow — docker (pull image, recommended) or build (compile from caller workspace; same-repo only)
+    description: How to obtain SentinelFlow — release (download GitHub Release binary + checksums, recommended for external repos), docker (pull image), or build (compile from caller workspace; same-repo only)
     required: false
-    default: docker
+    default: release
   image:
     description: Container image when delivery=docker
     required: false
-    default: sentinelflow/sentinelflow:latest
+    default: sentinelflow/sentinelflow:v1.1.1
+  version:
+    description: Release tag when delivery=release (e.g. v1.1.1). Empty uses the action ref, then latest.
+    required: false
+    default: ''
   scan-all:
-    description: "Enable secrets/iac/deps/sast (not container, not license). Set an individual scan-* input to false to opt out. Policy stays enabled when scan-all is true."
+    description: "Enable secrets/iac/deps/sast (not container, not license, not artifacts). Set an individual scan-* input to false to opt out. Policy stays enabled when scan-all is true."
     required: false
     default: 'true'
   scan-secrets:
@@ -43,6 +47,10 @@ inputs:
     description: Enable container image scanning (requires Trivy)
     required: false
     default: 'false'
+  scan-artifacts:
+    description: "Opt-in artifact/binary scanning (not included in scan-all / --all)"
+    required: false
+    default: 'false'
   container-image:
     description: Container image reference to scan
     required: false
@@ -56,7 +64,7 @@ inputs:
     required: false
     default: high
   format:
-    description: Report output format (text, json, sarif, markdown, html)
+    description: Report output format (text, json, sarif, markdown, html, junit, gitlab-sast, gitlab-deps)
     required: false
     default: sarif
   output:
@@ -71,13 +79,21 @@ inputs:
     description: Scan deadline (Go duration, e.g. 10m, 90s); empty uses scan_timeout / default 10m
     required: false
     default: ''
+  diff-base:
+    description: Limit findings to files/lines changed since this git ref
+    required: false
+    default: ''
+  emit-annotations:
+    description: Print GitHub Actions workflow annotations for findings
+    required: false
+    default: 'false'
 
 outputs:
   findings-count:
     description: Total number of findings (from scan summary)
     value: ${{ steps.scan.outputs.findings-count }}
   exit-code:
-    description: Exit code from the scan step
+    description: Exit code from the scan step (0 pass, 1 gate, 2 tool error, 3 timeout)
     value: ${{ steps.scan.outputs.exit-code }}
 
 runs:
@@ -85,7 +101,7 @@ runs:
   steps:
     - name: Setup Go
       if: inputs.delivery == 'build'
-      uses: actions/setup-go@v5
+      uses: actions/setup-go@0aaccfd150d50ccaeb58ebd88d36e91967a5f35b # v5.4.0
       with:
         go-version-file: go.mod
 
@@ -96,14 +112,50 @@ runs:
       run: |
         if [ ! -f go.mod ] || [ ! -d cmd/sentinelflow ]; then
           echo "delivery=build requires the SentinelFlow source tree in the workspace (same-repo dogfood)." >&2
-          echo "For external repos use delivery=docker with image: sentinelflow/sentinelflow:<tag>." >&2
+          echo "For external repos use delivery=release (verifies checksums.txt) or delivery=docker with a published image tag." >&2
           exit 1
         fi
         go build -o sentinelflow ./cmd/sentinelflow
         ./sentinelflow version
 
+    - name: Install SentinelFlow (release)
+      if: inputs.delivery == 'release'
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ github.token }}
+        SF_VERSION: ${{ inputs.version }}
+        GITHUB_ACTION_REF: ${{ github.action_ref }}
+        GITHUB_ACTION_PATH: ${{ github.action_path }}
+      run: |
+        set -euo pipefail
+        ref="${SF_VERSION:-}"
+        if [ -z "$ref" ]; then
+          ref="${GITHUB_ACTION_REF:-}"
+        fi
+        ref="${ref#refs/tags/}"
+        ref="${ref#v}"
+        case "$ref" in
+          ""|main|master|HEAD|develop) VERSION="" ;;
+          *) VERSION="$ref" ;;
+        esac
+        export VERSION
+        export INSTALL_DIR="${RUNNER_TEMP}/sentinelflow-bin"
+        mkdir -p "${INSTALL_DIR}"
+        INSTALLER=""
+        if [ -f "${GITHUB_ACTION_PATH}/scripts/install.sh" ]; then
+          INSTALLER="${GITHUB_ACTION_PATH}/scripts/install.sh"
+        elif [ -f "${GITHUB_ACTION_PATH}/../../../scripts/install.sh" ]; then
+          INSTALLER="${GITHUB_ACTION_PATH}/../../../scripts/install.sh"
+        fi
+        if [ -n "${INSTALLER}" ]; then
+          bash "${INSTALLER}"
+        else
+          curl -fsSL https://raw.githubusercontent.com/cozyGarage/sentielflow/main/scripts/install.sh | bash
+        fi
+        echo "SF_BIN=${INSTALL_DIR}/sentinelflow" >> "$GITHUB_ENV"
+
     - name: Pull SentinelFlow image
-      if: inputs.delivery != 'build'
+      if: inputs.delivery == 'docker'
       shell: bash
       env:
         SF_IMAGE: ${{ inputs.image }}
@@ -112,14 +164,14 @@ runs:
         docker run --rm "${SF_IMAGE}" version
 
     - name: Install Trivy
-      if: inputs.scan-container == 'true' && inputs.delivery == 'build'
-      uses: aquasecurity/setup-trivy@v0.3.1
+      if: inputs.scan-container == 'true' && (inputs.delivery == 'build' || inputs.delivery == 'release')
+      uses: aquasecurity/setup-trivy@81e514348e19b6112ce2a7e3ecbafe19c1e1f567 # v0.3.1
 
     - name: Guard container+docker delivery
-      if: inputs.scan-container == 'true' && inputs.delivery != 'build'
+      if: inputs.scan-container == 'true' && inputs.delivery == 'docker'
       shell: bash
       run: |
-        echo "scan-container requires delivery=build (Trivy runs on the host binary path)." >&2
+        echo "scan-container requires delivery=build or delivery=release (Trivy runs on the host binary path)." >&2
         exit 1
 
     - name: Run security scan
@@ -136,6 +188,7 @@ runs:
         SF_SCAN_SAST: ${{ inputs.scan-sast }}
         SF_SCAN_LICENSE: ${{ inputs.scan-license }}
         SF_SCAN_CONTAINER: ${{ inputs.scan-container }}
+        SF_SCAN_ARTIFACTS: ${{ inputs.scan-artifacts }}
         SF_CONTAINER_IMAGE: ${{ inputs.container-image }}
         SF_USE_BASELINE: ${{ inputs.use-baseline }}
         SF_FAIL_ON: ${{ inputs.fail-on }}
@@ -143,15 +196,17 @@ runs:
         SF_OUTPUT: ${{ inputs.output }}
         SF_WORKING_DIRECTORY: ${{ inputs.working-directory }}
         SF_TIMEOUT: ${{ inputs.timeout }}
+        SF_DIFF_BASE: ${{ inputs.diff-base }}
+        SF_EMIT_ANNOTATIONS: ${{ inputs.emit-annotations }}
         SF_WORKSPACE: ${{ github.workspace }}
         SF_ACTION_PATH: ${{ github.action_path }}
       run: |
         set -euo pipefail
         ARGS=()
-        # scan-all enables secrets/iac/deps/sast (not container, not license).
+        # scan-all enables secrets/iac/deps/sast (not container, not license, not artifacts).
         # Individual scan-*: false inputs opt out via --no-* so policy stays on.
         # Selective flags (scan-all false) still disable policy, matching the CLI.
-        # License is opt-in only and is never implied by scan-all / --all.
+        # License and artifacts are opt-in only and are never implied by scan-all / --all.
         if [ "${SF_SCAN_ALL}" = "true" ]; then
           ARGS+=(--all)
           [ "${SF_SCAN_SECRETS}" = "false" ] && ARGS+=(--no-secrets)
@@ -165,6 +220,7 @@ runs:
           [ "${SF_SCAN_SAST}" = "true" ] && ARGS+=(--sast)
         fi
         [ "${SF_SCAN_LICENSE}" = "true" ] && ARGS+=(--license)
+        [ "${SF_SCAN_ARTIFACTS}" = "true" ] && ARGS+=(--artifacts)
 
         if [ "${SF_SCAN_CONTAINER}" = "true" ]; then
           ARGS+=(--container)
@@ -179,6 +235,12 @@ runs:
 
         if [ -n "${SF_TIMEOUT}" ]; then
           ARGS+=(--timeout "${SF_TIMEOUT}")
+        fi
+        if [ -n "${SF_DIFF_BASE}" ]; then
+          ARGS+=(--diff-base "${SF_DIFF_BASE}")
+        fi
+        if [ "${SF_EMIT_ANNOTATIONS}" = "true" ]; then
+          ARGS+=(--emit-annotations)
         fi
 
         if [[ "${SF_OUTPUT}" = /* ]]; then
@@ -202,14 +264,7 @@ runs:
         fi
 
         set +e
-        if [ "${SF_DELIVERY}" = "build" ]; then
-          SF="${SF_WORKSPACE}/sentinelflow"
-          "$SF" scan "${ARGS[@]}" \
-            --fail-on "${SF_FAIL_ON}" \
-            --format "${SF_FORMAT}" \
-            -o "${OUT_PATH}"
-          EXIT_CODE=$?
-        else
+        if [ "${SF_DELIVERY}" = "docker" ]; then
           docker run --rm \
             -v "${SF_WORKSPACE}:/workspace" \
             -w "${DOCKER_WORKDIR}" \
@@ -218,6 +273,17 @@ runs:
               --fail-on "${SF_FAIL_ON}" \
               --format "${SF_FORMAT}" \
               -o "${DOCKER_OUT}"
+          EXIT_CODE=$?
+        else
+          if [ "${SF_DELIVERY}" = "build" ]; then
+            SF="${SF_WORKSPACE}/sentinelflow"
+          else
+            SF="${SF_BIN:-${RUNNER_TEMP}/sentinelflow-bin/sentinelflow}"
+          fi
+          "$SF" scan "${ARGS[@]}" \
+            --fail-on "${SF_FAIL_ON}" \
+            --format "${SF_FORMAT}" \
+            -o "${OUT_PATH}"
           EXIT_CODE=$?
         fi
         set -e
