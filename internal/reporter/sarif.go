@@ -10,6 +10,8 @@ import (
 	"github.com/owenrumney/go-sarif/v2/sarif"
 )
 
+const repositoryURL = "https://github.com/cozyGarage/sentinelflow"
+
 // SARIFFormatter formats reports in SARIF 2.1.0 for GitHub code scanning.
 type SARIFFormatter struct{}
 
@@ -21,11 +23,11 @@ func (f *SARIFFormatter) Format(result *api.ScanResult) (string, error) {
 
 	run := sarif.NewRunWithInformationURI(
 		"SentinelFlow",
-		"https://github.com/cozygarage/sentinelflow",
+		repositoryURL,
 	)
 	run.Tool.Driver.Version = &result.Metadata.SentinelFlowVersion
 	run.Tool.Driver.Name = "SentinelFlow"
-	run.Tool.Driver.InformationURI = strPtr("https://github.com/cozyGarage/sentielflow")
+	run.Tool.Driver.InformationURI = strPtr(repositoryURL)
 
 	baseID := "REPO_ROOT"
 	baseURI := result.Metadata.TargetPath

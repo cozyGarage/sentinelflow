@@ -121,15 +121,22 @@ var reportMergeCmd = &cobra.Command{
 }
 
 func deduplicateFindings(findings []api.Finding) []api.Finding {
-	seen := make(map[string]bool)
-	result := []api.Finding{}
+	type findingKey struct {
+		id        string
+		file      string
+		startLine int
+	}
+
+	seen := make(map[findingKey]struct{}, len(findings))
+	result := make([]api.Finding, 0, len(findings))
 
 	for _, f := range findings {
-		key := fmt.Sprintf("%s:%s:%d", f.ID, f.Location.File, f.Location.StartLine)
-		if !seen[key] {
-			seen[key] = true
-			result = append(result, f)
+		key := findingKey{id: f.ID, file: f.Location.File, startLine: f.Location.StartLine}
+		if _, ok := seen[key]; ok {
+			continue
 		}
+		seen[key] = struct{}{}
+		result = append(result, f)
 	}
 
 	return result

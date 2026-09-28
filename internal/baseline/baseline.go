@@ -142,43 +142,61 @@ func Filter(findings []api.Finding, baseline *File) []api.Finding {
 		return findings
 	}
 
+	type legacyKey struct {
+		ruleID string
+		file   string
+	}
+
 	now := time.Now()
-	baselined := make(map[string]bool)
+	baselined := make(map[string]struct{}, len(baseline.Findings)*3)
+	var legacy map[legacyKey]struct{}
 	for _, e := range baseline.Findings {
 		if entryExpired(e, now) {
 			continue
 		}
 		if e.Fingerprint != "" {
-			baselined["fp:"+e.Fingerprint] = true
+			baselined["fp:"+e.Fingerprint] = struct{}{}
 		}
 		if e.Hash != "" {
-			baselined[e.Hash] = true
+			baselined[e.Hash] = struct{}{}
 		}
 		if e.ID != "" {
-			baselined["id:"+e.ID] = true
+			baselined["id:"+e.ID] = struct{}{}
 		}
 		// Legacy entries without ID/hash/fingerprint: suppress by rule+file only.
 		if e.ID == "" && e.Hash == "" && e.Fingerprint == "" && e.RuleID != "" && e.File != "" {
-			baselined[fmt.Sprintf("%s:%s", e.RuleID, e.File)] = true
+			if legacy == nil {
+				legacy = make(map[legacyKey]struct{})
+			}
+			legacy[legacyKey{ruleID: e.RuleID, file: e.File}] = struct{}{}
 		}
 	}
 
 	var filtered []api.Finding
 	for _, f := range findings {
-		if f.Fingerprint != "" && baselined["fp:"+f.Fingerprint] {
+		if f.Fingerprint != "" {
+			if _, ok := baselined["fp:"+f.Fingerprint]; ok {
+				continue
+			}
+		}
+		computedFingerprint := fingerprint.Of(f)
+		if computedFingerprint != f.Fingerprint {
+			if _, ok := baselined["fp:"+computedFingerprint]; ok {
+				continue
+			}
+		}
+		if _, ok := baselined[HashFinding(f)]; ok {
 			continue
 		}
-		if baselined["fp:"+fingerprint.Of(f)] {
-			continue
+		if f.ID != "" {
+			if _, ok := baselined["id:"+f.ID]; ok {
+				continue
+			}
 		}
-		if baselined[HashFinding(f)] {
-			continue
-		}
-		if f.ID != "" && baselined["id:"+f.ID] {
-			continue
-		}
-		if baselined[fmt.Sprintf("%s:%s", f.RuleID, f.Location.File)] {
-			continue
+		if len(legacy) > 0 {
+			if _, ok := legacy[legacyKey{ruleID: f.RuleID, file: f.Location.File}]; ok {
+				continue
+			}
 		}
 		filtered = append(filtered, f)
 	}
