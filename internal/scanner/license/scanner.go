@@ -31,8 +31,8 @@ func (s *Scanner) Name() string { return "license" }
 
 func (s *Scanner) Supports(path string) bool {
 	base := filepath.Base(path)
-	// Only manifests we actually inspect (no Cargo.toml — not implemented).
-	return base == "package.json" || base == "go.mod"
+	// Only manifests and lockfiles we actually inspect.
+	return base == "package.json" || base == "package-lock.json" || base == "go.mod"
 }
 
 // Scan performs license policy checking.
@@ -58,6 +58,14 @@ func (s *Scanner) Scan(ctx context.Context, path string, opts interface{}) (*Sca
 		result.Findings = append(result.Findings, findings...)
 		result.FilesCount++
 	}
+	if findings, err := s.checkPackageLock(path, denied, allowed); err != nil {
+		if !os.IsNotExist(err) {
+			errs = append(errs, fmt.Sprintf("package-lock.json: %v", err))
+		}
+	} else {
+		result.Findings = append(result.Findings, findings...)
+		result.FilesCount++
+	}
 	if findings, err := s.checkGoMod(path, denied, allowed); err != nil {
 		if !os.IsNotExist(err) {
 			errs = append(errs, fmt.Sprintf("go.mod: %v", err))
@@ -71,6 +79,50 @@ func (s *Scanner) Scan(ctx context.Context, path string, opts interface{}) (*Sca
 		return result, fmt.Errorf("license scan errors: %s", strings.Join(errs, "; "))
 	}
 	return result, nil
+}
+
+func (s *Scanner) checkPackageLock(path string, denied, allowed []string) ([]api.Finding, error) {
+	data, err := os.ReadFile(filepath.Join(path, "package-lock.json"))
+	if err != nil {
+		return nil, err
+	}
+	var lock struct {
+		Packages map[string]struct {
+			License json.RawMessage `json:"license"`
+		} `json:"packages"`
+	}
+	if err := json.Unmarshal(data, &lock); err != nil {
+		return nil, err
+	}
+	var findings []api.Finding
+	for packagePath, pkg := range lock.Packages {
+		name := packagePath
+		if i := strings.LastIndex(name, "node_modules/"); i >= 0 {
+			name = name[i+len("node_modules/"):]
+		}
+		license := packageLicense(pkg.License)
+		if name == "" || license == "" {
+			continue
+		}
+		if f := s.checkLicense(name, license, denied, allowed, filepath.Join(path, "package-lock.json")); f != nil {
+			findings = append(findings, *f)
+		}
+	}
+	return findings, nil
+}
+
+func packageLicense(raw json.RawMessage) string {
+	var license string
+	if json.Unmarshal(raw, &license) == nil {
+		return license
+	}
+	var object struct {
+		Type string `json:"type"`
+	}
+	if json.Unmarshal(raw, &object) == nil {
+		return object.Type
+	}
+	return ""
 }
 
 func (s *Scanner) checkPackageJSON(path string, denied, allowed []string) ([]api.Finding, error) {

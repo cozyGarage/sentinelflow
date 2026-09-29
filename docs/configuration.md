@@ -113,11 +113,11 @@ Each tool is `{ mode: auto\|required\|off }`. `auto` warns if the binary is miss
 
 | Field | Type | Default | Description |
 | --- | --- | --- | --- |
-| `enabled` | bool | `false` | Opt-in license policy scanning (`package.json` / `go.mod` only). Not enabled by `--all` |
+| `enabled` | bool | `false` | Opt-in license policy scanning (`package.json`, `package-lock.json`, `go.mod`). Not enabled by `--all` |
 | `denied` | []string | GPL-3.0, AGPL-3.0, SSPL-1.0 | Licenses that fail the scan |
 | `allowed` | []string | — | If non-empty, only these licenses are permitted (checked before denied) |
 
-License coverage is intentionally limited: known transitive licenses are a small hardcoded map, not a full SBOM license database. Keep license **off** unless you explicitly want this limited gate.
+License coverage is intentionally limited: it uses available `package-lock.json` license metadata and a small hardcoded map, not a full SBOM license database. Keep license **off** unless you explicitly want this limited gate.
 
 ### Baseline (`baseline`)
 

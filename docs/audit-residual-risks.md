@@ -16,7 +16,7 @@ Re-audit after each release train. Unit tests green; `make demo` fails the gate 
 | Action pins / delivery | Floating tags; default image `:latest` unpublished | R3: SHA pins; `delivery: release` verifies `checksums.txt`; version-tagged default image. |
 | Docker Hub | Images not published yet | Binaries + `delivery: release` / `build` first. Hub needs `DOCKER_USERNAME` / `DOCKER_PASSWORD`. |
 | Module path | `go install` unsupported by decision | Module `github.com/cozygarage/sentinelflow` ≠ repo `cozyGarage/sentielflow`. |
-| License scanner | High FN rate by design | Hardcoded license map. **Honesty path:** opt-in only (not in `--all`). |
+| License scanner | High FN rate by design | Uses npm lockfile metadata when present plus a small hardcoded map. **Honesty path:** opt-in only (not in `--all`). |
 | Dependencies | Bare Gemfile / Gradle still unsupported | Lockfile-first; `Gemfile.lock` supported. Go transitives via `go.sum` (R4). |
 | OSV / network | Transport flake; was memory-only cache, no retry | Default `fail_on_error: true`. R4: querybatch, retry, disk cache, `sentinelflow db update`. |
 | SAST | Still regex-first; Go AST is a narrow pass | No general taint. Semgrep adapter when installed (`mode: auto`). |

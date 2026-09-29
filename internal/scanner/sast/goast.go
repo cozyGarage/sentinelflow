@@ -55,15 +55,19 @@ func (s *Scanner) scanGoAST(ctx context.Context, files []string, base string) ([
 				if len(call.Args) > exe && !isStaticString(call.Args[exe]) {
 					findings = append(findings, astFinding(rel, pos, "go-ast-exec-nonconst",
 						"exec.Command with non-constant executable",
-						"The executable path is not a string literal.", api.SeverityHigh, "CWE-78"))
+						"The executable path is not a string literal.", "cmd-inject", api.SeverityHigh, "CWE-78"))
 				}
-			case "db.Query", "db.QueryContext", "db.Exec", "db.ExecContext",
-				"sql.Query", "tx.Query", "tx.QueryContext", "tx.Exec", "tx.ExecContext",
+			case "db.Query", "db.QueryContext", "db.QueryRow", "db.QueryRowContext", "db.Exec", "db.ExecContext", "db.Prepare", "db.PrepareContext",
+				"sql.Query", "tx.Query", "tx.QueryContext", "tx.QueryRow", "tx.QueryRowContext", "tx.Exec", "tx.ExecContext", "tx.Prepare", "tx.PrepareContext",
 				"stmt.Query", "stmt.Exec", "stmt.QueryContext", "stmt.ExecContext":
-				if len(call.Args) > 0 && looksLikeSQLArg(call.Args[0]) && !isStaticString(call.Args[0]) {
+				queryArg := 0
+				if strings.HasSuffix(name, "Context") {
+					queryArg = 1
+				}
+				if len(call.Args) > queryArg && looksLikeSQLArg(call.Args[queryArg]) && !isStaticString(call.Args[queryArg]) {
 					findings = append(findings, astFinding(rel, pos, "go-ast-sql-nonconst",
 						"SQL query with non-constant argument",
-						"Pass a constant query string and bind parameters.", api.SeverityHigh, "CWE-89"))
+						"Pass a constant query string and bind parameters.", "sqli", api.SeverityHigh, "CWE-89"))
 				}
 			}
 			return true
@@ -72,7 +76,7 @@ func (s *Scanner) scanGoAST(ctx context.Context, files []string, base string) ([
 	return findings, nil
 }
 
-func astFinding(rel string, pos token.Position, rule, title, desc string, sev api.Severity, cwe string) api.Finding {
+func astFinding(rel string, pos token.Position, rule, title, desc, category string, sev api.Severity, cwe string) api.Finding {
 	f := api.Finding{
 		ID:          fmt.Sprintf("SAST-%s-%s-%d", rule, pathToken(rel), pos.Line),
 		Type:        api.FindingTypeInsecureCode,
@@ -82,7 +86,7 @@ func astFinding(rel string, pos token.Position, rule, title, desc string, sev ap
 		Location: api.Location{
 			File: rel, StartLine: pos.Line, EndLine: pos.Line, Snippet: redact.Snippet(pos.String()),
 		},
-		Remediation: remediationFor("cmd-inject"),
+		Remediation: remediationFor(category),
 		Scanner:     "sast",
 		RuleID:      rule,
 		CWE:         []string{cwe},
