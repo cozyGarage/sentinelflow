@@ -20,6 +20,11 @@ func writeScanFile(t *testing.T, dir, name, content string) string {
 	return path
 }
 
+func writeGoModule(t *testing.T, dir string) {
+	t.Helper()
+	writeScanFile(t, dir, "go.mod", "module example.com/test\n\ngo 1.26.6\n")
+}
+
 func findingRules(result *ScannerResult) map[string]int {
 	counts := map[string]int{}
 	for _, f := range result.Findings {
@@ -136,11 +141,26 @@ func bad() { exec.Command("bash", "-c", userCmd) }
 func TestGoASTTracksRequestValueIntoShell(t *testing.T) {
 	s := NewScanner(config.Default())
 	tmpDir := t.TempDir()
+	writeGoModule(t, tmpDir)
 	writeScanFile(t, tmpDir, "handler.go", `
 package main
+import (
+	"net/http"
+	"os/exec"
+)
 func handler(r *http.Request) {
-	command := r.FormValue("cmd")
-	exec.Command("/bin/sh", "-c", command)
+	exec.Command("/bin/sh", "-c", requestCommand(r))
+	runCommand(r.FormValue("cmd"))
+}
+func requestCommand(r *http.Request) string {
+	command := "echo safe"
+	if r.Method == "POST" {
+		command = r.FormValue("cmd")
+	}
+	return command
+}
+func runCommand(command string) {
+	exec.Command("sh", "-c", command)
 }
 `)
 
@@ -148,16 +168,21 @@ func handler(r *http.Request) {
 	if err != nil {
 		t.Fatalf("scan failed: %v", err)
 	}
-	if findingRules(result)["go-ast-shell-tainted"] != 1 {
-		t.Fatalf("expected tainted shell finding, got %+v", result.Findings)
+	if findingRules(result)["go-ast-shell-tainted"] != 2 {
+		t.Fatalf("expected tainted return and argument flows, got %+v", result.Findings)
 	}
 }
 
 func TestGoASTTracksHandlerClosuresAndClearsReassignedTaint(t *testing.T) {
 	s := NewScanner(config.Default())
 	tmpDir := t.TempDir()
+	writeGoModule(t, tmpDir)
 	writeScanFile(t, tmpDir, "handler.go", `
 package main
+import (
+	"net/http"
+	"os/exec"
+)
 func register() {
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		command := r.FormValue("cmd")
@@ -183,8 +208,13 @@ func safe(r *http.Request) {
 func TestGoASTSkipsContextArgumentForQueryContext(t *testing.T) {
 	s := NewScanner(config.Default())
 	tmpDir := t.TempDir()
+	writeGoModule(t, tmpDir)
 	writeScanFile(t, tmpDir, "query.go", `
 package main
+import (
+	"context"
+	"database/sql"
+)
 func lookup(db *sql.DB, ctx context.Context) {
 	db.QueryContext(ctx, "SELECT 1")
 }
