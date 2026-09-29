@@ -107,12 +107,12 @@ Wraps [Trivy](https://github.com/aquasecurity/trivy) when installed. Enable with
 
 **Opt-in only** — enable with `--license` or `scanners.license.enabled: true`. Not part of `--all` / Action `scan-all`.
 
-Checks `package.json`, npm lockfile license metadata, and `go.mod`. Flags:
+Checks `package.json`, npm v2/v3 lockfile license metadata, and `go.mod`. Flags:
 
 - Licenses on the **denied** list (default GPL-3.0, AGPL-3.0, SSPL-1.0), and
 - Licenses **not** on `scanners.license.allowed` when that list is non-empty.
 
-Transitive licenses come from `package-lock.json` when present, plus a **small hardcoded map** for Go and npm dependencies. Unknown or absent lockfile license metadata is not flagged; this is still not a full license DB or SBOM. Cargo/Ruby manifests are not scanned.
+Transitive licenses come from npm v2/v3 `package-lock.json` metadata when present, plus a **small hardcoded map** for Go and npm dependencies. Unknown or absent lockfile license metadata is not flagged; this is still not a full license DB or SBOM. Cargo/Ruby manifests are not scanned.
 
 ---
 

@@ -81,13 +81,21 @@ func (s *Scanner) scanGoAST(ctx context.Context, files []string, base string) ([
 // ponytail: function-local, path-insensitive taint tracking; use SSA when branch and call flows matter.
 func scanGoShellTaint(fset *token.FileSet, file *ast.File, rel string) []api.Finding {
 	var findings []api.Finding
-	for _, decl := range file.Decls {
-		fn, ok := decl.(*ast.FuncDecl)
-		if !ok || fn.Body == nil {
-			continue
+	var bodies []*ast.BlockStmt
+	ast.Inspect(file, func(n ast.Node) bool {
+		switch x := n.(type) {
+		case *ast.FuncDecl:
+			if x.Body != nil {
+				bodies = append(bodies, x.Body)
+			}
+		case *ast.FuncLit:
+			bodies = append(bodies, x.Body)
 		}
+		return true
+	})
+	for _, body := range bodies {
 		tainted := map[string]bool{}
-		ast.Inspect(fn.Body, func(n ast.Node) bool {
+		ast.Inspect(body, func(n ast.Node) bool {
 			if n == nil {
 				return true
 			}
@@ -96,19 +104,13 @@ func scanGoShellTaint(fset *token.FileSet, file *ast.File, rel string) []api.Fin
 			}
 			switch x := n.(type) {
 			case *ast.AssignStmt:
-				if anyTainted(x.Rhs, tainted) {
-					for _, lhs := range x.Lhs {
-						if id, ok := lhs.(*ast.Ident); ok {
-							tainted[id.Name] = true
-						}
-					}
-				}
+				assignTaint(x.Lhs, x.Rhs, tainted)
 			case *ast.ValueSpec:
-				if anyTainted(x.Values, tainted) {
-					for _, name := range x.Names {
-						tainted[name.Name] = true
-					}
+				lhs := make([]ast.Expr, len(x.Names))
+				for i, name := range x.Names {
+					lhs[i] = name
 				}
+				assignTaint(lhs, x.Values, tainted)
 			case *ast.CallExpr:
 				if shellCommandTainted(x, tainted) {
 					pos := fset.Position(x.Pos())
@@ -124,13 +126,28 @@ func scanGoShellTaint(fset *token.FileSet, file *ast.File, rel string) []api.Fin
 	return findings
 }
 
-func anyTainted(exprs []ast.Expr, tainted map[string]bool) bool {
-	for _, expr := range exprs {
-		if isTainted(expr, tainted) {
-			return true
+func assignTaint(lhs, rhs []ast.Expr, tainted map[string]bool) {
+	values := make([]bool, len(lhs))
+	for i, expr := range lhs {
+		if _, ok := expr.(*ast.Ident); !ok {
+			continue
+		}
+		switch {
+		case len(rhs) == len(lhs):
+			values[i] = isTainted(rhs[i], tainted)
+		case len(rhs) == 1:
+			values[i] = isTainted(rhs[0], tainted)
+		case len(rhs) > 0:
+			for _, value := range rhs {
+				values[i] = values[i] || isTainted(value, tainted)
+			}
 		}
 	}
-	return false
+	for i, expr := range lhs {
+		if id, ok := expr.(*ast.Ident); ok {
+			tainted[id.Name] = values[i]
+		}
+	}
 }
 
 func isTainted(expr ast.Expr, tainted map[string]bool) bool {

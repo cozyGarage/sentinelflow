@@ -153,6 +153,33 @@ func handler(r *http.Request) {
 	}
 }
 
+func TestGoASTTracksHandlerClosuresAndClearsReassignedTaint(t *testing.T) {
+	s := NewScanner(config.Default())
+	tmpDir := t.TempDir()
+	writeScanFile(t, tmpDir, "handler.go", `
+package main
+func register() {
+	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		command := r.FormValue("cmd")
+		exec.Command("sh", "-c", command)
+	})
+}
+func safe(r *http.Request) {
+	command := r.FormValue("cmd")
+	command = "echo fixed"
+	exec.Command("sh", "-c", command)
+}
+`)
+
+	result, err := s.Scan(context.Background(), tmpDir, nil)
+	if err != nil {
+		t.Fatalf("scan failed: %v", err)
+	}
+	if findingRules(result)["go-ast-shell-tainted"] != 1 {
+		t.Fatalf("expected only the closure's tainted shell finding, got %+v", result.Findings)
+	}
+}
+
 func TestGoASTSkipsContextArgumentForQueryContext(t *testing.T) {
 	s := NewScanner(config.Default())
 	tmpDir := t.TempDir()

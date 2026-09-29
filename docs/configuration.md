@@ -113,7 +113,7 @@ Each tool is `{ mode: auto\|required\|off }`. `auto` warns if the binary is miss
 
 | Field | Type | Default | Description |
 | --- | --- | --- | --- |
-| `enabled` | bool | `false` | Opt-in license policy scanning (`package.json`, `package-lock.json`, `go.mod`). Not enabled by `--all` |
+| `enabled` | bool | `false` | Opt-in license policy scanning (`package.json`, npm v2/v3 `package-lock.json`, `go.mod`). Not enabled by `--all` |
 | `denied` | []string | GPL-3.0, AGPL-3.0, SSPL-1.0 | Licenses that fail the scan |
 | `allowed` | []string | — | If non-empty, only these licenses are permitted (checked before denied) |
 
