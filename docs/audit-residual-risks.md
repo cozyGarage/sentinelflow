@@ -19,7 +19,7 @@ Re-audit after each release train. Unit tests green; `make demo` fails the gate 
 | License scanner | High FN rate by design | Uses npm lockfile metadata when present plus a small hardcoded map. **Honesty path:** opt-in only (not in `--all`). |
 | Dependencies | Bare Gemfile / Gradle still unsupported | Lockfile-first; `Gemfile.lock` supported. Go transitives via `go.sum` (R4). |
 | OSV / network | Transport flake; was memory-only cache, no retry | Default `fail_on_error: true`. R4: querybatch, retry, disk cache, `sentinelflow db update`. |
-| SAST | Still regex-first; Go AST is a narrow pass | No general taint. Semgrep adapter when installed (`mode: auto`). |
+| SAST | Regex-first; Go AST covers selected sinks and local shell taint | No path-sensitive or cross-function taint. Semgrep adapter when installed (`mode: auto`). |
 | Artifacts | Built outputs were never scanned | R5: classifier + unpacker + catalogers; `--artifacts` opt-in (not in `--all`). |
 | Malware heuristics | Heuristic, not a sandbox | Opt-in, confidence-scored. No dynamic detonation (non-goal). |
 | Secrets git history | Requires local `git` | Errors surface; `--diff-base` limits PR history to `base..head`. |

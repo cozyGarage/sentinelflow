@@ -8,6 +8,7 @@ import (
 	"go/token"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/cozygarage/sentinelflow/internal/scanner/fingerprint"
@@ -72,8 +73,130 @@ func (s *Scanner) scanGoAST(ctx context.Context, files []string, base string) ([
 			}
 			return true
 		})
+		findings = append(findings, scanGoShellTaint(fset, f, rel)...)
 	}
 	return findings, nil
+}
+
+// ponytail: function-local, path-insensitive taint tracking; use SSA when branch and call flows matter.
+func scanGoShellTaint(fset *token.FileSet, file *ast.File, rel string) []api.Finding {
+	var findings []api.Finding
+	for _, decl := range file.Decls {
+		fn, ok := decl.(*ast.FuncDecl)
+		if !ok || fn.Body == nil {
+			continue
+		}
+		tainted := map[string]bool{}
+		ast.Inspect(fn.Body, func(n ast.Node) bool {
+			if n == nil {
+				return true
+			}
+			if _, ok := n.(*ast.FuncLit); ok {
+				return false
+			}
+			switch x := n.(type) {
+			case *ast.AssignStmt:
+				if anyTainted(x.Rhs, tainted) {
+					for _, lhs := range x.Lhs {
+						if id, ok := lhs.(*ast.Ident); ok {
+							tainted[id.Name] = true
+						}
+					}
+				}
+			case *ast.ValueSpec:
+				if anyTainted(x.Values, tainted) {
+					for _, name := range x.Names {
+						tainted[name.Name] = true
+					}
+				}
+			case *ast.CallExpr:
+				if shellCommandTainted(x, tainted) {
+					pos := fset.Position(x.Pos())
+					findings = append(findings, astFinding(rel, pos, "go-ast-shell-tainted",
+						"User input passed to shell command",
+						"Avoid passing request data to a shell; use a fixed executable and validated arguments.",
+						"cmd-inject", api.SeverityCritical, "CWE-78"))
+				}
+			}
+			return true
+		})
+	}
+	return findings
+}
+
+func anyTainted(exprs []ast.Expr, tainted map[string]bool) bool {
+	for _, expr := range exprs {
+		if isTainted(expr, tainted) {
+			return true
+		}
+	}
+	return false
+}
+
+func isTainted(expr ast.Expr, tainted map[string]bool) bool {
+	found := false
+	ast.Inspect(expr, func(n ast.Node) bool {
+		if id, ok := n.(*ast.Ident); ok && tainted[id.Name] || isTaintSource(n) {
+			found = true
+			return false
+		}
+		return !found
+	})
+	return found
+}
+
+func isTaintSource(n ast.Node) bool {
+	call, ok := n.(*ast.CallExpr)
+	if !ok {
+		return false
+	}
+	name := callName(call.Fun)
+	if name == "os.Getenv" || strings.HasSuffix(name, ".FormValue") || strings.HasSuffix(name, ".PostFormValue") {
+		return true
+	}
+	if name != "Get" {
+		return false
+	}
+	selector, ok := call.Fun.(*ast.SelectorExpr)
+	if !ok {
+		return false
+	}
+	switch receiver := selector.X.(type) {
+	case *ast.SelectorExpr:
+		return receiver.Sel.Name == "Header"
+	case *ast.CallExpr:
+		return callName(receiver.Fun) == "Query"
+	}
+	return false
+}
+
+func shellCommandTainted(call *ast.CallExpr, tainted map[string]bool) bool {
+	name := callName(call.Fun)
+	if name != "exec.Command" && name != "exec.CommandContext" {
+		return false
+	}
+	exeArg := 0
+	if name == "exec.CommandContext" {
+		exeArg = 1
+	}
+	if len(call.Args) <= exeArg+2 {
+		return false
+	}
+	var shell string
+	if lit, ok := call.Args[exeArg].(*ast.BasicLit); !ok || lit.Kind != token.STRING {
+		return false
+	} else if value, err := strconv.Unquote(lit.Value); err == nil {
+		shell = filepath.Base(value)
+	}
+	if shell != "sh" && shell != "bash" && shell != "dash" && shell != "zsh" && shell != "cmd" && shell != "cmd.exe" {
+		return false
+	}
+	for i := exeArg + 1; i+1 < len(call.Args); i++ {
+		if lit, ok := call.Args[i].(*ast.BasicLit); ok && lit.Kind == token.STRING && lit.Value == `"-c"` && isTainted(call.Args[i+1], tainted) {
+			return true
+		}
+	}
+	return false
 }
 
 func astFinding(rel string, pos token.Position, rule, title, desc, category string, sev api.Severity, cwe string) api.Finding {

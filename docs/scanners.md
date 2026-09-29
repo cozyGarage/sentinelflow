@@ -89,11 +89,11 @@ OWASP-oriented regex rules for SQL injection, XSS, path traversal, SSRF, and com
 
 **Languages with shared sinks today:** Go, JavaScript/TypeScript, Python, Java. Other extensions are not claimed until language-specific rules exist.
 
-A native Go AST pass flags `exec.Command` / SQL `Query`/`Exec` with non-constant arguments.
+A native Go AST pass flags `exec.Command` and SQL `Query`/`Exec`/`QueryRow`/`Prepare` with non-constant arguments. A narrow, function-local pass also tracks request values into shell `-c` commands.
 
 **Config:** `scanners.sast.severity` and `skip_rules` are honored (same behavior as IaC). Default concurrency is 8 workers.
 
-**Limits:** regex is still line-local — no general taint/dataflow. Use the Semgrep adapter (`scanners.external.semgrep.mode: auto`) when installed. Prefer `skip_rules` / `sentinelflow:ignore` / baseline for known noise.
+**Limits:** regex is still line-local; Go taint tracking is path-insensitive and does not cross function calls. Use the Semgrep adapter (`scanners.external.semgrep.mode: auto`) for broader dataflow. Prefer `skip_rules` / `sentinelflow:ignore` / baseline for known noise.
 
 ---
 

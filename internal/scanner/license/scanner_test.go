@@ -93,3 +93,22 @@ func TestMissingManifestsAreOK(t *testing.T) {
 		t.Fatalf("expected 0 files, got %d", result.FilesCount)
 	}
 }
+
+func TestDeniedLicensesFromPackageLock(t *testing.T) {
+	tmpDir := t.TempDir()
+	lock := `{"lockfileVersion":3,"packages":{"":{"name":"app"},"node_modules/blocked":{"license":"GPL-3.0"},"node_modules/@scope/also-blocked":{"license":{"type":"AGPL-3.0"}}}}`
+	if err := os.WriteFile(filepath.Join(tmpDir, "package-lock.json"), []byte(lock), 0644); err != nil {
+		t.Fatal(err)
+	}
+	s := NewScanner(&config.Config{Scanners: config.ScannersConfig{License: config.LicenseConfig{
+		Enabled: true,
+		Denied:  []string{"GPL-3.0", "AGPL-3.0"},
+	}}})
+	result, err := s.Scan(context.Background(), tmpDir, nil)
+	if err != nil {
+		t.Fatalf("scan failed: %v", err)
+	}
+	if len(result.Findings) != 2 {
+		t.Fatalf("expected two denied package licenses, got %d: %+v", len(result.Findings), result.Findings)
+	}
+}

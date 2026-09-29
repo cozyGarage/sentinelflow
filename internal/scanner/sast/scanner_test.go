@@ -133,6 +133,45 @@ func bad() { exec.Command("bash", "-c", userCmd) }
 	}
 }
 
+func TestGoASTTracksRequestValueIntoShell(t *testing.T) {
+	s := NewScanner(config.Default())
+	tmpDir := t.TempDir()
+	writeScanFile(t, tmpDir, "handler.go", `
+package main
+func handler(r *http.Request) {
+	command := r.FormValue("cmd")
+	exec.Command("/bin/sh", "-c", command)
+}
+`)
+
+	result, err := s.Scan(context.Background(), tmpDir, nil)
+	if err != nil {
+		t.Fatalf("scan failed: %v", err)
+	}
+	if findingRules(result)["go-ast-shell-tainted"] != 1 {
+		t.Fatalf("expected tainted shell finding, got %+v", result.Findings)
+	}
+}
+
+func TestGoASTSkipsContextArgumentForQueryContext(t *testing.T) {
+	s := NewScanner(config.Default())
+	tmpDir := t.TempDir()
+	writeScanFile(t, tmpDir, "query.go", `
+package main
+func lookup(db *sql.DB, ctx context.Context) {
+	db.QueryContext(ctx, "SELECT 1")
+}
+`)
+
+	result, err := s.Scan(context.Background(), tmpDir, nil)
+	if err != nil {
+		t.Fatalf("scan failed: %v", err)
+	}
+	if findingRules(result)["go-ast-sql-nonconst"] != 0 {
+		t.Fatalf("constant QueryContext query should not be flagged: %+v", result.Findings)
+	}
+}
+
 func TestSkipRulesAndSeverity(t *testing.T) {
 	cfg := config.Default()
 	cfg.Scanners.SAST.SkipRules = []string{"path-traversal"}
