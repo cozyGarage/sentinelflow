@@ -27,7 +27,7 @@ Re-audit after each release train. Unit tests green; `make demo` fails the gate 
 | Policy vs IaC | Remaining Rego gaps | Some workload kinds / stringly YAML may still diverge. |
 | Redaction | Heuristic, not cryptographic | Novel secret formats may still leak in snippets. |
 | CloudFormation | Not implemented | **Not planned.** Listing it under `scanners.iac.frameworks` fails validation. |
-| AI scanner | Rejected at config/CLI | Planned; keep `enabled: false`. |
+| AI scanner | Rejected at config/CLI | No scoped design yet; keep `enabled: false` until one exists. |
 | OPA API | `opa/rego` v0 wrapper deprecated | Keep until Rego v1 migrate; `opa/v1` needs policy rewrite or explicit RegoV0. |
 
 ## Landed since original residual note
