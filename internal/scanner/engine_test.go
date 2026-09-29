@@ -162,12 +162,53 @@ type stubScanner struct {
 	name     string
 	findings []api.Finding
 	err      error
+	delay    time.Duration
 }
 
 func (s *stubScanner) Name() string              { return s.name }
 func (s *stubScanner) Supports(path string) bool { return true }
 func (s *stubScanner) Scan(ctx context.Context, path string, opts interface{}) (*types.ScannerResult, error) {
+	if s.delay > 0 {
+		select {
+		case <-time.After(s.delay):
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+	}
 	return &types.ScannerResult{Findings: s.findings, FilesCount: 1}, s.err
+}
+
+func TestEngineOrdersResultsIndependentOfScannerCompletion(t *testing.T) {
+	tmpDir := t.TempDir()
+	engine := NewEngine(&config.Config{})
+	engine.scanners = []Scanner{
+		&stubScanner{
+			name:  "slow",
+			delay: 20 * time.Millisecond,
+			findings: []api.Finding{{
+				ID: "LOW-1", Scanner: "slow", Severity: api.SeverityLow,
+				Location: api.Location{File: "z.go", StartLine: 10},
+			}},
+		},
+		&stubScanner{
+			name: "fast",
+			findings: []api.Finding{{
+				ID: "HIGH-1", Scanner: "fast", Severity: api.SeverityHigh,
+				Location: api.Location{File: "a.go", StartLine: 2},
+			}},
+		},
+	}
+
+	result, err := engine.Scan(context.Background(), tmpDir)
+	if err != nil {
+		t.Fatalf("Scan failed: %v", err)
+	}
+	if len(result.ScannerRuns) != 2 || result.ScannerRuns[0].Scanner != "slow" || result.ScannerRuns[1].Scanner != "fast" {
+		t.Fatalf("scanner runs should retain configured order, got %+v", result.ScannerRuns)
+	}
+	if len(result.Findings) != 2 || result.Findings[0].ID != "HIGH-1" || result.Findings[1].ID != "LOW-1" {
+		t.Fatalf("findings should sort by severity regardless of completion order, got %+v", result.Findings)
+	}
 }
 
 func TestEnginePreservesFindingsOnScannerError(t *testing.T) {

@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"sort"
 	"sync"
 	"time"
 
@@ -116,12 +117,16 @@ func (e *Engine) Scan(ctx context.Context, targetPath string) (*api.ScanResult, 
 		Staged:      e.Staged,
 	}
 
+	type scanOutcome struct {
+		run      api.ScannerRun
+		findings []api.Finding
+	}
+	outcomes := make([]scanOutcome, len(e.scanners))
 	var wg sync.WaitGroup
-	var mu sync.Mutex
 
-	for _, scanner := range e.scanners {
+	for i, scanner := range e.scanners {
 		wg.Add(1)
-		go func(s Scanner) {
+		go func(i int, s Scanner) {
 			defer wg.Done()
 
 			scanStart := time.Now()
@@ -142,19 +147,19 @@ func (e *Engine) Scan(ctx context.Context, targetPath string) (*api.ScanResult, 
 				run.FilesCount = scanResult.FilesCount
 				run.FindingsCount = len(scanResult.Findings)
 				run.Warnings = append([]string(nil), scanResult.Warnings...)
-
-				mu.Lock()
-				result.Findings = append(result.Findings, scanResult.Findings...)
-				mu.Unlock()
+				outcomes[i].findings = scanResult.Findings
 			}
 
-			mu.Lock()
-			result.ScannerRuns = append(result.ScannerRuns, run)
-			mu.Unlock()
-		}(scanner)
+			outcomes[i].run = run
+		}(i, scanner)
 	}
 
 	wg.Wait()
+	for _, outcome := range outcomes {
+		result.ScannerRuns = append(result.ScannerRuns, outcome.run)
+		result.Findings = append(result.Findings, outcome.findings...)
+	}
+	sortFindings(result.Findings)
 
 	fingerprint.Ensure(result.Findings)
 
@@ -220,6 +225,38 @@ func (e *Engine) Scan(ctx context.Context, targetPath string) (*api.ScanResult, 
 	result.Duration = api.DurationMS(time.Since(startTime))
 
 	return result, nil
+}
+
+func sortFindings(findings []api.Finding) {
+	sort.SliceStable(findings, func(i, j int) bool {
+		a, b := findings[i], findings[j]
+		aRank, bRank := a.Severity.Rank(), b.Severity.Rank()
+		if aRank != bRank {
+			return aRank > bRank
+		}
+		if a.Location.File != b.Location.File {
+			return a.Location.File < b.Location.File
+		}
+		if a.Location.StartLine != b.Location.StartLine {
+			return a.Location.StartLine < b.Location.StartLine
+		}
+		if a.Location.StartCol != b.Location.StartCol {
+			return a.Location.StartCol < b.Location.StartCol
+		}
+		if a.Scanner != b.Scanner {
+			return a.Scanner < b.Scanner
+		}
+		if a.RuleID != b.RuleID {
+			return a.RuleID < b.RuleID
+		}
+		if a.ID != b.ID {
+			return a.ID < b.ID
+		}
+		if a.Fingerprint != b.Fingerprint {
+			return a.Fingerprint < b.Fingerprint
+		}
+		return a.Title < b.Title
+	})
 }
 
 func (e *Engine) diffBase() string {
