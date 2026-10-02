@@ -296,9 +296,10 @@ func (s *Scanner) loadPatterns() []*SecretPattern {
 	return []*SecretPattern{
 		// AWS
 		{
-			ID:          "aws-access-key",
-			Name:        "AWS Access Key ID",
-			Pattern:     regexp.MustCompile(`(?i)(AKIA|ABIA|ACCA|ASIA)[0-9A-Z]{16}`),
+			ID:   "aws-access-key",
+			Name: "AWS Access Key ID",
+			// Key IDs are always uppercase; (?i) matched words like "ArabianDiacritical…".
+			Pattern:     regexp.MustCompile(`\b(AKIA|ABIA|ACCA|ASIA)[0-9A-Z]{16}\b`),
 			Severity:    api.SeverityCritical,
 			Description: "AWS Access Key ID found in code",
 			Keywords:    []string{"aws", "access", "key"},
@@ -461,7 +462,7 @@ func (s *Scanner) loadPatterns() []*SecretPattern {
 		{
 			ID:             "database-url",
 			Name:           "Database Connection String",
-			Pattern:        regexp.MustCompile(`(?i)(mysql|postgres|postgresql|mongodb|redis|mongodb\+srv):\/\/[^:]+:[^@]+@[^\/]+`),
+			Pattern:        regexp.MustCompile(`(?i)(mysql|postgres|postgresql|mongodb|redis|mongodb\+srv):\/\/[^:\s/@]+:[^@\s]+@[^\/\s]+`),
 			Severity:       api.SeverityHigh,
 			Description:    "Database connection string with credentials found",
 			Keywords:       []string{"mysql://", "postgres://", "postgresql://", "mongodb://", "redis://", "mongodb+srv://"},

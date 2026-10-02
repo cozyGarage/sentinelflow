@@ -225,3 +225,32 @@ func TestSecretsFixtures(t *testing.T) {
 func contains(s, substr string) bool {
 	return len(s) > 0 && len(substr) > 0 && strings.Contains(s, substr)
 }
+
+// Regressions from scanning SentinelFlow's own binary: printable-string runs of
+// Go literals produced a "critical AWS key" and a fake DB URL.
+func TestPatternsRejectConcatenatedLiterals(t *testing.T) {
+	scanner := NewScanner(&config.Config{})
+	hasRule := func(content, rule string) bool {
+		for _, f := range scanner.scanContent(content, "test.txt", 0) {
+			if f.RuleID == rule {
+				return true
+			}
+		}
+		return false
+	}
+	cases := []struct {
+		content, rule string
+		want          bool
+	}{
+		{"ArabianDiacriticalAcuteAccent", "aws-access-key", false},
+		{"key = " + "akia" + "iosfodnn7realkey", "aws-access-key", false},
+		{"key = " + "AKIA" + "IOSFODNN7REALKEY", "aws-access-key", true},
+		{"mongodb://_authtokencloudflaregit_commitcache missstream end:x@y", "database-url", false},
+		{"postgres://" + "app:s3cr3t@db.internal:5432/prod", "database-url", true},
+	}
+	for _, c := range cases {
+		if got := hasRule(c.content, c.rule); got != c.want {
+			t.Errorf("%s on %q: got %v, want %v", c.rule, c.content, got, c.want)
+		}
+	}
+}

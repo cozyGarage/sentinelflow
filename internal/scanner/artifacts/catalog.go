@@ -25,11 +25,12 @@ type Component struct {
 func componentsFromBuildInfo(bi *buildinfo.BuildInfo, path string) []Component {
 	var out []Component
 	if bi.GoVersion != "" {
+		goVer := goStdlibVersion(bi.GoVersion)
 		out = append(out, Component{
 			Name:      "stdlib",
-			Version:   strings.TrimPrefix(bi.GoVersion, "go"),
+			Version:   goVer,
 			Ecosystem: "go",
-			PURL:      fmt.Sprintf("pkg:golang/stdlib@%s", strings.TrimPrefix(bi.GoVersion, "go")),
+			PURL:      fmt.Sprintf("pkg:golang/stdlib@%s", goVer),
 			Path:      path,
 		})
 	}
@@ -246,4 +247,18 @@ func firstNonEmpty(values ...string) string {
 		}
 	}
 	return ""
+}
+
+// goStdlibVersion drops the "go" prefix and any GOEXPERIMENT suffix
+// ("go1.27.0 X:nodwarf5" / "go1.27.0-X:nodwarf5"); left in, OSV reads it as a
+// prerelease older than 1.27.0 and reports vulns that release already fixed.
+func goStdlibVersion(v string) string {
+	v = strings.TrimPrefix(v, "go")
+	if i := strings.IndexByte(v, ' '); i >= 0 {
+		v = v[:i]
+	}
+	if i := strings.Index(v, "-X:"); i >= 0 {
+		v = v[:i]
+	}
+	return v
 }
