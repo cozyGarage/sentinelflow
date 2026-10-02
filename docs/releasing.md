@@ -29,6 +29,8 @@ Watch the **Release** workflow. On success:
 - CycloneDX + SPDX SBOMs and an artifact self-scan report
 - If Docker Hub secrets are present: `sentinelflow/sentinelflow:v1.2.0`, `:v1`, `:v1.1`, `:latest`
 
+Release candidates: tag `vX.Y.Z-rc.N` first (published as a prerelease), verify, then tag `vX.Y.Z` on the same commit. The workflow pins `GORELEASER_CURRENT_TAG` to the pushed tag so the shared commit is not ambiguous.
+
 ## Verify
 
 ```bash

@@ -67,6 +67,9 @@ jobs:
           version: v2.9.0
           args: ${{ steps.docker.outputs.enabled == 'true' && 'release --clean' || 'release --clean --skip=docker' }}
         env:
+          # Build the tag that triggered this run. Without it GoReleaser may pick
+          # another tag on the same commit (v1.2.0 built as v1.2.0-rc.3).
+          GORELEASER_CURRENT_TAG: ${{ github.ref_name }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
           DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
