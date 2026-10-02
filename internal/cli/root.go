@@ -32,11 +32,15 @@ with CI/CD pipelines to automatically detect security vulnerabilities,
 leaked secrets, insecure configurations, and more.
 
 Features:
-  • Secret scanning (API keys, tokens, credentials)
-  • Infrastructure-as-Code scanning (Terraform, K8s, Docker)
-  • Dependency vulnerability analysis
-  • Policy-as-code enforcement
-  • Automated security reports
+  • Secret scanning (API keys, tokens, credentials, git history)
+  • Infrastructure-as-Code scanning (Terraform, K8s, Dockerfile)
+  • Dependency vulnerability analysis (OSV) and license policy
+  • SAST (OWASP rules + Go AST/SSA taint)
+  • Artifact/binary scanning (SCA, hardening, malware heuristics)
+  • Policy-as-code enforcement (OPA/Rego)
+  • SBOM generation and ingest (CycloneDX, SPDX)
+  • Optional adapters: Semgrep, gitleaks, Grype, Syft, Trivy, YARA
+  • Reports: text, JSON, SARIF, Markdown, HTML, JUnit, GitLab
 
 AI-powered code review is planned; --ai / scanners.ai.enabled are rejected in this release.`,
 	PersistentPreRun: func(cmd *cobra.Command, args []string) {
@@ -84,6 +88,8 @@ func init() {
 	rootCmd.AddCommand(hookCmd)
 	rootCmd.AddCommand(baselineCmd)
 	rootCmd.AddCommand(sbomCmd)
+
+	initCmd.Flags().BoolVar(&initForce, "force", false, "overwrite an existing .sentinelflow.yaml")
 }
 
 func initConfig() {
@@ -127,6 +133,8 @@ var versionCmd = &cobra.Command{
 	},
 }
 
+var initForce bool
+
 // initCmd initializes a new configuration
 var initCmd = &cobra.Command{
 	Use:   "init",
@@ -135,12 +143,12 @@ var initCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		configPath := ".sentinelflow.yaml"
 
-		if _, err := os.Stat(configPath); err == nil {
-			return fmt.Errorf("configuration file already exists: %s", configPath)
+		if _, err := os.Stat(configPath); err == nil && !initForce {
+			return fmt.Errorf("configuration file already exists: %s (use --force to overwrite)", configPath)
 		}
 
 		defaultConfig := `# SentinelFlow Configuration
-# Documentation: https://github.com/cozygarage/sentinelflow
+# Documentation: https://github.com/cozyGarage/sentielflow/blob/main/docs/configuration.md
 
 version: "1.0"
 
@@ -158,7 +166,7 @@ scanners:
     allowlist:
       - "**/*_test.go"
     entropy_threshold: 4.5
-  
+
   iac:
     enabled: true
     frameworks:
@@ -166,24 +174,16 @@ scanners:
       - kubernetes
       - dockerfile
     severity: medium
-  
+
   dependencies:
     enabled: true
     ecosystems:
       - auto  # Auto-detect based on project files
     severity: medium
     ignore_dev: false
-  
-  # AI review is planned; leave enabled false (rejected if true).
-  ai:
-    enabled: false
-    provider: openai
-    model: gpt-4
-    focus:
-      - injection
-      - authentication
-      - authorization
-      - cryptography
+
+  sast:
+    enabled: true
 
 policies:
   enabled: true
@@ -194,9 +194,6 @@ policies:
     - no-privileged-containers
     - require-https
     - enforce-encryption
-
-reporting:
-  format: markdown
 
 fail_on:
   severity: high

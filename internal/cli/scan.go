@@ -238,7 +238,7 @@ func applyScanFlags(cfg *config.Config) error {
 		// Container needs Trivy (+ usually an image); keep opt-in via --container.
 		cfg.Scanners.Container.Enabled = false
 		cfg.Scanners.Artifacts.Enabled = false
-		// AI scanner is not registered in v1.0
+		// AI scanner is not registered yet
 		cfg.Scanners.AI.Enabled = false
 		// --no-* opts out of one scanner without the selective-flag path that disables policy.
 		if noSecrets {

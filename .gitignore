@@ -1,4 +1,4 @@
-# Binaries (root only — do not ignore .github/actions/sentinelflow/)
+# Binaries (root only)
 /sentinelflow
 /sentinelflow.exe
 /bin/sentinelflow

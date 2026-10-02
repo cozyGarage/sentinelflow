@@ -1,6 +1,6 @@
 # SentinelFlow Roadmap
 
-R0 (`v1.1.0` binaries) and R1 (productize the gate) are done. The next trains make the CI gate **trustworthy**, then deepen code and artifact scanning. Native Go handles core checks; optional adapters wrap Semgrep, Syft/Grype, Trivy `fs`, gitleaks, and YARA when they are installed.
+R0 (`v1.1.0` binaries) and R1 (productize the gate) shipped in v1.1.x. **R2–R6 shipped in v1.2.0**: a trustworthy CI gate, CI/CD integration, deeper code scanning, artifact scanning, and quality proofs. Next up: [v1.3.0 candidates](#v130-candidates). Native Go handles core checks; optional adapters wrap Semgrep, Syft/Grype, Trivy `fs`, gitleaks, and YARA when they are installed.
 
 ```mermaid
 flowchart LR
@@ -156,6 +156,24 @@ Entry points: `scan --artifacts` (default globs `dist/**`, `build/**`, `*.jar`, 
 
 ---
 
+## v1.3.0 candidates
+
+From the v1.2.0 review. Ordered by impact on signal quality.
+
+| Work | Why | Evidence (v1.2.0) |
+| --- | --- | --- |
+| SSA taint for SQL, path, and SSRF sinks; more sources (`r.URL.Query()`, body, headers, `PathValue`, gin/echo/chi) | Only shell exec has taint; other sinks are line-local regex keyed on variable names | `internal/scanner/sast/goast_ssa.go` |
+| Grow the labeled corpus | precision/recall = 1.00 over 3 labels in 2 scanners is not a signal | `internal/quality`; 8 of 10 regex rules unlabeled; no IaC/policy/deps corpus |
+| Scope regex SAST rules by `languages:` | 9 of 10 rules run on every language | `rules.yaml` |
+| Coverage on security boundaries | `unpack` 47%, `artifacts` 14%, `adapter` 6%, `cli` 28% | `go test -cover ./...` |
+| OPA `opa/v1/rego` migration | `opa/rego` v0 wrapper is deprecated (SA1019) | `internal/scanner/policy/engine.go`, `policies/*.rego` |
+| Perf budget with SAST on | Current budget times secrets only; SSA loads packages | `TestPerfBudgetSmallTree` |
+| Go-aware binary hardening | Canary/FORTIFY/RELRO checks are C-oriented and flag every static Go binary | `scan-artifact` on SentinelFlow itself |
+| Offline OSV DB | Air-gapped CI; needs a local range matcher per ecosystem | `db update` removed in v1.2.0 |
+| Merge `scan_git_history` / `git.scan_history` | Two keys, one feature | `docs/usage.md` |
+
+---
+
 ## Explicit non-goals (near term)
 
 - Rewriting the engine in another language
@@ -171,11 +189,8 @@ Entry points: `scan --artifacts` (default globs `dist/**`, `build/**`, `*.jar`, 
 
 1. ~~**R0** — cut `v1.1.0`~~ done.
 2. ~~**R1** — install decision + timeout / OSV flake / CI docs~~ done.
-3. **R2** — exit codes, fingerprints, baseline v2, suppressions, skip accounting, SARIF.
-4. **R3** — diff/staged, `delivery: release`, SHA pins, extra report formats, signing.
-5. **R4** — adapters, SAST v2 + Go AST, OSV batch + disk cache, SBOM ingest.
-6. **R5** — artifact classifier, unpacker, catalogers, hardening, malware heuristics.
-7. **R6** — corpus, fuzz, perf budget, self-scan of release binaries (land tests with each train).
+3. ~~**R2–R6**~~ shipped in v1.2.0.
+4. **v1.3.0** — see [candidates](#v130-candidates).
 
 Re-run the [audit loop](audit-residual-risks.md) after each release train; keep residual risks short and current.
 

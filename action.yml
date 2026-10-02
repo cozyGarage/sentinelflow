@@ -14,9 +14,9 @@ inputs:
   image:
     description: Container image when delivery=docker
     required: false
-    default: sentinelflow/sentinelflow:v1.1.1
+    default: sentinelflow/sentinelflow:v1.2.0
   version:
-    description: Release tag when delivery=release (e.g. v1.1.1). Empty uses the action ref, then latest.
+    description: Release tag when delivery=release (e.g. v1.2.0). Empty uses the action ref, then latest.
     required: false
     default: ''
   scan-all:
@@ -141,17 +141,7 @@ runs:
         export VERSION
         export INSTALL_DIR="${RUNNER_TEMP}/sentinelflow-bin"
         mkdir -p "${INSTALL_DIR}"
-        INSTALLER=""
-        if [ -f "${GITHUB_ACTION_PATH}/scripts/install.sh" ]; then
-          INSTALLER="${GITHUB_ACTION_PATH}/scripts/install.sh"
-        elif [ -f "${GITHUB_ACTION_PATH}/../../../scripts/install.sh" ]; then
-          INSTALLER="${GITHUB_ACTION_PATH}/../../../scripts/install.sh"
-        fi
-        if [ -n "${INSTALLER}" ]; then
-          bash "${INSTALLER}"
-        else
-          curl -fsSL https://raw.githubusercontent.com/cozyGarage/sentielflow/main/scripts/install.sh | bash
-        fi
+        bash "${GITHUB_ACTION_PATH}/scripts/install.sh"
         echo "SF_BIN=${INSTALL_DIR}/sentinelflow" >> "$GITHUB_ENV"
 
     - name: Pull SentinelFlow image
@@ -173,6 +163,16 @@ runs:
       run: |
         echo "scan-container requires delivery=build or delivery=release (Trivy runs on the host binary path)." >&2
         exit 1
+
+    # OSV results are cached on disk for 24h; persisting them across runs turns a
+    # cold ~20s dependency scan into a sub-second one. Fresh key per run so it refreshes.
+    - name: Restore OSV cache
+      if: inputs.delivery != 'docker'
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ${{ runner.temp }}/sentinelflow-vulndb
+        key: sentinelflow-osv-${{ runner.os }}-${{ github.run_id }}-${{ github.run_attempt }}
+        restore-keys: sentinelflow-osv-${{ runner.os }}-
 
     - name: Run security scan
       id: scan
@@ -200,6 +200,7 @@ runs:
         SF_EMIT_ANNOTATIONS: ${{ inputs.emit-annotations }}
         SF_WORKSPACE: ${{ github.workspace }}
         SF_ACTION_PATH: ${{ github.action_path }}
+        SENTINELFLOW_CACHE_DIR: ${{ runner.temp }}/sentinelflow-vulndb
       run: |
         set -euo pipefail
         ARGS=()

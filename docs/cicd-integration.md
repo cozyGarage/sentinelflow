@@ -6,7 +6,7 @@ SentinelFlow integrates with GitHub Actions, GitLab CI, and Docker-based pipelin
 
 ### Using the composite action (recommended)
 
-The repo includes a composite action at `.github/actions/sentinelflow` (also published as root `action.yml`):
+The repo root `action.yml` is the composite action (`uses: ./` in this repo, `cozyGarage/sentielflow@<tag>` elsewhere):
 
 ```yaml
 name: Security Scan
@@ -28,7 +28,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - uses: ./.github/actions/sentinelflow
+      - uses: ./
         with:
           delivery: build
           scan-all: 'true'
@@ -46,7 +46,7 @@ jobs:
 External repos without Docker Hub — **`delivery: release`** downloads the GitHub Release binary and verifies `checksums.txt`:
 
 ```yaml
-      - uses: cozyGarage/sentielflow@v1.1.1
+      - uses: cozyGarage/sentielflow@v1.2.0
         with:
           delivery: release
           scan-all: 'true'
@@ -58,10 +58,10 @@ External repos without Docker Hub — **`delivery: release`** downloads the GitH
 External repos when a Hub image is published:
 
 ```yaml
-      - uses: cozyGarage/sentielflow@v1.1.1
+      - uses: cozyGarage/sentielflow@v1.2.0
         with:
           delivery: docker
-          image: sentinelflow/sentinelflow:v1.1.1
+          image: sentinelflow/sentinelflow:v1.2.0
           scan-all: 'true'
           fail-on: high
           format: sarif
@@ -77,7 +77,7 @@ Third-party `uses:` in this repository are pinned by commit SHA (Dependabot keep
 | Input | Default | Description |
 | --- | --- | --- |
 | `delivery` | `release` | `release` downloads a GitHub Release binary and verifies `checksums.txt`; `docker` pulls `image`; `build` compiles from the workspace (same-repo only) |
-| `image` | `sentinelflow/sentinelflow:v1.1.1` | Container image when `delivery=docker` |
+| `image` | `sentinelflow/sentinelflow:v1.2.0` | Container image when `delivery=docker` |
 | `version` | action ref / latest | Release tag for `delivery=release` |
 | `scan-all` | `true` | Enable secrets, IaC, deps, SAST (does **not** enable container, license, or artifacts). Individual `scan-*: 'false'` inputs **opt out** even when `scan-all` is true. Policy stays at the config default (enabled) on that path. `scan-all: 'false'` plus selective scanners still disables policy, matching `--secrets` without `--all` |
 | `scan-secrets` | `true` | Secret scanning |
@@ -101,7 +101,7 @@ Third-party `uses:` in this repository are pinned by commit SHA (Dependabot keep
 `scan-container` needs Trivy on the runner. Use `delivery: build` or `delivery: release` (host binary). The Docker delivery image does not include Trivy.
 
 ```yaml
-      - uses: ./.github/actions/sentinelflow
+      - uses: ./
         with:
           delivery: build
           scan-all: 'false'
@@ -122,7 +122,7 @@ sentinelflow baseline . -o .sentinelflow/baseline.yaml
 ```
 
 ```yaml
-      - uses: cozyGarage/sentielflow/.github/actions/sentinelflow@main
+      - uses: cozyGarage/sentielflow@main
         with:
           delivery: docker
           image: sentinelflow/sentinelflow:<tag>

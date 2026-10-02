@@ -1,4 +1,4 @@
-# Audit residual risks (post R0/R1, during R2–R6)
+# Audit residual risks (post v1.2.0)
 
 > Quality waves A–E, sprint Q1–Q3, residual sprint, and dead-code cleanups are on `main`. R2–R6 close the CI-gate and artifact gaps listed below. Rows that still apply after a train should stay; landed items move to “Landed”.
 

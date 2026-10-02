@@ -2,7 +2,7 @@
 # Install SentinelFlow from GitHub Releases into ./bin (or INSTALL_DIR).
 # Usage:
 #   curl -fsSL https://raw.githubusercontent.com/cozyGarage/sentielflow/main/scripts/install.sh | bash
-#   VERSION=1.0.0 ./scripts/install.sh
+#   VERSION=1.2.0 ./scripts/install.sh
 # Verifies the downloaded archive against checksums.txt from the same release.
 set -euo pipefail
 

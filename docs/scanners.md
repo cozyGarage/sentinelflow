@@ -1,6 +1,6 @@
 # Scanner Implementation Details
 
-This guide explains how each scanner in SentinelFlow v1.0 works.
+This guide explains how each scanner in SentinelFlow works.
 
 ## 1. Secret Scanner (`internal/scanner/secrets`)
 

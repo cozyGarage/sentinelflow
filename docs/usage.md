@@ -1,13 +1,13 @@
 # Usage Guide
 
-SentinelFlow is designed to be simple yet powerful. This guide covers the most common commands and use cases for v1.0.
+SentinelFlow is designed to be simple yet powerful. This guide covers the most common commands and use cases.
 
 ## Install
 
 | Method | Command |
 | --- | --- |
 | Source | `git clone https://github.com/cozyGarage/sentielflow && make build` |
-| Install script | `curl -fsSL https://raw.githubusercontent.com/cozyGarage/sentielflow/main/scripts/install.sh \| bash` (verifies `checksums.txt`; pin with `VERSION=1.1.1`) |
+| Install script | `curl -fsSL https://raw.githubusercontent.com/cozyGarage/sentielflow/main/scripts/install.sh \| bash` (verifies `checksums.txt`; pin with `VERSION=1.2.0`) |
 | Release binary | Download from [GitHub Releases](https://github.com/cozyGarage/sentielflow/releases) |
 | Docker (optional) | `docker build -t sentinelflow/sentinelflow:local .` (prefer binary / Action / `make build`; Hub tags only when published) |
 
@@ -62,7 +62,7 @@ sentinelflow scan --artifacts .        # Binaries and archives (opt-in; not in -
 sentinelflow scan --diff-base origin/main
 sentinelflow scan --staged --secrets --iac --fail-on high
 sentinelflow scan --sbom sbom.cdx.json
-sentinelflow scan-artifact dist/app
+sentinelflow scan-artifact dist/app --fail-on critical -f json -o artifact-scan.json
 
 ```
 

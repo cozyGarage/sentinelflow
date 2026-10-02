@@ -65,7 +65,7 @@ Checked-in samples: [`docs/assets/demo/`](docs/assets/demo/).
 | **GitHub Action** | Pull requests | `delivery: release` (external; verifies checksums) or `delivery: build` (this repo) |
 | **Docker** (optional) | CI when an image exists | `docker build -t sentinelflow/sentinelflow:local .` — Hub tags only when Docker credentials are configured on release |
 
-> **v1.1.1** ships GitHub Release binaries + `checksums.txt`. Prefer binary / Action / `make build`. Docker Hub images publish only when `DOCKER_USERNAME` / `DOCKER_PASSWORD` are set (see [docs/releasing.md](docs/releasing.md)); do not assume `:latest` is on Hub.
+> **v1.2.0** ships GitHub Release binaries + `checksums.txt`. Prefer binary / Action / `make build`. Docker Hub images publish only when `DOCKER_USERNAME` / `DOCKER_PASSWORD` are set (see [docs/releasing.md](docs/releasing.md)); do not assume `:latest` is on Hub.
 >
 > **Install matrix:** binary / Action / `make build` first; Docker optional. `go install` is **not supported** (module path ≠ GitHub repo name).
 
@@ -97,7 +97,7 @@ Compose helpers: [`docker-compose.yml`](docker-compose.yml) (`scan-html`, `scan-
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/cozyGarage/sentielflow/main/scripts/install.sh | bash
-# or pin: VERSION=1.1.1 ./scripts/install.sh
+# or pin: VERSION=1.2.0 ./scripts/install.sh
 ./bin/sentinelflow version
 ```
 
@@ -106,7 +106,7 @@ curl -fsSL https://raw.githubusercontent.com/cozyGarage/sentielflow/main/scripts
 Same repository (preferred while Hub images are optional):
 
 ```yaml
-- uses: ./.github/actions/sentinelflow
+- uses: ./
   with:
     delivery: build
     fail-on: high
@@ -117,7 +117,7 @@ Same repository (preferred while Hub images are optional):
 External repos (no Docker Hub required):
 
 ```yaml
-- uses: cozyGarage/sentielflow@v1.1.1
+- uses: cozyGarage/sentielflow@v1.2.0
   with:
     delivery: release
     fail-on: high
@@ -128,10 +128,10 @@ External repos (no Docker Hub required):
 External repos when a published image is available:
 
 ```yaml
-- uses: cozyGarage/sentielflow@v1.1.1
+- uses: cozyGarage/sentielflow@v1.2.0
   with:
     delivery: docker
-    image: sentinelflow/sentinelflow:v1.1.1
+    image: sentinelflow/sentinelflow:v1.2.0
     fail-on: high
     format: sarif
     output: report.sarif
@@ -185,7 +185,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - uses: ./.github/actions/sentinelflow
+      - uses: ./
         with:
           delivery: build
           fail-on: high

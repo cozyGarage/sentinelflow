@@ -38,7 +38,7 @@ jobs:
           govulncheck ./...
 
       - name: Run SentinelFlow scan
-        uses: ./.github/actions/sentinelflow
+        uses: ./
         with:
           delivery: build
           scan-all: 'true'

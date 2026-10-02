@@ -1,6 +1,6 @@
 # SentinelFlow Documentation
 
-Welcome to the SentinelFlow v1.0 documentation.
+Welcome to the SentinelFlow documentation.
 
 ## Documentation Index
 

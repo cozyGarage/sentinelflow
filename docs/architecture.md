@@ -1,6 +1,6 @@
 # System Architecture: SentinelFlow
 
-This document explains the internal architecture of SentinelFlow v1.0 using high-level system design patterns.
+This document explains the internal architecture of SentinelFlow using high-level system design patterns.
 
 ---
 

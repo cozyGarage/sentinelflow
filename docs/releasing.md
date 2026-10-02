@@ -17,30 +17,30 @@ Pinned tooling: `goreleaser/goreleaser-action` and GoReleaser CLI `v2.9.0` (SHA-
 ```bash
 git checkout main
 git pull origin main
-git tag -a v1.1.1 -m "SentinelFlow v1.1.1"
-git push origin v1.1.1
+git tag -a v1.2.0 -m "SentinelFlow v1.2.0"
+git push origin v1.2.0
 ```
 
 Watch the **Release** workflow. On success:
 
-- GitHub Release `v1.1.1` includes binaries + `checksums.txt` (primary install path)
+- GitHub Release `v1.2.0` includes binaries + `checksums.txt` (primary install path)
 - Keyless Cosign signatures: `checksums.txt.sig` + `checksums.txt.pem`
 - SLSA provenance attestation on `checksums.txt`
 - CycloneDX + SPDX SBOMs and an artifact self-scan report
-- If Docker Hub secrets are present: `sentinelflow/sentinelflow:v1.1.1`, `:v1`, `:v1.1`, `:latest`
+- If Docker Hub secrets are present: `sentinelflow/sentinelflow:v1.2.0`, `:v1`, `:v1.1`, `:latest`
 
 ## Verify
 
 ```bash
-VERSION=1.1.1 ./scripts/install.sh
+VERSION=1.2.0 ./scripts/install.sh
 ./bin/sentinelflow version
 
 # Optional — verify checksums.txt with Cosign (needs cosign + the .sig/.pem assets):
-# VERIFY_SIGNATURE=1 VERSION=1.1.1 ./scripts/install.sh
+# VERIFY_SIGNATURE=1 VERSION=1.2.0 ./scripts/install.sh
 
 # Optional — only if Docker Hub publish ran for this tag:
-# docker pull sentinelflow/sentinelflow:v1.1.1
-# docker run --rm sentinelflow/sentinelflow:v1.1.1 version
+# docker pull sentinelflow/sentinelflow:v1.2.0
+# docker run --rm sentinelflow/sentinelflow:v1.2.0 version
 ```
 
 The release workflow runs `scan-artifact` on the published Linux binary (`--fail-on critical`) and attaches `artifact-scan.json`.
