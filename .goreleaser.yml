@@ -87,7 +87,8 @@ release:
     owner: cozyGarage
     name: sentielflow
   draft: false
-  prerelease: false
+  # vX.Y.Z-rc.N tags become GitHub prereleases (never "Latest").
+  prerelease: auto
   name_template: "{{.ProjectName}} v{{.Version}}"
   header: |
     ## SentinelFlow {{.Version}}
@@ -96,8 +97,19 @@ release:
 
     ### Installation
 
-    Download the appropriate binary for your platform below or use Docker:
+    Binary (verifies `checksums.txt`):
 
     ```bash
-    docker pull sentinelflow/sentinelflow:{{.Version}}
+    curl -fsSL https://raw.githubusercontent.com/cozyGarage/sentielflow/main/scripts/install.sh | VERSION={{.Version}} bash
     ```
+
+    GitHub Action:
+
+    ```yaml
+    - uses: cozyGarage/sentielflow@{{.Tag}}
+      with:
+        delivery: release
+        fail-on: high
+    ```
+
+    See CHANGELOG.md for upgrade notes. Docker images are published only when Docker Hub credentials are configured.

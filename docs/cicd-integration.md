@@ -184,7 +184,7 @@ stages:
 
 sentinelflow:
   stage: security
-  image: golang:1.25
+  image: golang:1.27
   script:
     - go build -o sentinelflow ./cmd/sentinelflow
     - ./sentinelflow scan --all --format gitlab-sast -o gl-sast-report.json --fail-on high

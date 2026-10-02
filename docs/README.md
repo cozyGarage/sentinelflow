@@ -27,5 +27,5 @@ Welcome to the SentinelFlow v1.0 documentation.
 
 ## Requirements
 
-- Go 1.25+ (toolchain pinned in `go.mod`), **or** Docker / a GitHub Release binary
+- Go 1.27+ (version pinned in `go.mod`), **or** Docker / a GitHub Release binary
 - Optional: [Trivy](https://github.com/aquasecurity/trivy) for container scanning

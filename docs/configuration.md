@@ -57,8 +57,6 @@ Run `sentinelflow init` to generate a starter configuration.
 | `ignore_dev` | bool | `false` | Skip dev dependencies |
 | `ignore_cves` | []string | — | CVE, GHSA, GO-, or OSV IDs to ignore |
 | `fail_on_error` | bool | `true` | Fail the CLI when the dependencies scanner errors (e.g. OSV network blips). Set `false` to keep any findings and print a warning instead of failing solely for transport errors |
-| `offline` | bool | `false` | Use only the on-disk OSV cache (`sentinelflow db update`) |
-| `cache_dir` | string | user cache | Override on-disk vulnerability cache directory |
 
 Default stays strict for security. Soft-fail is for flaky CI networks only — findings that were collected still go through `fail_on`.
 

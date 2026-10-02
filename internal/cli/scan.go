@@ -103,7 +103,7 @@ func init() {
 	scanCmd.Flags().BoolVar(&noDependencies, "no-deps", false, "with --all, disable dependency scanning (policy stays enabled)")
 	scanCmd.Flags().BoolVar(&noSAST, "no-sast", false, "with --all, disable SAST (policy stays enabled)")
 	scanCmd.Flags().StringVarP(&outputFile, "output", "o", "", "output file path")
-	scanCmd.Flags().StringVar(&failOnSeverity, "fail-on", "", "fail if findings match severity (critical, high, medium, low)")
+	scanCmd.Flags().StringVar(&failOnSeverity, "fail-on", "", "fail if findings match severity (critical, high, medium, low, info)")
 }
 
 func runScan(cmd *cobra.Command, args []string) error {
@@ -136,7 +136,12 @@ func runScan(cmd *cobra.Command, args []string) error {
 
 	// Apply CLI flags to config, then normalize/validate (including --fail-on).
 	if err := applyScanFlags(cfg); err != nil {
-		return err
+		return api.ErrTool(err.Error())
+	}
+	// Reject a bad --format before spending minutes scanning.
+	format, err := resolveFormat(cmd, cfg)
+	if err != nil {
+		return api.ErrTool(err.Error())
 	}
 	if err := cfg.Validate(); err != nil {
 		return api.ErrTool(fmt.Sprintf("invalid configuration: %v", err))
@@ -144,13 +149,6 @@ func runScan(cmd *cobra.Command, args []string) error {
 
 	if scanSBOM != "" {
 		return runScanSBOM(cmd, cfg, scanSBOM)
-	}
-
-	// Prefer config reporting format unless --format was explicitly set
-	format := outputFormat
-	formatChanged := cmd.Flags().Changed("format") || rootCmd.PersistentFlags().Changed("format")
-	if !formatChanged && cfg.Reporting.Format != "" {
-		format = cfg.Reporting.Format
 	}
 
 	// Create scanner engine
@@ -289,10 +287,6 @@ func applyScanFlags(cfg *config.Config) error {
 		cfg.Baseline.Enabled = true
 	}
 
-	if scanTimeoutFlag != "" {
-		cfg.ScanTimeout = scanTimeoutFlag
-	}
-
 	if diffBase != "" {
 		cfg.DiffBase = diffBase
 	}
@@ -303,12 +297,38 @@ func applyScanFlags(cfg *config.Config) error {
 		cfg.Reporting.EmitAnnotations = true
 	}
 
-	// Override fail-on severity
+	return applyGateFlags(cfg)
+}
+
+// applyGateFlags validates and applies --fail-on and --timeout (shared by scan and scan-artifact).
+func applyGateFlags(cfg *config.Config) error {
 	if failOnSeverity != "" {
+		if !config.ValidSeverity(failOnSeverity) {
+			return fmt.Errorf("invalid --fail-on %q (expected critical, high, medium, low, or info)", failOnSeverity)
+		}
 		cfg.FailOn.Severity = failOnSeverity
 	}
-
+	if scanTimeoutFlag != "" {
+		cfg.ScanTimeout = scanTimeoutFlag
+		if _, err := cfg.ScanTimeoutDuration(); err != nil {
+			return fmt.Errorf("invalid --timeout %q (use a positive Go duration, e.g. 10m, 90s)", scanTimeoutFlag)
+		}
+	}
 	return nil
+}
+
+// resolveFormat returns --format when set explicitly, else reporting.format from config, else text.
+func resolveFormat(cmd *cobra.Command, cfg *config.Config) (string, error) {
+	if cmd.Flags().Changed("format") || rootCmd.PersistentFlags().Changed("format") {
+		if !config.ValidFormat(outputFormat) {
+			return "", fmt.Errorf("invalid --format %q (expected text, json, sarif, markdown, html, junit, gitlab-sast, or gitlab-deps)", outputFormat)
+		}
+		return strings.ToLower(strings.TrimSpace(outputFormat)), nil
+	}
+	if cfg.Reporting.Format != "" {
+		return cfg.Reporting.Format, nil
+	}
+	return outputFormat, nil
 }
 
 func loadScanConfig(targetPath string) (*config.Config, error) {

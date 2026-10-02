@@ -201,7 +201,7 @@ GitLab (build from source; or use a published image when available):
 
 ```yaml
 sentinelflow:
-  image: golang:1.25
+  image: golang:1.27
   script:
     - go build -o sentinelflow ./cmd/sentinelflow
     - ./sentinelflow scan --all --format sarif -o gl-security-report.sarif

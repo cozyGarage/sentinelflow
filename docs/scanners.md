@@ -57,7 +57,7 @@ Config knobs:
 
 ### Data source
 
-Queries the [OSV API](https://osv.dev/) (`/v1/querybatch`, retries, on-disk cache) for Go, npm, pip, Maven, Cargo, and RubyGems ecosystems (auto-detected from lockfiles and manifests). `sentinelflow db update` downloads ecosystem zips for offline/air-gapped CI.
+Queries the [OSV API](https://osv.dev/) (`/v1/querybatch`, retries, on-disk cache) for Go, npm, pip, Maven, Cargo, and RubyGems ecosystems (auto-detected from lockfiles and manifests). Results are cached on disk for 24h (`$XDG_CACHE_HOME/sentinelflow/vulndb`; override with `SENTINELFLOW_CACHE_DIR`). Fully offline scanning is not supported yet.
 
 ### Supported files
 

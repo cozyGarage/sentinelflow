@@ -151,13 +151,12 @@ sentinelflow policy generate my-custom-rule
 
 ## Supply Chain
 
-Generate a CycloneDX or SPDX SBOM, scan an existing SBOM, or refresh the offline OSV cache:
+Generate a CycloneDX or SPDX SBOM, or scan an existing SBOM:
 
 ```bash
 sentinelflow sbom -o sbom.json
 sentinelflow sbom --sbom-format spdx -o sbom.spdx.json
 sentinelflow scan --sbom sbom.json --fail-on high
-sentinelflow db update --ecosystem Go
 ```
 
 Inline suppressions (same line or the line above):

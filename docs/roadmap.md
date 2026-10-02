@@ -114,7 +114,7 @@ Residual detail: [audit-residual-risks.md](audit-residual-risks.md). Release ste
 | Native Go AST pass | Regex cannot see non-constant `exec.Command` / `sql.Query` args | `go/ast` sinks for command and SQL with non-constant arguments. |
 | Semgrep adapter | Dataflow SAST | When `semgrep` is on PATH (or `mode: required`). |
 | Secrets providers + gitleaks + `--verify-secrets` | Coverage gaps; live verify is opt-in | Additional providers; gitleaks adapter; `--verify-secrets` off by default (network). |
-| OSV `querybatch` + retry + disk cache + offline DB | Per-package `/v1/query`, no retry, memory-only cache | Batch queries, bounded workers, exponential backoff + `Retry-After`, on-disk cache, `sentinelflow db update`. |
+| OSV `querybatch` + retry + disk cache | Per-package `/v1/query`, no retry, memory-only cache | Batch queries, bounded workers, exponential backoff + `Retry-After`, on-disk cache. (Offline DB deferred: needs a local OSV range matcher.) |
 | Go transitive deps | Only direct `go.mod` requires | `go.sum` / module graph entries queried; fixed versions reported. |
 | Grype adapter | Depth beyond native parsers | Optional. |
 | SBOM ingest + SPDX | Generate-only, 3 ecosystems, Cargo missing versions | `scan --sbom file.cdx.json`; Cargo versions; SPDX output. |
@@ -173,7 +173,7 @@ Entry points: `scan --artifacts` (default globs `dist/**`, `build/**`, `*.jar`, 
 2. ~~**R1** — install decision + timeout / OSV flake / CI docs~~ done.
 3. **R2** — exit codes, fingerprints, baseline v2, suppressions, skip accounting, SARIF.
 4. **R3** — diff/staged, `delivery: release`, SHA pins, extra report formats, signing.
-5. **R4** — adapters, SAST v2 + Go AST, OSV batch/offline, SBOM ingest.
+5. **R4** — adapters, SAST v2 + Go AST, OSV batch + disk cache, SBOM ingest.
 6. **R5** — artifact classifier, unpacker, catalogers, hardening, malware heuristics.
 7. **R6** — corpus, fuzz, perf budget, self-scan of release binaries (land tests with each train).
 

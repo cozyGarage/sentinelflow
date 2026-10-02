@@ -20,7 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Keyless Cosign signatures and SLSA provenance on release checksums; release SBOMs; `scan-artifact` on published binaries
 - Optional external adapters (Semgrep, gitleaks, Grype, Syft, Trivy `fs`, YARA) with `auto|required|off`
 - SAST rules.yaml v2, native Go AST sinks, secret provider coverage + `--verify-secrets`
-- OSV `querybatch`, retries, disk cache, `sentinelflow db update`, Go transitive deps from `go.sum`
+- OSV `querybatch`, retries, 24h disk cache (`SENTINELFLOW_CACHE_DIR`), Go transitive deps from `go.sum`
 - SBOM ingest (`scan --sbom`) and SPDX output; Cargo/poetry/Gemfile lock versions
 - Artifact/binary scanner: magic-byte classifier, safe unpacker, component SCA, binary secrets, ELF/PE/Mach-O hardening, malware heuristics
 - Labeled precision/recall corpus, fuzz targets for unpacker/lockfiles/ELF-PE, and a small-tree perf budget test

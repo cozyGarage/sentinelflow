@@ -18,7 +18,7 @@ Re-audit after each release train. Unit tests green; `make demo` fails the gate 
 | Module path | `go install` unsupported by decision | Module `github.com/cozygarage/sentinelflow` ≠ repo `cozyGarage/sentielflow`. |
 | License scanner | High FN rate by design | Uses npm lockfile metadata when present plus a small hardcoded map. **Honesty path:** opt-in only (not in `--all`). |
 | Dependencies | Bare Gemfile / Gradle still unsupported | Lockfile-first; `Gemfile.lock` supported. Go transitives via `go.sum` (R4). |
-| OSV / network | Transport flake; was memory-only cache, no retry | Default `fail_on_error: true`. R4: querybatch, retry, disk cache, `sentinelflow db update`. |
+| OSV / network | Transport flake; was memory-only cache, no retry | Default `fail_on_error: true`. R4: querybatch, retry, 24h disk cache (`SENTINELFLOW_CACHE_DIR`). No offline/air-gapped mode yet. |
 | SAST | Regex-first; Go SSA covers selected shell flows | Other source/sink families and dynamic dispatch remain uncovered. Semgrep adapter when installed (`mode: auto`). |
 | Artifacts | Built outputs were never scanned | R5: classifier + unpacker + catalogers; `--artifacts` opt-in (not in `--all`). |
 | Malware heuristics | Heuristic, not a sandbox | Opt-in, confidence-scored. No dynamic detonation (non-goal). |
@@ -40,7 +40,7 @@ Re-audit after each release train. Unit tests green; `make demo` fails the gate 
 - **R2 (quality waves):** SAST FP fixes; rules in `rules.yaml`; finding IDs with path tokens.
 - **R2 (gate contract):** distinct exit codes; line-independent fingerprints; baseline v2; inline suppressions; skip warnings; git metadata via `rev-parse`/CI env; SARIF fingerprints/CWE/`security-severity`.
 - **R3:** `--diff-base` / `--staged`; Action `delivery: release`; SHA-pinned workflows; GitLab/JUnit/job summary; cosign + provenance notes.
-- **R4:** external adapters (`auto`/`required`/`off`); SAST v2 + Go AST; OSV batch/retry/disk cache/offline `db update`; Go transitives; SBOM ingest.
+- **R4:** external adapters (`auto`/`required`/`off`); SAST v2 + Go AST; OSV batch/retry/disk cache; Go transitives; SBOM ingest.
 - **R5:** artifact classifier, safe unpacker, catalogers, binary secrets, hardening, malware heuristics.
 - **R6:** labeled corpus, fuzz targets, SARIF golden tests, perf-budget target.
 

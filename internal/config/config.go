@@ -105,10 +105,6 @@ type DependenciesConfig struct {
 	// error (e.g. OSV network blips). Default true. Set false to keep findings
 	// and report ScannerRun.Error without failing CI solely for transport errors.
 	FailOnError *bool `yaml:"fail_on_error" mapstructure:"fail_on_error"`
-	// Offline uses only the on-disk OSV cache / db update directory.
-	Offline bool `yaml:"offline" mapstructure:"offline"`
-	// CacheDir overrides the default on-disk vulnerability cache.
-	CacheDir string `yaml:"cache_dir" mapstructure:"cache_dir"`
 }
 
 // DependenciesFailOnError returns whether dependency scanner errors should fail the CLI.
@@ -355,16 +351,23 @@ func Default() *Config {
 	}
 }
 
+var validSeverities = map[string]bool{
+	"": true, "critical": true, "high": true, "medium": true, "low": true, "info": true,
+}
+
+var validFormats = map[string]bool{
+	"": true, "text": true, "json": true, "sarif": true, "markdown": true, "html": true,
+	"junit": true, "gitlab-sast": true, "gitlab-deps": true,
+}
+
+// ValidSeverity reports whether s is an accepted severity threshold ("" allowed).
+func ValidSeverity(s string) bool { return validSeverities[strings.ToLower(strings.TrimSpace(s))] }
+
+// ValidFormat reports whether s is a supported report format ("" allowed).
+func ValidFormat(s string) bool { return validFormats[strings.ToLower(strings.TrimSpace(s))] }
+
 // Validate checks if the configuration is valid
 func (c *Config) Validate() error {
-	validSeverities := map[string]bool{
-		"": true, "critical": true, "high": true, "medium": true, "low": true, "info": true,
-	}
-	validFormats := map[string]bool{
-		"": true, "text": true, "json": true, "sarif": true, "markdown": true, "html": true,
-		"junit": true, "gitlab-sast": true, "gitlab-deps": true,
-	}
-
 	c.FailOn.Severity = strings.ToLower(strings.TrimSpace(c.FailOn.Severity))
 	c.Scanners.IaC.Severity = strings.ToLower(strings.TrimSpace(c.Scanners.IaC.Severity))
 	c.Scanners.Dependencies.Severity = strings.ToLower(strings.TrimSpace(c.Scanners.Dependencies.Severity))
