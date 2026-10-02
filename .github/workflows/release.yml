@@ -90,7 +90,8 @@ jobs:
       - name: SBOM + self-scan release binaries
         run: |
           set -euo pipefail
-          BIN="$(find dist -type f -name sentinelflow | head -n1)"
+          # Runner is linux/amd64; find order is arbitrary and may pick a darwin binary.
+          BIN="$(find dist -type f -name sentinelflow -path '*_linux_amd64*' | head -n1)"
           if [ -z "${BIN}" ]; then
             echo "no sentinelflow binary under dist/" >&2
             exit 1
