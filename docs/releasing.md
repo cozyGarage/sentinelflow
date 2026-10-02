@@ -24,7 +24,7 @@ git push origin v1.2.0
 Watch the **Release** workflow. On success:
 
 - GitHub Release `v1.2.0` includes binaries + `checksums.txt` (primary install path)
-- Keyless Cosign signatures: `checksums.txt.sig` + `checksums.txt.pem`
+- Keyless Cosign signature bundle: `checksums.txt.sigstore.json`
 - SLSA provenance attestation on `checksums.txt`
 - CycloneDX + SPDX SBOMs and an artifact self-scan report
 - If Docker Hub secrets are present: `sentinelflow/sentinelflow:v1.2.0`, `:v1`, `:v1.1`, `:latest`
@@ -35,7 +35,7 @@ Watch the **Release** workflow. On success:
 VERSION=1.2.0 ./scripts/install.sh
 ./bin/sentinelflow version
 
-# Optional — verify checksums.txt with Cosign (needs cosign + the .sig/.pem assets):
+# Optional — verify checksums.txt with Cosign (needs cosign; uses the .sigstore.json bundle):
 # VERIFY_SIGNATURE=1 VERSION=1.2.0 ./scripts/install.sh
 
 # Optional — only if Docker Hub publish ran for this tag:
