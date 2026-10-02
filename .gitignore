@@ -6,6 +6,9 @@
 
 # Demo output (regenerate with `make demo`)
 /demo-out/
+
+# GoReleaser output
+/dist/
 docs/assets/screenshots/_terminal.html
 
 # OS generated files
