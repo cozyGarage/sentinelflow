@@ -17,36 +17,36 @@ Pinned tooling: `goreleaser/goreleaser-action` and GoReleaser CLI `v2.9.0` (SHA-
 ```bash
 git checkout main
 git pull origin main
-git tag -a v1.1.1 -m "SentinelFlow v1.1.1"
-git push origin v1.1.1
+git tag -a v1.2.0 -m "SentinelFlow v1.2.0"
+git push origin v1.2.0
 ```
 
 Watch the **Release** workflow. On success:
 
-- GitHub Release `v1.1.1` includes binaries + `checksums.txt` (primary install path)
+- GitHub Release `v1.2.0` includes binaries + `checksums.txt` (primary install path)
 - Keyless Cosign signatures: `checksums.txt.sig` + `checksums.txt.pem`
 - SLSA provenance attestation on `checksums.txt`
 - CycloneDX + SPDX SBOMs and an artifact self-scan report
-- If Docker Hub secrets are present: `sentinelflow/sentinelflow:v1.1.1`, `:v1`, `:v1.1`, `:latest`
+- If Docker Hub secrets are present: `sentinelflow/sentinelflow:v1.2.0`, `:v1`, `:v1.1`, `:latest`
 
 ## Verify
 
 ```bash
-VERSION=1.1.1 ./scripts/install.sh
+VERSION=1.2.0 ./scripts/install.sh
 ./bin/sentinelflow version
 
 # Optional — verify checksums.txt with Cosign (needs cosign + the .sig/.pem assets):
-# VERIFY_SIGNATURE=1 VERSION=1.1.1 ./scripts/install.sh
+# VERIFY_SIGNATURE=1 VERSION=1.2.0 ./scripts/install.sh
 
 # Optional — only if Docker Hub publish ran for this tag:
-# docker pull sentinelflow/sentinelflow:v1.1.1
-# docker run --rm sentinelflow/sentinelflow:v1.1.1 version
+# docker pull sentinelflow/sentinelflow:v1.2.0
+# docker run --rm sentinelflow/sentinelflow:v1.2.0 version
 ```
 
 The release workflow runs `scan-artifact` on the published Linux binary (`--fail-on critical`) and attaches `artifact-scan.json`.
 
 ## Module path decision
 
-**Supported install:** release binary (`install.sh`), GitHub Action, clone + `make build`. Docker is optional (local `docker build`, or Hub when secrets published an image).
+**Supported install:** release binary (`install.sh`), GitHub Action, clone + `make build`, and `go install github.com/cozygarage/sentinelflow/cmd/sentinelflow@<tag>`. Docker is optional (local `docker build`, or Hub when secrets published an image).
 
-**Not supported:** `go install`. The Go module path is `github.com/cozygarage/sentinelflow` while the GitHub repository is `cozyGarage/sentielflow`. Aligning those names is a deferred breaking change; until then, never advertise `go install`.
+The repository was renamed to `cozyGarage/sentinelflow`, so it now matches the module path `github.com/cozygarage/sentinelflow` (GitHub paths are case-insensitive). `go install` builds report the module version via `runtime/debug.ReadBuildInfo`.

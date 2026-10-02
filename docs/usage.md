@@ -1,17 +1,18 @@
 # Usage Guide
 
-SentinelFlow is designed to be simple yet powerful. This guide covers the most common commands and use cases for v1.0.
+SentinelFlow is designed to be simple yet powerful. This guide covers the most common commands and use cases.
 
 ## Install
 
 | Method | Command |
 | --- | --- |
-| Source | `git clone https://github.com/cozyGarage/sentielflow && make build` |
-| Install script | `curl -fsSL https://raw.githubusercontent.com/cozyGarage/sentielflow/main/scripts/install.sh \| bash` (verifies `checksums.txt`; pin with `VERSION=1.1.1`) |
-| Release binary | Download from [GitHub Releases](https://github.com/cozyGarage/sentielflow/releases) |
+| Source | `git clone https://github.com/cozyGarage/sentinelflow && make build` |
+| Install script | `curl -fsSL https://raw.githubusercontent.com/cozyGarage/sentinelflow/main/scripts/install.sh \| bash` (verifies `checksums.txt`; pin with `VERSION=1.2.0`) |
+| go install | `go install github.com/cozygarage/sentinelflow/cmd/sentinelflow@latest` (Go 1.27+; no checksum/signature step) |
+| Release binary | Download from [GitHub Releases](https://github.com/cozyGarage/sentinelflow/releases) |
 | Docker (optional) | `docker build -t sentinelflow/sentinelflow:local .` (prefer binary / Action / `make build`; Hub tags only when published) |
 
-**Install decision:** prefer the install script, release binary, Action, or `make build`. Docker is optional (`docker build` locally, or Hub pull when an image is published). `go install` is **not supported** (module path `github.com/cozygarage/sentinelflow` ≠ GitHub repo `cozyGarage/sentielflow`). Rename is deferred; do not advertise `go install`.
+**Install decision:** prefer the install script (checksum-verified), release binary, Action, `make build`, or `go install`. Docker is optional (`docker build` locally, or Hub pull when an image is published).
 
 Optional Docker (local image):
 
@@ -62,7 +63,7 @@ sentinelflow scan --artifacts .        # Binaries and archives (opt-in; not in -
 sentinelflow scan --diff-base origin/main
 sentinelflow scan --staged --secrets --iac --fail-on high
 sentinelflow scan --sbom sbom.cdx.json
-sentinelflow scan-artifact dist/app
+sentinelflow scan-artifact dist/app --fail-on critical -f json -o artifact-scan.json
 
 ```
 
@@ -151,13 +152,12 @@ sentinelflow policy generate my-custom-rule
 
 ## Supply Chain
 
-Generate a CycloneDX or SPDX SBOM, scan an existing SBOM, or refresh the offline OSV cache:
+Generate a CycloneDX or SPDX SBOM, or scan an existing SBOM:
 
 ```bash
 sentinelflow sbom -o sbom.json
 sentinelflow sbom --sbom-format spdx -o sbom.spdx.json
 sentinelflow scan --sbom sbom.json --fail-on high
-sentinelflow db update --ecosystem Go
 ```
 
 Inline suppressions (same line or the line above):

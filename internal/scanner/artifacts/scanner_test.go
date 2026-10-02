@@ -57,3 +57,16 @@ func TestZipMemberArtifactPath(t *testing.T) {
 	_ = unpack.Limits{}
 	_ = context.Background()
 }
+
+func TestGoStdlibVersionDropsExperimentSuffix(t *testing.T) {
+	for in, want := range map[string]string{
+		"go1.27.0":            "1.27.0",
+		"go1.27.0-X:nodwarf5": "1.27.0",
+		"go1.27.0 X:nodwarf5": "1.27.0",
+		"go1.28rc1":           "1.28rc1",
+	} {
+		if got := goStdlibVersion(in); got != want {
+			t.Errorf("goStdlibVersion(%q) = %q, want %q", in, got, want)
+		}
+	}
+}

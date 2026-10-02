@@ -29,11 +29,11 @@ builds:
 
 archives:
   - id: sentinelflow
-    format: tar.gz
+    formats: [tar.gz]
     name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
     format_overrides:
       - goos: windows
-        format: zip
+        formats: [zip]
     files:
       - README.md
       - LICENSE
@@ -43,7 +43,7 @@ checksum:
   name_template: "checksums.txt"
 
 snapshot:
-  name_template: "{{ incpatch .Version }}-next"
+  version_template: "{{ incpatch .Version }}-next"
 
 changelog:
   sort: asc
@@ -85,9 +85,10 @@ dockers:
 release:
   github:
     owner: cozyGarage
-    name: sentielflow
+    name: sentinelflow
   draft: false
-  prerelease: false
+  # vX.Y.Z-rc.N tags become GitHub prereleases (never "Latest").
+  prerelease: auto
   name_template: "{{.ProjectName}} v{{.Version}}"
   header: |
     ## SentinelFlow {{.Version}}
@@ -96,8 +97,19 @@ release:
 
     ### Installation
 
-    Download the appropriate binary for your platform below or use Docker:
+    Binary (verifies `checksums.txt`):
 
     ```bash
-    docker pull sentinelflow/sentinelflow:{{.Version}}
+    curl -fsSL https://raw.githubusercontent.com/cozyGarage/sentinelflow/main/scripts/install.sh | VERSION={{.Version}} bash
     ```
+
+    GitHub Action:
+
+    ```yaml
+    - uses: cozyGarage/sentinelflow@{{.Tag}}
+      with:
+        delivery: release
+        fail-on: high
+    ```
+
+    See CHANGELOG.md for upgrade notes. Docker images are published only when Docker Hub credentials are configured.

@@ -6,7 +6,7 @@ SentinelFlow is a Go-based security scanner for CI/CD pipelines. For detailed di
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                        SentinelFlow v1.0                         │
+│                         SentinelFlow                             │
 ├─────────────────────────────────────────────────────────────────┤
 │  CLI (Cobra)  →  Config (Viper)  →  Scanner Engine               │
 │                          ↓                                       │

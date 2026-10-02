@@ -10,8 +10,8 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/cozyGarage/sentielflow/actions/workflows/security-scan.yml"><img src="https://github.com/cozyGarage/sentielflow/actions/workflows/security-scan.yml/badge.svg" alt="Security Scan" /></a>
-  <a href="https://github.com/cozyGarage/sentielflow/releases"><img src="https://img.shields.io/github/v/release/cozyGarage/sentielflow?label=release" alt="Release" /></a>
+  <a href="https://github.com/cozyGarage/sentinelflow/actions/workflows/security-scan.yml"><img src="https://github.com/cozyGarage/sentinelflow/actions/workflows/security-scan.yml/badge.svg" alt="Security Scan" /></a>
+  <a href="https://github.com/cozyGarage/sentinelflow/releases"><img src="https://img.shields.io/github/v/release/cozyGarage/sentinelflow?label=release" alt="Release" /></a>
   <a href="https://hub.docker.com/r/sentinelflow/sentinelflow"><img src="https://img.shields.io/badge/docker-sentinelflow%2Fsentinelflow-0db7ed" alt="Docker" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green" alt="License" /></a>
 </p>
@@ -62,18 +62,19 @@ Checked-in samples: [`docs/assets/demo/`](docs/assets/demo/).
 | --- | --- | --- |
 | **Install script** | Laptops | `curl -fsSL …/scripts/install.sh \| bash` (verifies checksums) |
 | **Clone + build** | Contributors | `git clone … && make build` |
+| **go install** | Go developers | `go install github.com/cozygarage/sentinelflow/cmd/sentinelflow@latest` (Go 1.27+) |
 | **GitHub Action** | Pull requests | `delivery: release` (external; verifies checksums) or `delivery: build` (this repo) |
 | **Docker** (optional) | CI when an image exists | `docker build -t sentinelflow/sentinelflow:local .` — Hub tags only when Docker credentials are configured on release |
 
-> **v1.1.1** ships GitHub Release binaries + `checksums.txt`. Prefer binary / Action / `make build`. Docker Hub images publish only when `DOCKER_USERNAME` / `DOCKER_PASSWORD` are set (see [docs/releasing.md](docs/releasing.md)); do not assume `:latest` is on Hub.
+> **v1.2.0** ships GitHub Release binaries + `checksums.txt`. Prefer binary / Action / `make build`. Docker Hub images publish only when `DOCKER_USERNAME` / `DOCKER_PASSWORD` are set (see [docs/releasing.md](docs/releasing.md)); do not assume `:latest` is on Hub.
 >
-> **Install matrix:** binary / Action / `make build` first; Docker optional. `go install` is **not supported** (module path ≠ GitHub repo name).
+> **Install matrix:** binary / Action / `make build` / `go install` first; Docker optional.
 
 ### Build from source
 
 ```bash
-git clone https://github.com/cozyGarage/sentielflow
-cd sentielflow
+git clone https://github.com/cozyGarage/sentinelflow
+cd sentinelflow
 make build
 ./sentinelflow version
 ```
@@ -96,8 +97,8 @@ Compose helpers: [`docker-compose.yml`](docker-compose.yml) (`scan-html`, `scan-
 ### Release binary
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/cozyGarage/sentielflow/main/scripts/install.sh | bash
-# or pin: VERSION=1.1.1 ./scripts/install.sh
+curl -fsSL https://raw.githubusercontent.com/cozyGarage/sentinelflow/main/scripts/install.sh | bash
+# or pin: VERSION=1.2.0 ./scripts/install.sh
 ./bin/sentinelflow version
 ```
 
@@ -106,7 +107,7 @@ curl -fsSL https://raw.githubusercontent.com/cozyGarage/sentielflow/main/scripts
 Same repository (preferred while Hub images are optional):
 
 ```yaml
-- uses: ./.github/actions/sentinelflow
+- uses: ./
   with:
     delivery: build
     fail-on: high
@@ -117,7 +118,7 @@ Same repository (preferred while Hub images are optional):
 External repos (no Docker Hub required):
 
 ```yaml
-- uses: cozyGarage/sentielflow@v1.1.1
+- uses: cozyGarage/sentinelflow@v1.2.0
   with:
     delivery: release
     fail-on: high
@@ -128,10 +129,10 @@ External repos (no Docker Hub required):
 External repos when a published image is available:
 
 ```yaml
-- uses: cozyGarage/sentielflow@v1.1.1
+- uses: cozyGarage/sentinelflow@v1.2.0
   with:
     delivery: docker
-    image: sentinelflow/sentinelflow:v1.1.1
+    image: sentinelflow/sentinelflow:v1.2.0
     fail-on: high
     format: sarif
     output: report.sarif
@@ -185,7 +186,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - uses: ./.github/actions/sentinelflow
+      - uses: ./
         with:
           delivery: build
           fail-on: high
@@ -201,7 +202,7 @@ GitLab (build from source; or use a published image when available):
 
 ```yaml
 sentinelflow:
-  image: golang:1.25
+  image: golang:1.27
   script:
     - go build -o sentinelflow ./cmd/sentinelflow
     - ./sentinelflow scan --all --format sarif -o gl-security-report.sarif

@@ -99,7 +99,8 @@ jobs:
           fi
           "${BIN}" sbom --sbom-format cyclonedx -o dist/sbom.cdx.json
           "${BIN}" sbom --sbom-format spdx -o dist/sbom.spdx.json
-          "${BIN}" scan-artifact "${BIN}" --fail-on critical --format json -o dist/artifact-scan.json || true
+          # Exit 1 (critical findings) is reported in artifact-scan.json, not fatal; exit 2/3 (tool broke) is.
+          "${BIN}" scan-artifact "${BIN}" --fail-on critical --format json -o dist/artifact-scan.json || [ $? -eq 1 ]
 
       - name: Upload extra release assets
         env:

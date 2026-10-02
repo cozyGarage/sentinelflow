@@ -1,5 +1,5 @@
 # Multi-stage build for minimal image size
-FROM golang:1.25.12-alpine AS builder
+FROM golang:1.27-alpine AS builder
 
 ARG VERSION=dev
 ARG COMMIT=none
@@ -24,7 +24,7 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
     ./cmd/sentinelflow
 
 # Runtime stage
-FROM alpine:3.19
+FROM alpine:3.23
 
 # Install runtime dependencies
 RUN apk add --no-cache \
@@ -61,5 +61,5 @@ CMD ["--help"]
 # Metadata
 LABEL org.opencontainers.image.title="SentinelFlow"
 LABEL org.opencontainers.image.description="CI/CD Security Gatekeeper"
-LABEL org.opencontainers.image.source="https://github.com/cozyGarage/sentielflow"
+LABEL org.opencontainers.image.source="https://github.com/cozyGarage/sentinelflow"
 LABEL org.opencontainers.image.vendor="SentinelFlow"

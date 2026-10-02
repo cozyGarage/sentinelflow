@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # Install SentinelFlow from GitHub Releases into ./bin (or INSTALL_DIR).
 # Usage:
-#   curl -fsSL https://raw.githubusercontent.com/cozyGarage/sentielflow/main/scripts/install.sh | bash
-#   VERSION=1.0.0 ./scripts/install.sh
+#   curl -fsSL https://raw.githubusercontent.com/cozyGarage/sentinelflow/main/scripts/install.sh | bash
+#   VERSION=1.2.0 ./scripts/install.sh
 # Verifies the downloaded archive against checksums.txt from the same release.
 set -euo pipefail
 
-REPO="${REPO:-cozyGarage/sentielflow}"
+REPO="${REPO:-cozyGarage/sentinelflow}"
 INSTALL_DIR="${INSTALL_DIR:-${PWD}/bin}"
 VERSION="${VERSION:-}"
 SKIP_CHECKSUM="${SKIP_CHECKSUM:-0}"
@@ -118,8 +118,8 @@ if [[ -z "${VERSION}" || "${VERSION}" == "null" ]]; then
 No GitHub Release found yet.
 
 Until a v* tag is published:
-  git clone https://github.com/cozyGarage/sentielflow
-  cd sentielflow && make build
+  git clone https://github.com/cozyGarage/sentinelflow
+  cd sentinelflow && make build
   # or: docker build -t sentinelflow/sentinelflow:local .
 EOF
   exit 1
