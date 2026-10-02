@@ -40,8 +40,7 @@ github_curl() {
 
 verify_cosign() {
   local checksums="$1"
-  local sig="${checksums}.sig"
-  local cert="${checksums}.pem"
+  local bundle="${checksums}.sigstore.json"
   if [[ "${VERIFY_SIGNATURE:-0}" != "1" ]]; then
     return 0
   fi
@@ -49,15 +48,14 @@ verify_cosign() {
     echo "VERIFY_SIGNATURE=1 but cosign is not installed" >&2
     exit 1
   fi
-  if [[ ! -f "${sig}" || ! -f "${cert}" ]]; then
-    echo "missing ${sig} or ${cert} for keyless verification" >&2
+  if [[ ! -f "${bundle}" ]]; then
+    echo "missing ${bundle} for keyless verification" >&2
     exit 1
   fi
   local identity="${COSIGN_IDENTITY_REGEXP:-https://github.com/${REPO}/.*}"
   local issuer="${COSIGN_OIDC_ISSUER:-https://token.actions.githubusercontent.com}"
   cosign verify-blob \
-    --certificate "${cert}" \
-    --signature "${sig}" \
+    --bundle "${bundle}" \
     --certificate-identity-regexp "${identity}" \
     --certificate-oidc-issuer "${issuer}" \
     "${checksums}"
@@ -151,8 +149,7 @@ if [[ "${SKIP_CHECKSUM}" != "1" ]]; then
   fi
   verify_checksum "${ASSET}" "${TMP}/${ASSET}" "${TMP}/checksums.txt"
   if [[ "${VERIFY_SIGNATURE:-0}" == "1" ]]; then
-    github_curl "https://github.com/${REPO}/releases/download/v${VERSION}/checksums.txt.sig" "${TMP}/checksums.txt.sig" || true
-    github_curl "https://github.com/${REPO}/releases/download/v${VERSION}/checksums.txt.pem" "${TMP}/checksums.txt.pem" || true
+    github_curl "https://github.com/${REPO}/releases/download/v${VERSION}/checksums.txt.sigstore.json" "${TMP}/checksums.txt.sigstore.json" || true
     verify_cosign "${TMP}/checksums.txt"
   fi
 fi

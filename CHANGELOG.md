@@ -28,7 +28,7 @@ Ships the R2–R6 release trains: a CI gate you can trust, diff-aware scans, dee
 - SARIF 2.1.0 fields GitHub code scanning uses (`partialFingerprints`, `security-severity`, CWE tags, `automationDetails`, `toolExecutionNotifications`) with a schema-checked golden test
 - GitLab SAST/dependency reports, JUnit XML, `--emit-annotations`, GitHub job summary
 - Action `delivery: release` (checksum-verified GitHub Release binary), version-tagged default image, and a cross-run OSV cache
-- Keyless Cosign signatures and SLSA provenance on release checksums; release SBOMs; release binaries self-scanned with `scan-artifact`
+- Keyless Cosign signature bundle (`checksums.txt.sigstore.json`; `VERIFY_SIGNATURE=1 install.sh`) and SLSA provenance on release checksums; release SBOMs; release binaries self-scanned with `scan-artifact`
 - `scan-artifact` accepts `-o`, `--fail-on`, and `--timeout`
 - Optional external adapters (Semgrep, gitleaks, Grype, Syft, Trivy `fs`, YARA) with `mode: auto|required|off`
 - SAST rules.yaml v2, Go AST sinks, and Go SSA taint tracking from request input / env to shell commands
