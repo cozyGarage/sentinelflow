@@ -61,5 +61,5 @@ CMD ["--help"]
 # Metadata
 LABEL org.opencontainers.image.title="SentinelFlow"
 LABEL org.opencontainers.image.description="CI/CD Security Gatekeeper"
-LABEL org.opencontainers.image.source="https://github.com/cozyGarage/sentielflow"
+LABEL org.opencontainers.image.source="https://github.com/cozyGarage/sentinelflow"
 LABEL org.opencontainers.image.vendor="SentinelFlow"

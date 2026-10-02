@@ -181,7 +181,6 @@ From the v1.2.0 review. Ordered by impact on signal quality.
 - Replacing Trivy/OSV with an in-house container CVE database
 - Dynamic sandbox detonation / malware execution
 - Marketplace “AI autofix” without a scoped design
-- Advertising `go install` before a deliberate module/repo rename
 
 ---
 

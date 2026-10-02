@@ -18,7 +18,7 @@ Welcome to the SentinelFlow documentation.
 
 ## Quick Links
 
-- [GitHub Repository](https://github.com/cozyGarage/sentielflow)
+- [GitHub Repository](https://github.com/cozyGarage/sentinelflow)
 - [Live demo project](../examples/demo-project) — `make demo`
 - [Sample HTML report](assets/demo/report.html)
 - [Contributing Guidelines](../CONTRIBUTING.md)

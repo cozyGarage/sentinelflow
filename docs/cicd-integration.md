@@ -6,7 +6,7 @@ SentinelFlow integrates with GitHub Actions, GitLab CI, and Docker-based pipelin
 
 ### Using the composite action (recommended)
 
-The repo root `action.yml` is the composite action (`uses: ./` in this repo, `cozyGarage/sentielflow@<tag>` elsewhere):
+The repo root `action.yml` is the composite action (`uses: ./` in this repo, `cozyGarage/sentinelflow@<tag>` elsewhere):
 
 ```yaml
 name: Security Scan
@@ -46,7 +46,7 @@ jobs:
 External repos without Docker Hub — **`delivery: release`** downloads the GitHub Release binary and verifies `checksums.txt`:
 
 ```yaml
-      - uses: cozyGarage/sentielflow@v1.2.0
+      - uses: cozyGarage/sentinelflow@v1.2.0
         with:
           delivery: release
           scan-all: 'true'
@@ -58,7 +58,7 @@ External repos without Docker Hub — **`delivery: release`** downloads the GitH
 External repos when a Hub image is published:
 
 ```yaml
-      - uses: cozyGarage/sentielflow@v1.2.0
+      - uses: cozyGarage/sentinelflow@v1.2.0
         with:
           delivery: docker
           image: sentinelflow/sentinelflow:v1.2.0
@@ -122,7 +122,7 @@ sentinelflow baseline . -o .sentinelflow/baseline.yaml
 ```
 
 ```yaml
-      - uses: cozyGarage/sentielflow@main
+      - uses: cozyGarage/sentinelflow@main
         with:
           delivery: docker
           image: sentinelflow/sentinelflow:<tag>

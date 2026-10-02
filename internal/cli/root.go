@@ -148,7 +148,7 @@ var initCmd = &cobra.Command{
 		}
 
 		defaultConfig := `# SentinelFlow Configuration
-# Documentation: https://github.com/cozyGarage/sentielflow/blob/main/docs/configuration.md
+# Documentation: https://github.com/cozyGarage/sentinelflow/blob/main/docs/configuration.md
 
 version: "1.0"
 

@@ -15,8 +15,9 @@ Ships the R2–R6 release trains: a CI gate you can trust, diff-aware scans, dee
 
 - **Exit codes changed.** `0` pass, `1` findings gate, `2` scanner/config error, `3` timeout. Wrappers that treat any non-zero exit as "vulnerabilities found" should handle `2`/`3` separately.
 - **Baseline v2.** Fingerprints no longer include line numbers, so moving code does not reopen baselined findings. v1 baselines still load; regenerate with `sentinelflow baseline` to migrate.
-- **Action path.** Use the root action (`cozyGarage/sentielflow@v1.2.0`, or `uses: ./` in this repo). The duplicate `.github/actions/sentinelflow` copy was removed; pinned older tags keep working.
+- **Action path.** Use the root action (`cozyGarage/sentinelflow@v1.2.0`, or `uses: ./` in this repo). The duplicate `.github/actions/sentinelflow` copy was removed; pinned older tags keep working.
 - **Go 1.27** is required to build from source.
+- **Repository renamed** to `cozyGarage/sentinelflow`. Old `sentielflow` URLs redirect, but update pins. `go install github.com/cozygarage/sentinelflow/cmd/sentinelflow@v1.2.0` is now supported.
 
 ### Added
 
@@ -157,8 +158,8 @@ Ships the R2–R6 release trains: a CI gate you can trust, diff-aware scans, dee
 - `govulncheck` in CI pipeline
 - Non-root Docker container execution
 
-[Unreleased]: https://github.com/cozyGarage/sentielflow/compare/v1.2.0...HEAD
-[1.2.0]: https://github.com/cozyGarage/sentielflow/compare/v1.1.1...v1.2.0
-[1.1.1]: https://github.com/cozyGarage/sentielflow/compare/v1.1.0...v1.1.1
-[1.1.0]: https://github.com/cozyGarage/sentielflow/releases/tag/v1.1.0
-[1.0.0]: https://github.com/cozyGarage/sentielflow/releases/tag/v1.0.0
+[Unreleased]: https://github.com/cozyGarage/sentinelflow/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/cozyGarage/sentinelflow/compare/v1.1.1...v1.2.0
+[1.1.1]: https://github.com/cozyGarage/sentinelflow/compare/v1.1.0...v1.1.1
+[1.1.0]: https://github.com/cozyGarage/sentinelflow/releases/tag/v1.1.0
+[1.0.0]: https://github.com/cozyGarage/sentinelflow/releases/tag/v1.0.0

@@ -6,12 +6,13 @@ SentinelFlow is designed to be simple yet powerful. This guide covers the most c
 
 | Method | Command |
 | --- | --- |
-| Source | `git clone https://github.com/cozyGarage/sentielflow && make build` |
-| Install script | `curl -fsSL https://raw.githubusercontent.com/cozyGarage/sentielflow/main/scripts/install.sh \| bash` (verifies `checksums.txt`; pin with `VERSION=1.2.0`) |
-| Release binary | Download from [GitHub Releases](https://github.com/cozyGarage/sentielflow/releases) |
+| Source | `git clone https://github.com/cozyGarage/sentinelflow && make build` |
+| Install script | `curl -fsSL https://raw.githubusercontent.com/cozyGarage/sentinelflow/main/scripts/install.sh \| bash` (verifies `checksums.txt`; pin with `VERSION=1.2.0`) |
+| go install | `go install github.com/cozygarage/sentinelflow/cmd/sentinelflow@latest` (Go 1.27+; no checksum/signature step) |
+| Release binary | Download from [GitHub Releases](https://github.com/cozyGarage/sentinelflow/releases) |
 | Docker (optional) | `docker build -t sentinelflow/sentinelflow:local .` (prefer binary / Action / `make build`; Hub tags only when published) |
 
-**Install decision:** prefer the install script, release binary, Action, or `make build`. Docker is optional (`docker build` locally, or Hub pull when an image is published). `go install` is **not supported** (module path `github.com/cozygarage/sentinelflow` ≠ GitHub repo `cozyGarage/sentielflow`). Rename is deferred; do not advertise `go install`.
+**Install decision:** prefer the install script (checksum-verified), release binary, Action, `make build`, or `go install`. Docker is optional (`docker build` locally, or Hub pull when an image is published).
 
 Optional Docker (local image):
 

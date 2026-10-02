@@ -6,6 +6,8 @@ package main
 import (
 	"errors"
 	"os"
+	"runtime/debug"
+	"strings"
 
 	"github.com/cozygarage/sentinelflow/internal/buildinfo"
 	"github.com/cozygarage/sentinelflow/internal/cli"
@@ -20,6 +22,10 @@ var (
 )
 
 func main() {
+	// `go install …@vX.Y.Z` has no ldflags; use the module version instead of "dev".
+	if bi, ok := debug.ReadBuildInfo(); ok && version == "dev" && bi.Main.Version != "" && bi.Main.Version != "(devel)" {
+		version = strings.TrimPrefix(bi.Main.Version, "v")
+	}
 	buildinfo.Set(version, commit, date)
 	cli.SetVersionInfo(version, commit, date)
 

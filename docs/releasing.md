@@ -47,6 +47,6 @@ The release workflow runs `scan-artifact` on the published Linux binary (`--fail
 
 ## Module path decision
 
-**Supported install:** release binary (`install.sh`), GitHub Action, clone + `make build`. Docker is optional (local `docker build`, or Hub when secrets published an image).
+**Supported install:** release binary (`install.sh`), GitHub Action, clone + `make build`, and `go install github.com/cozygarage/sentinelflow/cmd/sentinelflow@<tag>`. Docker is optional (local `docker build`, or Hub when secrets published an image).
 
-**Not supported:** `go install`. The Go module path is `github.com/cozygarage/sentinelflow` while the GitHub repository is `cozyGarage/sentielflow`. Aligning those names is a deferred breaking change; until then, never advertise `go install`.
+The repository was renamed to `cozyGarage/sentinelflow`, so it now matches the module path `github.com/cozygarage/sentinelflow` (GitHub paths are case-insensitive). `go install` builds report the module version via `runtime/debug.ReadBuildInfo`.

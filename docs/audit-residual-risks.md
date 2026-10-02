@@ -15,7 +15,6 @@ Re-audit after each release train. Unit tests green; `make demo` fails the gate 
 | SARIF | Missing `partialFingerprints`, `security-severity`, CWE, invocations | R2: GitHub code scanning fields + schema tests. |
 | Action pins / delivery | Floating tags; default image `:latest` unpublished | R3: SHA pins; `delivery: release` verifies `checksums.txt`; version-tagged default image. |
 | Docker Hub | Images not published yet | Binaries + `delivery: release` / `build` first. Hub needs `DOCKER_USERNAME` / `DOCKER_PASSWORD`. |
-| Module path | `go install` unsupported by decision | Module `github.com/cozygarage/sentinelflow` ≠ repo `cozyGarage/sentielflow`. |
 | License scanner | High FN rate by design | Uses npm lockfile metadata when present plus a small hardcoded map. **Honesty path:** opt-in only (not in `--all`). |
 | Dependencies | Bare Gemfile / Gradle still unsupported | Lockfile-first; `Gemfile.lock` supported. Go transitives via `go.sum` (R4). |
 | OSV / network | Transport flake; was memory-only cache, no retry | Default `fail_on_error: true`. R4: querybatch, retry, 24h disk cache (`SENTINELFLOW_CACHE_DIR`). No offline/air-gapped mode yet. |
@@ -47,7 +46,6 @@ Re-audit after each release train. Unit tests green; `make demo` fails the gate 
 ## Optional follow-ups (not blockers)
 
 - AI code review (keep rejected until a scoped design)
-- Full Go module + GitHub repo rename (only if `go install` becomes a goal)
 - Expand license DB or integrate SBOM license check (opt-in scanner remains)
 - Add Docker Hub secrets and publish images on next tag
 - CloudFormation only if product priority changes (currently **not planned**)
