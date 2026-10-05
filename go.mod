@@ -4,7 +4,7 @@ go 1.27.0
 
 require (
 	github.com/fatih/color v1.19.0
-	github.com/open-policy-agent/opa v1.21.0
+	github.com/open-policy-agent/opa v1.21.1
 	github.com/owenrumney/go-sarif/v2 v2.3.3
 	github.com/pelletier/go-toml/v2 v2.4.3
 	github.com/spf13/cobra v1.10.2
