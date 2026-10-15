@@ -92,6 +92,7 @@ Third-party `uses:` in this repository are pinned by commit SHA (Dependabot keep
 | `fail-on` | `high` | Pipeline failure threshold |
 | `timeout` | — | Scan deadline (`10m`, `90s`, …); empty uses config default |
 | `diff-base` | — | Limit findings to files/lines changed since this git ref |
+| `baseline-ref` | — | Report only findings absent at this git ref. The ref is scanned in a temporary worktree, so it needs `fetch-depth: 0` (or that ref fetched) |
 | `emit-annotations` | `false` | Print GitHub workflow annotations |
 | `format` | `sarif` | Report format (`text`, `json`, `sarif`, `markdown`, `html`, `junit`, `gitlab-sast`, `gitlab-deps`) |
 | `output` | `report.sarif` | Output file path |

@@ -61,6 +61,7 @@ sentinelflow scan --container .        # Container image scan (requires Trivy)
 sentinelflow scan --container --container-image myapp:latest
 sentinelflow scan --artifacts .        # Binaries and archives (opt-in; not in --all)
 sentinelflow scan --diff-base origin/main
+sentinelflow scan --baseline-ref origin/main --fail-on high   # fail only on findings new since main
 sentinelflow scan --staged --secrets --iac --fail-on high
 sentinelflow scan --sbom sbom.cdx.json
 sentinelflow scan-artifact dist/app --fail-on critical -f json -o artifact-scan.json

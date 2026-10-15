@@ -39,6 +39,7 @@ var (
 	scanArtifacts    bool
 	scanStaged       bool
 	diffBase         string
+	baselineRef      string
 	scanSBOM         string
 	verifySecrets    bool
 	emitAnnotations  bool
@@ -60,6 +61,7 @@ Available scanners:
   --all          Enable secrets/IaC/deps/SAST (not container, license, artifacts, or AI)
   --staged       Limit findings to git staged files (pre-commit)
   --diff-base    Limit findings to files/lines changed since a git ref
+  --baseline-ref Report only findings that do not exist at a git ref
   --sbom         Scan a CycloneDX SBOM file for vulnerable components
   --verify-secrets  Opt-in live secret verification (network)
 
@@ -75,6 +77,7 @@ Examples:
   sentinelflow scan --all --format sarif -o report.sarif
   sentinelflow scan --fail-on high
   sentinelflow scan --diff-base origin/main
+  sentinelflow scan --baseline-ref origin/main --fail-on high
   sentinelflow scan --staged --secrets --iac --fail-on high`,
 	RunE:         runScan,
 	SilenceUsage: true, // gate failures and scan errors print the message without cobra Usage spam
@@ -92,6 +95,7 @@ func init() {
 	scanCmd.Flags().BoolVar(&useBaseline, "baseline", false, "apply baseline filtering")
 	scanCmd.Flags().StringVar(&scanTimeoutFlag, "timeout", "", "scan deadline (Go duration, e.g. 10m, 90s); overrides scan_timeout")
 	scanCmd.Flags().BoolVar(&scanStaged, "staged", false, "limit findings to git staged files")
+	scanCmd.Flags().StringVar(&baselineRef, "baseline-ref", "", "report only findings not present at this git ref (scans the ref in a temporary worktree)")
 	scanCmd.Flags().StringVar(&diffBase, "diff-base", "", "limit findings to files/lines changed since this git ref")
 	scanCmd.Flags().StringVar(&scanSBOM, "sbom", "", "scan a CycloneDX JSON SBOM for vulnerable components")
 	scanCmd.Flags().BoolVar(&verifySecrets, "verify-secrets", false, "opt-in live verification of detected secrets (network)")
@@ -155,6 +159,7 @@ func runScan(cmd *cobra.Command, args []string) error {
 	engine := scanner.NewEngine(cfg)
 	engine.Staged = scanStaged
 	engine.DiffBase = cfg.DiffBase
+	engine.BaselineRef = baselineRef
 
 	// Print scan header
 	printScanHeader(absPath, cfg)

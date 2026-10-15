@@ -83,6 +83,10 @@ inputs:
     description: Limit findings to files/lines changed since this git ref
     required: false
     default: ''
+  baseline-ref:
+    description: Report only findings that do not already exist at this git ref (needs that ref fetched, e.g. fetch-depth 0)
+    required: false
+    default: ''
   emit-annotations:
     description: Print GitHub Actions workflow annotations for findings
     required: false
@@ -197,6 +201,7 @@ runs:
         SF_WORKING_DIRECTORY: ${{ inputs.working-directory }}
         SF_TIMEOUT: ${{ inputs.timeout }}
         SF_DIFF_BASE: ${{ inputs.diff-base }}
+        SF_BASELINE_REF: ${{ inputs.baseline-ref }}
         SF_EMIT_ANNOTATIONS: ${{ inputs.emit-annotations }}
         SF_WORKSPACE: ${{ github.workspace }}
         SF_ACTION_PATH: ${{ github.action_path }}
@@ -239,6 +244,9 @@ runs:
         fi
         if [ -n "${SF_DIFF_BASE}" ]; then
           ARGS+=(--diff-base "${SF_DIFF_BASE}")
+        fi
+        if [ -n "${SF_BASELINE_REF}" ]; then
+          ARGS+=(--baseline-ref "${SF_BASELINE_REF}")
         fi
         if [ "${SF_EMIT_ANNOTATIONS}" = "true" ]; then
           ARGS+=(--emit-annotations)
