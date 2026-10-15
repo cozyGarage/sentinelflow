@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Go SAST taint:** new SSA sinks for SQL (`go-ssa-sql-tainted`), file paths (`go-ssa-path-tainted`), and SSRF (`go-ssa-ssrf-tainted`). Sources now include `*http.Request` fields, `PathValue`/`Cookie`, and gin/echo/chi/gorilla accessors. `strconv` parsers and `filepath.Base` act as sanitizers.
+
+### Changed
+
+- Taint through helper functions is summarised per parameter, which removes false positives where a helper returning one tainted argument tainted every call site. Environment-variable input only feeds the shell rule.
+
 ### Fixed
 
 - **Dependencies:** manifests in subdirectories are now scanned, so monorepos (e.g. `svc/a/go.mod`, `web/package-lock.json`) get vulnerability findings. Previously only the scan root was checked.

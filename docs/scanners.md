@@ -99,7 +99,18 @@ A native Go AST pass flags `exec.Command` and SQL `Query`/`Exec`/`QueryRow`/`Pre
 
 **Config:** `scanners.sast.severity` and `skip_rules` are honored (same behavior as IaC). Default concurrency is 8 workers.
 
-**Limits:** Go dataflow currently covers selected request/environment/HTTP sources and `os/exec` shell sinks; dynamic dispatch and other source/sink families are not covered. Without a Go module, cached dependencies, or successful type checking, only the AST and regex checks run. SSA loading never downloads modules. Use the Semgrep adapter (`scanners.external.semgrep.mode: auto`) for broader coverage. Prefer `skip_rules` / `sentinelflow:ignore` / baseline for known noise.
+**Go taint (SSA, interprocedural and cross-file within the module):**
+
+| Rule | Sink | CWE |
+| --- | --- | --- |
+| `go-ast-shell-tainted` | `exec.Command` with `sh -c` (request **or** environment input) | 78 |
+| `go-ssa-sql-tainted` | `database/sql` `Query`/`Exec`/`Prepare`(…`Context`) query text | 89 |
+| `go-ssa-path-tainted` | `os.Open`/`ReadFile`/`WriteFile`/`Create`/`Remove*`/`Mkdir*`, `http.ServeFile` | 22 |
+| `go-ssa-ssrf-tainted` | `http.Get`/`Head`/`Post`/`PostForm`/`NewRequest*` URL | 918 |
+
+Sources: every `*http.Request` field (`URL`, `Body`, `Header`, `Form`, …), `FormValue`/`PostFormValue`/`PathValue`/`Cookie`, `Header.Get`, `url.Values.Get`, gin (`c.Query`, `c.Param`, `c.PostForm`, …), echo (`c.QueryParam`, `c.Param`, `c.FormValue`, …), chi `URLParam`, gorilla `mux.Vars`. Environment variables (`os.Getenv`) only feed the shell rule, because they're operator-controlled. Sanitizers: `strconv.Atoi`/`Parse*`, `filepath.Base`/`path.Base`. Flow through helper functions is summarised per parameter, so a helper that returns a tainted argument doesn't taint unrelated call sites. When a query is proven tainted, the syntactic `go-ast-sql-nonconst` on the same line is dropped.
+
+**Limits:** dynamic dispatch through interfaces you define is not followed (unknown calls propagate their arguments' taint conservatively), and fields of your own structs are tracked per allocation site, not per field. Without a Go module, cached dependencies, or successful type checking, only the AST and regex checks run. SSA loading never downloads modules. Use the Semgrep adapter (`scanners.external.semgrep.mode: auto`) for broader coverage. Prefer `skip_rules` / `sentinelflow:ignore` / baseline for known noise.
 
 ---
 
