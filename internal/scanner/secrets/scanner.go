@@ -765,7 +765,7 @@ func (s *Scanner) getRemediation(pattern *SecretPattern) string {
 
 // shouldScanGitHistory checks if git history scanning is enabled
 func (s *Scanner) shouldScanGitHistory(path string) bool {
-	if s.config.Git.ScanHistory || s.config.Scanners.Secrets.ScanGitHistory {
+	if enabled, _ := s.config.GitHistory(); enabled {
 		gitDir := filepath.Join(path, ".git")
 		if _, err := os.Stat(gitDir); err == nil {
 			return true
@@ -776,10 +776,7 @@ func (s *Scanner) shouldScanGitHistory(path string) bool {
 
 // scanGitHistory scans past commits for secrets using patch hunks (added lines only).
 func (s *Scanner) scanGitHistory(ctx context.Context, path, diffBase string) ([]api.Finding, error) {
-	depth := secretsHistoryDepth(s.config)
-	if depth <= 0 {
-		depth = 50
-	}
+	_, depth := s.config.GitHistory()
 
 	args := []string{"-C", path, "log", "-p", "--pretty=format:COMMIT:%H", "--unified=0"}
 	if strings.TrimSpace(diffBase) != "" {
@@ -1003,23 +1000,4 @@ func pathToken(relPath string) string {
 	h := fnv.New32a()
 	_, _ = h.Write([]byte(filepath.ToSlash(relPath)))
 	return fmt.Sprintf("%08x", h.Sum32())
-}
-
-func secretsHistoryDepth(cfg *config.Config) int {
-	if cfg == nil {
-		return 50
-	}
-	// Prefer secrets.max_history_depth when secrets.scan_git_history is the enabler.
-	if cfg.Scanners.Secrets.ScanGitHistory && cfg.Scanners.Secrets.MaxHistoryDepth > 0 {
-		if !cfg.Git.ScanHistory {
-			return cfg.Scanners.Secrets.MaxHistoryDepth
-		}
-	}
-	if cfg.Git.HistoryDepth > 0 {
-		return cfg.Git.HistoryDepth
-	}
-	if cfg.Scanners.Secrets.MaxHistoryDepth > 0 {
-		return cfg.Scanners.Secrets.MaxHistoryDepth
-	}
-	return 50
 }

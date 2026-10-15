@@ -52,3 +52,62 @@ func TestWriteJSON(t *testing.T) {
 		t.Error("output file not created")
 	}
 }
+
+func TestGenerateUsesDependencyParsers(t *testing.T) {
+	dir := t.TempDir()
+	files := map[string]string{
+		"requirements.txt": "requests==2.31.0\n",
+		"pom.xml":          `<project><dependencies><dependency><groupId>org.apache.commons</groupId><artifactId>commons-text</artifactId><version>1.9</version></dependency></dependencies></project>`,
+		"package.json":     `{"dependencies":{"@babel/core":"7.0.0"}}`,
+		"yarn.lock":        "\"@babel/core@7.0.0\":\n  version \"7.0.0\"\n",
+	}
+	for name, content := range files {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	res, err := NewScanner(&config.Config{}).Generate(context.Background(), dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]bool{}
+	for _, c := range res.Document.Components {
+		got[c.PURL] = true
+	}
+	for _, want := range []string{
+		"pkg:pypi/requests@2.31.0",
+		"pkg:maven/org.apache.commons/commons-text@1.9",
+		"pkg:npm/%40babel/core@7.0.0",
+	} {
+		if !got[want] {
+			t.Errorf("missing %s in %v", want, got)
+		}
+	}
+}
+
+func TestPURLKeepsGoVersionPrefix(t *testing.T) {
+	if got := PURL("go", "github.com/a/b", "v1.2.3"); got != "pkg:golang/github.com/a/b@v1.2.3" {
+		t.Fatal(got)
+	}
+}
+
+func TestPURLEcosystemRoundTrip(t *testing.T) {
+	for _, tc := range []struct{ eco, name, version string }{
+		{"npm", "@babel/core", "7.0.0"},
+		{"maven", "org.apache.commons:commons-text", "1.9"},
+		{"go", "github.com/a/b", "v1.2.3"},
+		{"pip", "requests", "2.31.0"},
+		{"rubygems", "rails", "7.0.0"},
+	} {
+		eco, name := purlEcosystem(PURL(tc.eco, tc.name, tc.version))
+		if eco != tc.eco || name != tc.name {
+			t.Errorf("%s/%s: round trip gave %s/%s", tc.eco, tc.name, eco, name)
+		}
+	}
+	if eco, name := purlEcosystem("pkg:npm/@scope/pkg@1.0.0"); eco != "npm" || name != "@scope/pkg" {
+		t.Errorf("unencoded scope: %s/%s", eco, name)
+	}
+	if eco, _ := purlEcosystem("pkg:unknown/x@1"); eco != "" {
+		t.Errorf("unknown type must be skipped, got %s", eco)
+	}
+}

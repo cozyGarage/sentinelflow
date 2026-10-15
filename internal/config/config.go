@@ -82,10 +82,11 @@ type SecretsConfig struct {
 	Allowlist        []string `yaml:"allowlist" mapstructure:"allowlist"`
 	Patterns         []string `yaml:"patterns" mapstructure:"patterns"`
 	EntropyThreshold float64  `yaml:"entropy_threshold" mapstructure:"entropy_threshold"`
-	ScanGitHistory   bool     `yaml:"scan_git_history" mapstructure:"scan_git_history"`
-	MaxHistoryDepth  int      `yaml:"max_history_depth" mapstructure:"max_history_depth"`
-	Concurrency      int      `yaml:"concurrency" mapstructure:"concurrency"`
-	Verify           bool     `yaml:"verify" mapstructure:"verify"`
+	// Deprecated: use git.scan_history / git.history_depth (see GitHistory).
+	ScanGitHistory  bool `yaml:"scan_git_history" mapstructure:"scan_git_history"`
+	MaxHistoryDepth int  `yaml:"max_history_depth" mapstructure:"max_history_depth"`
+	Concurrency     int  `yaml:"concurrency" mapstructure:"concurrency"`
+	Verify          bool `yaml:"verify" mapstructure:"verify"`
 }
 
 // IaCConfig configures the Infrastructure-as-Code scanner
@@ -148,16 +149,10 @@ type BaselineConfig struct {
 	File    string `yaml:"file" mapstructure:"file"`
 }
 
-// AIConfig configures the AI-powered code review
+// AIConfig exists only so `scanners.ai.enabled: true` fails validation with a
+// clear message instead of being silently ignored. There is no AI scanner.
 type AIConfig struct {
-	Enabled     bool     `yaml:"enabled" mapstructure:"enabled"`
-	Provider    string   `yaml:"provider" mapstructure:"provider"`
-	Model       string   `yaml:"model" mapstructure:"model"`
-	APIKey      string   `yaml:"api_key" mapstructure:"api_key"`
-	BaseURL     string   `yaml:"base_url" mapstructure:"base_url"`
-	Focus       []string `yaml:"focus" mapstructure:"focus"`
-	MaxFileSize int      `yaml:"max_file_size" mapstructure:"max_file_size"`
-	Concurrency int      `yaml:"concurrency" mapstructure:"concurrency"`
+	Enabled bool `yaml:"enabled" mapstructure:"enabled"`
 }
 
 // PoliciesConfig configures policy-as-code
@@ -186,6 +181,24 @@ type FailOnConfig struct {
 type GitConfig struct {
 	ScanHistory  bool `yaml:"scan_history" mapstructure:"scan_history"`
 	HistoryDepth int  `yaml:"history_depth" mapstructure:"history_depth"`
+}
+
+const defaultHistoryDepth = 50
+
+// GitHistory reports whether to scan git history for secrets and how many
+// commits deep. git.* is canonical; the deprecated secrets.scan_git_history /
+// secrets.max_history_depth still enable it, and the old depth applies when
+// git.history_depth is left at its default.
+func (c *Config) GitHistory() (enabled bool, depth int) {
+	enabled = c.Git.ScanHistory || c.Scanners.Secrets.ScanGitHistory
+	depth = c.Git.HistoryDepth
+	if old := c.Scanners.Secrets.MaxHistoryDepth; (depth <= 0 || depth == defaultHistoryDepth) && old > 0 {
+		depth = old
+	}
+	if depth <= 0 {
+		depth = defaultHistoryDepth
+	}
+	return enabled, depth
 }
 
 // LoadFile loads configuration from an explicit file path (--config).
@@ -231,13 +244,6 @@ func unmarshalConfig(v *viper.Viper) (*Config, error) {
 		return nil, err
 	}
 
-	if cfg.Scanners.AI.APIKey == "" {
-		cfg.Scanners.AI.APIKey = os.Getenv("SENTINELFLOW_AI_API_KEY")
-		if cfg.Scanners.AI.APIKey == "" {
-			cfg.Scanners.AI.APIKey = os.Getenv("OPENAI_API_KEY")
-		}
-	}
-
 	return cfg, nil
 }
 
@@ -271,7 +277,6 @@ func Default() *Config {
 			Secrets: SecretsConfig{
 				Enabled:          true,
 				EntropyThreshold: 4.5,
-				MaxHistoryDepth:  50,
 				Concurrency:      10,
 				Allowlist: []string{
 					"**/*_test.go",
@@ -320,14 +325,6 @@ func Default() *Config {
 				Syft:     ExternalToolConfig{Mode: "off"},
 				TrivyFS:  ExternalToolConfig{Mode: "off"},
 				YARA:     ExternalToolConfig{Mode: "off"},
-			},
-			AI: AIConfig{
-				Enabled:     false,
-				Provider:    "openai",
-				Model:       "gpt-4",
-				MaxFileSize: 100000,
-				Concurrency: 3,
-				Focus:       []string{"injection", "authentication", "authorization", "cryptography"},
 			},
 		},
 		Policies: PoliciesConfig{

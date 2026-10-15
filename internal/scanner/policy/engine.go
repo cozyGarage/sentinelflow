@@ -8,9 +8,15 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/open-policy-agent/opa/rego"
 	"github.com/cozygarage/sentinelflow/pkg/api"
+	"github.com/open-policy-agent/opa/v1/ast"
+	"github.com/open-policy-agent/opa/v1/rego"
 )
+
+// regoVersion keeps Rego v0 syntax (no `if`/`contains` required) so the
+// bundled policies and every user's existing .rego files keep compiling on
+// the OPA v1 API. Moving to v1 syntax is a breaking change for user policies.
+var regoVersion = rego.SetRegoVersion(ast.RegoV0)
 
 // OPAEngine wraps the OPA policy engine
 type OPAEngine struct {
@@ -31,6 +37,7 @@ func (e *OPAEngine) LoadPolicy(name, content string) error {
 	query, err := rego.New(
 		rego.Query("data"),
 		rego.Module(name+".rego", content),
+		regoVersion,
 	).PrepareForEval(context.Background())
 
 	if err != nil {
@@ -124,6 +131,7 @@ func (e *OPAEngine) ValidatePolicy(content string) error {
 	_, err := rego.New(
 		rego.Query("data"),
 		rego.Module("test.rego", content),
+		regoVersion,
 	).PrepareForEval(context.Background())
 
 	return err

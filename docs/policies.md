@@ -57,6 +57,7 @@ deny_public_buckets[msg] {
 2. Use the `sentinelflow.*` package namespace.
 3. Define rules that produce violation messages (strings or `{msg, resource}` objects).
 4. Add `# severity: critical|high|medium|low` in METADATA comments for finding severity.
+5. Policies use Rego v0 syntax by default. To write v1 syntax (`deny contains msg if { … }`), add `import rego.v1` to the policy.
 
 Generate a starter template:
 

@@ -166,11 +166,9 @@ From the v1.2.0 review. Ordered by impact on signal quality.
 | Grow the labeled corpus | precision/recall = 1.00 over 3 labels in 2 scanners is not a signal | `internal/quality`; 8 of 10 regex rules unlabeled; no IaC/policy/deps corpus |
 | Scope regex SAST rules by `languages:` | 9 of 10 rules run on every language | `rules.yaml` |
 | Coverage on security boundaries | `unpack` 47%, `artifacts` 14%, `adapter` 6%, `cli` 28% | `go test -cover ./...` |
-| OPA `opa/v1/rego` migration | `opa/rego` v0 wrapper is deprecated (SA1019) | `internal/scanner/policy/engine.go`, `policies/*.rego` |
 | Perf budget with SAST on | Current budget times secrets only; SSA loads packages | `TestPerfBudgetSmallTree` |
 | Go-aware binary hardening | Canary/FORTIFY/RELRO checks are C-oriented and flag every static Go binary | `scan-artifact` on SentinelFlow itself |
 | Offline OSV DB | Air-gapped CI; needs a local range matcher per ecosystem | `db update` removed in v1.2.0 |
-| Merge `scan_git_history` / `git.scan_history` | Two keys, one feature | `docs/usage.md` |
 
 ---
 

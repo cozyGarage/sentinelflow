@@ -747,3 +747,30 @@ func parseNpmLock(content []byte, lockPath string) ([]Dependency, error) {
 	}
 	return deps, nil
 }
+
+// Collect parses every supported manifest/lockfile in dir without querying a
+// vulnerability database. Used by SBOM generation so both share one set of parsers.
+func Collect(ctx context.Context, dir string) ([]Dependency, error) {
+	s := NewScanner(config.Default())
+	found := s.detectEcosystems(dir)
+	names := make([]string, 0, len(found))
+	for name := range found {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
+	var deps []Dependency
+	var errs []string
+	for _, name := range names {
+		got, err := found[name].Scan(ctx, dir)
+		if err != nil {
+			errs = append(errs, fmt.Sprintf("%s: %v", name, err))
+			continue
+		}
+		deps = append(deps, got...)
+	}
+	if len(errs) > 0 {
+		return deps, fmt.Errorf("%s", strings.Join(errs, "; "))
+	}
+	return deps, nil
+}

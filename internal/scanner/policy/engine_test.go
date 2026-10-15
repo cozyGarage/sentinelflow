@@ -119,3 +119,18 @@ func TestIsViolationRuleKey(t *testing.T) {
 		}
 	}
 }
+
+func TestLoadPolicyAcceptsV0AndOptInV1Syntax(t *testing.T) {
+	e := NewOPAEngine()
+	v0 := "package t\n\ndeny[msg] {\n  input.bad\n  msg := \"v0\"\n}\n"
+	v1 := "package t1\n\nimport rego.v1\n\ndeny contains msg if {\n  input.bad\n  msg := \"v1\"\n}\n"
+	for name, src := range map[string]string{"v0": v0, "v1": v1} {
+		if err := e.LoadPolicy(name, src); err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		res, err := e.EvaluatePolicy(name, map[string]any{"bad": true})
+		if err != nil || len(res.Violations) != 1 || res.Violations[0].Message != name {
+			t.Fatalf("%s: %+v %v", name, res, err)
+		}
+	}
+}

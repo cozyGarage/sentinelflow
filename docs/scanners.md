@@ -16,7 +16,7 @@ This guide explains how each scanner in SentinelFlow works.
 
 ### Git history
 
-When `scan_git_history` or `git.scan_history` is enabled, the scanner walks recent commits with `git log -p` and scans **added patch lines** only (not full historical blobs). Findings are deduplicated across commits. With `--diff-base`, history is limited to `base..HEAD`.
+When `git.scan_history` is enabled (the deprecated `secrets.scan_git_history` also works), the scanner walks recent commits with `git log -p` and scans **added patch lines** only (not full historical blobs). Findings are deduplicated across commits. With `--diff-base`, history is limited to `base..HEAD`.
 
 ### Concurrency
 

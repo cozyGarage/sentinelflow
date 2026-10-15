@@ -53,6 +53,9 @@ func emitScanResult(cmd *cobra.Command, cfg *config.Config, result *api.ScanResu
 		fmt.Println(report)
 	}
 	printScanSummary(result)
+	if err := scannerErrors(result, cfg); err != nil {
+		return api.ErrTool(err.Error())
+	}
 	if shouldFail(result, cfg) {
 		return api.ErrFindings("scan failed due to findings exceeding threshold")
 	}

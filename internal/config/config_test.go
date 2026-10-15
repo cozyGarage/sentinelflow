@@ -116,3 +116,27 @@ func TestConfigDirForTarget(t *testing.T) {
 		t.Fatalf("file target: got %q want %q", got, dir)
 	}
 }
+
+func TestGitHistoryPrecedence(t *testing.T) {
+	cases := []struct {
+		name               string
+		gitOn, secOn       bool
+		gitDepth, secDepth int
+		wantOn             bool
+		wantDepth          int
+	}{
+		{"defaults", false, false, 50, 0, false, 50},
+		{"canonical", true, false, 100, 0, true, 100},
+		{"deprecated alias enables", false, true, 50, 0, true, 50},
+		{"deprecated depth when git left default", false, true, 50, 7, true, 7},
+		{"git depth wins when set", true, true, 20, 7, true, 20},
+	}
+	for _, tc := range cases {
+		cfg := Default()
+		cfg.Git.ScanHistory, cfg.Git.HistoryDepth = tc.gitOn, tc.gitDepth
+		cfg.Scanners.Secrets.ScanGitHistory, cfg.Scanners.Secrets.MaxHistoryDepth = tc.secOn, tc.secDepth
+		if on, depth := cfg.GitHistory(); on != tc.wantOn || depth != tc.wantDepth {
+			t.Errorf("%s: got (%v, %d), want (%v, %d)", tc.name, on, depth, tc.wantOn, tc.wantDepth)
+		}
+	}
+}
