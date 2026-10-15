@@ -89,7 +89,7 @@ func (s *Scanner) scanGoAST(ctx context.Context, files []string, base string) ([
 
 func astFinding(rel string, pos token.Position, rule, title, desc, category string, sev api.Severity, cwe string) api.Finding {
 	f := api.Finding{
-		ID:          fmt.Sprintf("SAST-%s-%s-%d", rule, pathToken(rel), pos.Line),
+		ID:          fmt.Sprintf("SAST-%s-%s-%d", rule, fingerprint.Token(rel), pos.Line),
 		Type:        api.FindingTypeInsecureCode,
 		Severity:    sev,
 		Title:       title,

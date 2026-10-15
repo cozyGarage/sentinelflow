@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/cozygarage/sentinelflow/internal/config"
+	"github.com/cozygarage/sentinelflow/internal/scanner/fingerprint"
 	"github.com/cozygarage/sentinelflow/pkg/api"
 	"gopkg.in/yaml.v3"
 )
@@ -286,9 +287,9 @@ func (s *KubernetesScanner) getPodSpec(manifest map[string]interface{}) map[stri
 }
 
 func k8sFinding(id, ruleID, title, desc string, sev api.Severity, file, snippet, remediation string, extra ...string) api.Finding {
-	token := pathToken(file)
+	token := fingerprint.Token(file)
 	if len(extra) > 0 && extra[0] != "" {
-		token = pathToken(file + "|" + extra[0])
+		token = fingerprint.Token(file + "|" + extra[0])
 	}
 	return api.Finding{
 		ID:          fmt.Sprintf("%s-%s", id, token),

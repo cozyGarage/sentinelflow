@@ -6,7 +6,6 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"hash/fnv"
 	"io"
 	"math"
 	"os"
@@ -248,7 +247,7 @@ func (s *Scanner) scanReader(ctx context.Context, r io.Reader, filePath, basePat
 					hashSrc = secret
 				}
 				finding := api.Finding{
-					ID:          fmt.Sprintf("SEC-%s-%s-%d-%d", pattern.ID, pathToken(relPath), lineNum, start+1),
+					ID:          fmt.Sprintf("SEC-%s-%s-%d-%d", pattern.ID, fingerprint.Token(relPath), lineNum, start+1),
 					Type:        api.FindingTypeSecret,
 					Severity:    pattern.Severity,
 					Title:       fmt.Sprintf("Potential %s detected", pattern.Name),
@@ -705,7 +704,7 @@ func (s *Scanner) checkHighEntropy(line string, lineNum int, filePath, basePath 
 				relPath = filepath.ToSlash(relPath)
 
 				finding := api.Finding{
-					ID:          fmt.Sprintf("SEC-entropy-%s-%d-%d", pathToken(relPath), lineNum, loc[2]+1),
+					ID:          fmt.Sprintf("SEC-entropy-%s-%d-%d", fingerprint.Token(relPath), lineNum, loc[2]+1),
 					Type:        api.FindingTypeSecret,
 					Severity:    api.SeverityMedium,
 					Title:       "High-entropy string detected",
@@ -845,7 +844,7 @@ func (s *Scanner) scanGitHistory(ctx context.Context, path, diffBase string) ([]
 				fileFindings[i].Location.StartLine = lineNum
 				fileFindings[i].Location.EndLine = lineNum
 				// scanReader sees a one-line buffer so IDs end in -1; remint with the hunk line.
-				fileFindings[i].ID = fmt.Sprintf("SEC-%s-%s-%d-%d", fileFindings[i].RuleID, pathToken(virtualPath), lineNum, fileFindings[i].Location.StartCol)
+				fileFindings[i].ID = fmt.Sprintf("SEC-%s-%s-%d-%d", fileFindings[i].RuleID, fingerprint.Token(virtualPath), lineNum, fileFindings[i].Location.StartCol)
 				fileFindings[i].Metadata = map[string]any{
 					"git_commit": commit,
 					"git_file":   file,
@@ -994,10 +993,4 @@ func (s *Scanner) loadConfigPatternsStrict() ([]*SecretPattern, error) {
 		})
 	}
 	return patterns, nil
-}
-
-func pathToken(relPath string) string {
-	h := fnv.New32a()
-	_, _ = h.Write([]byte(filepath.ToSlash(relPath)))
-	return fmt.Sprintf("%08x", h.Sum32())
 }

@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/cozygarage/sentinelflow/internal/config"
+	"github.com/cozygarage/sentinelflow/internal/scanner/fingerprint"
 	"github.com/cozygarage/sentinelflow/internal/scanner/redact"
 	"github.com/cozygarage/sentinelflow/internal/scanner/tfparse"
 	"github.com/cozygarage/sentinelflow/pkg/api"
@@ -35,13 +36,12 @@ type TerraformRule struct {
 }
 
 type tfResource struct {
-	Type    string
-	Name    string
-	Body    string
-	Line    int
-	Attrs   map[string]interface{}
+	Type  string
+	Name  string
+	Body  string
+	Line  int
+	Attrs map[string]interface{}
 }
-
 
 // NewTerraformScanner creates a new Terraform scanner
 func NewTerraformScanner(cfg *config.Config) *TerraformScanner {
@@ -89,7 +89,7 @@ func (s *TerraformScanner) scanLineRules(ctx context.Context, fileContent, relPa
 				continue
 			}
 			findings = append(findings, api.Finding{
-				ID:          fmt.Sprintf("IAC-TF-%s-%s-%d", rule.ID, pathToken(relPath), lineNum),
+				ID:          fmt.Sprintf("IAC-TF-%s-%s-%d", rule.ID, fingerprint.Token(relPath), lineNum),
 				Type:        api.FindingTypeMisconfiguration,
 				Severity:    rule.Severity,
 				Title:       rule.Name,
@@ -315,7 +315,7 @@ func tfFinding(ruleID string, line int, file string, res tfResource, title, desc
 		line = 1
 	}
 	return api.Finding{
-		ID:          fmt.Sprintf("IAC-TF-%s-%s-%s-%d", ruleID, res.Name, pathToken(file), line),
+		ID:          fmt.Sprintf("IAC-TF-%s-%s-%s-%d", ruleID, res.Name, fingerprint.Token(file), line),
 		Type:        api.FindingTypeMisconfiguration,
 		Severity:    sev,
 		Title:       title,

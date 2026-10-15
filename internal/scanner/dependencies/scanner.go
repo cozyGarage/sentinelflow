@@ -2,10 +2,10 @@
 package dependencies
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"fmt"
-	"hash/fnv"
 	"os"
 	"path/filepath"
 	"sort"
@@ -13,6 +13,7 @@ import (
 	"sync"
 
 	"github.com/cozygarage/sentinelflow/internal/config"
+	"github.com/cozygarage/sentinelflow/internal/scanner/fingerprint"
 	"github.com/cozygarage/sentinelflow/internal/scanner/types"
 	"github.com/cozygarage/sentinelflow/internal/vulndb"
 	"github.com/cozygarage/sentinelflow/pkg/api"
@@ -293,7 +294,7 @@ func (s *Scanner) checkAll(ctx context.Context, deps []Dependency) ([][]Vulnerab
 				CVE:         v.CVE,
 				Severity:    severityFromVulnDB(v.Severity, v.CVSS),
 				CVSS:        v.CVSS,
-				Description: firstNonEmpty(v.Summary, v.Details),
+				Description: cmp.Or(v.Summary, v.Details),
 				FixedIn:     firstFixedVersion(v.Fixed, v.Affected),
 				References:  v.References,
 			})
@@ -336,15 +337,6 @@ func severityFromVulnDB(severity string, cvss float64) api.Severity {
 	return api.SeverityMedium
 }
 
-func firstNonEmpty(values ...string) string {
-	for _, v := range values {
-		if v != "" {
-			return v
-		}
-	}
-	return ""
-}
-
 func firstFixedVersion(fixed []string, affected []vulndb.Range) string {
 	if len(fixed) > 0 {
 		return fixed[0]
@@ -362,7 +354,7 @@ func (s *Scanner) createFinding(dep Dependency, vuln Vulnerability, basePath str
 	relPath, _ := filepath.Rel(basePath, dep.FilePath)
 
 	return api.Finding{
-		ID:          fmt.Sprintf("DEP-%s-%s-%s", dep.Ecosystem, pkgToken(dep.Name), vuln.ID),
+		ID:          fmt.Sprintf("DEP-%s-%s-%s", dep.Ecosystem, fingerprint.Token(dep.Name), vuln.ID),
 		Type:        api.FindingTypeVulnerability,
 		Severity:    vuln.Severity,
 		Title:       fmt.Sprintf("Vulnerable dependency: %s", dep.Name),
@@ -389,12 +381,6 @@ func formatFixedIn(fixed string) string {
 		return ""
 	}
 	return " (fixed in " + fixed + ")"
-}
-
-func pkgToken(name string) string {
-	h := fnv.New32a()
-	_, _ = h.Write([]byte(name))
-	return fmt.Sprintf("%08x", h.Sum32())
 }
 
 // GoModScanner scans Go modules

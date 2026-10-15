@@ -66,7 +66,8 @@ func matchPattern(path, base, pattern string) bool {
 }
 
 // matchDoublestar implements a small subset of doublestar globs used in config:
-//   **/*_test.go, **/testdata/**, docs/**, foo/**/bar
+//
+//	**/*_test.go, **/testdata/**, docs/**, foo/**/bar
 func matchDoublestar(path, pattern string) bool {
 	path = strings.Trim(filepath.ToSlash(path), "/")
 	pattern = strings.Trim(filepath.ToSlash(pattern), "/")

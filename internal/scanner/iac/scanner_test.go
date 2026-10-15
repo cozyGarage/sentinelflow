@@ -309,8 +309,6 @@ func TestDockerfileSuffixScannedAndUniqueIDs(t *testing.T) {
 	}
 }
 
-
-
 func TestKubernetesMultiDocAndInitContainer(t *testing.T) {
 	dir := t.TempDir()
 	manifest := `
@@ -572,4 +570,3 @@ spec:
 		t.Fatalf("expected 2 privileged findings, got %d (%v)", count, ids)
 	}
 }
-

@@ -3,11 +3,10 @@ package policy
 import (
 	"context"
 	"fmt"
-	"hash/fnv"
-	"path/filepath"
 	"sort"
 	"strings"
 
+	"github.com/cozygarage/sentinelflow/internal/scanner/fingerprint"
 	"github.com/cozygarage/sentinelflow/pkg/api"
 	"github.com/open-policy-agent/opa/v1/ast"
 	"github.com/open-policy-agent/opa/v1/rego"
@@ -175,7 +174,7 @@ func ConvertToFindings(result *PolicyResult, severity api.Severity) []api.Findin
 	for _, violation := range result.Violations {
 		finding := api.Finding{
 			// Keyed by content, not position, so IDs survive unrelated violations appearing.
-			ID:          fmt.Sprintf("POLICY-%s-%s-%s", result.PolicyName, pathToken(violation.Resource), pathToken(violation.Message)),
+			ID:          fmt.Sprintf("POLICY-%s-%s-%s", result.PolicyName, fingerprint.Token(violation.Resource), fingerprint.Token(violation.Message)),
 			Type:        api.FindingTypePolicyViolation,
 			Severity:    severity,
 			Title:       fmt.Sprintf("Policy Violation: %s", result.PolicyName),
@@ -193,10 +192,4 @@ func ConvertToFindings(result *PolicyResult, severity api.Severity) []api.Findin
 	}
 
 	return findings
-}
-
-func pathToken(relPath string) string {
-	h := fnv.New32a()
-	_, _ = h.Write([]byte(filepath.ToSlash(relPath)))
-	return fmt.Sprintf("%08x", h.Sum32())
 }

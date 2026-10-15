@@ -6,7 +6,6 @@ import (
 	"context"
 	_ "embed"
 	"fmt"
-	"hash/fnv"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -234,7 +233,7 @@ func (s *Scanner) scanFile(ctx context.Context, filePath, basePath string) ([]ap
 						owasp = []string{rule.OWASP}
 					}
 					finding := api.Finding{
-						ID:          fmt.Sprintf("SAST-%s-%s-%d", rule.ID, pathToken(relPath), lineNum),
+						ID:          fmt.Sprintf("SAST-%s-%s-%d", rule.ID, fingerprint.Token(relPath), lineNum),
 						Type:        api.FindingTypeInsecureCode,
 						Severity:    rule.Severity,
 						Title:       rule.Name,
@@ -319,12 +318,6 @@ func languageMatches(rule Rule, path string) bool {
 		}
 	}
 	return false
-}
-
-func pathToken(relPath string) string {
-	h := fnv.New32a()
-	_, _ = h.Write([]byte(relPath))
-	return fmt.Sprintf("%08x", h.Sum32())
 }
 
 func remediationFor(category string) string {

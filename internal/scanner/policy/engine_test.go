@@ -71,7 +71,7 @@ deny_privileged[msg] {
 
 	// Non-violating input still exposes workload_kinds as a string set in OPA data.
 	result, err := engine.EvaluatePolicy(context.Background(), "no-priv", map[string]interface{}{
-		"kind": "ConfigMap",
+		"kind":     "ConfigMap",
 		"metadata": map[string]interface{}{"name": "x"},
 	})
 	if err != nil {
@@ -104,14 +104,14 @@ deny_privileged[msg] {
 
 func TestIsViolationRuleKey(t *testing.T) {
 	cases := map[string]bool{
-		"deny":           true,
+		"deny":            true,
 		"deny_privileged": true,
-		"violation":      true,
-		"violation_msg":  true,
-		"violations":     true,
-		"workload_kinds": false,
-		"allow":          false,
-		"is_true":        false,
+		"violation":       true,
+		"violation_msg":   true,
+		"violations":      true,
+		"workload_kinds":  false,
+		"allow":           false,
+		"is_true":         false,
 	}
 	for k, want := range cases {
 		if got := isViolationRuleKey(k); got != want {
