@@ -364,3 +364,13 @@ func TestRemoveHookBlockPreservesOtherHooks(t *testing.T) {
 		t.Fatal("expected SentinelFlow block to be removed")
 	}
 }
+
+func TestShouldFailOnKEVRegardlessOfSeverity(t *testing.T) {
+	result := &api.ScanResult{Findings: []api.Finding{{Severity: api.SeverityLow, KEV: true}}}
+	if shouldFail(result, &config.Config{FailOn: config.FailOnConfig{Severity: "critical"}}) {
+		t.Fatal("KEV gate is off: low finding must not fail a critical threshold")
+	}
+	if !shouldFail(result, &config.Config{FailOn: config.FailOnConfig{Severity: "critical", KEV: true}}) {
+		t.Fatal("fail_on.kev must fail on a KEV finding of any severity")
+	}
+}

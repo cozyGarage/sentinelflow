@@ -55,6 +55,14 @@ inputs:
     description: Container image reference to scan
     required: false
     default: ''
+  fail-on-kev:
+    description: Fail on any finding in the CISA Known Exploited Vulnerabilities catalog
+    required: false
+    default: 'false'
+  vex:
+    description: Comma-separated OpenVEX documents whose not_affected/fixed statements suppress findings
+    required: false
+    default: ''
   use-baseline:
     description: Apply baseline filtering (.sentinelflow/baseline.yaml)
     required: false
@@ -195,6 +203,8 @@ runs:
         SF_SCAN_ARTIFACTS: ${{ inputs.scan-artifacts }}
         SF_CONTAINER_IMAGE: ${{ inputs.container-image }}
         SF_USE_BASELINE: ${{ inputs.use-baseline }}
+        SF_FAIL_ON_KEV: ${{ inputs.fail-on-kev }}
+        SF_VEX: ${{ inputs.vex }}
         SF_FAIL_ON: ${{ inputs.fail-on }}
         SF_FORMAT: ${{ inputs.format }}
         SF_OUTPUT: ${{ inputs.output }}
@@ -237,6 +247,12 @@ runs:
 
         if [ "${SF_USE_BASELINE}" = "true" ]; then
           ARGS+=(--baseline)
+        fi
+        if [ "${SF_FAIL_ON_KEV}" = "true" ]; then
+          ARGS+=(--fail-on-kev)
+        fi
+        if [ -n "${SF_VEX}" ]; then
+          ARGS+=(--vex "${SF_VEX}")
         fi
 
         if [ -n "${SF_TIMEOUT}" ]; then

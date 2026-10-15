@@ -21,6 +21,7 @@ import (
 	"github.com/cozygarage/sentinelflow/internal/scanner/fingerprint"
 	"github.com/cozygarage/sentinelflow/internal/scanner/suppress"
 	"github.com/cozygarage/sentinelflow/internal/scanner/types"
+	"github.com/cozygarage/sentinelflow/internal/scanner/vex"
 	"github.com/cozygarage/sentinelflow/pkg/api"
 )
 
@@ -165,8 +166,42 @@ func (e *Engine) Scan(ctx context.Context, targetPath string) (*api.ScanResult, 
 
 	fingerprint.Ensure(result.Findings)
 
+	if e.config.Scanners.Dependencies.RiskEnrichment {
+		if err := enrichRisk(ctx, result.Findings); err != nil && len(result.ScannerRuns) > 0 {
+			run := &result.ScannerRuns[0]
+			for i := range result.ScannerRuns {
+				if result.ScannerRuns[i].Scanner == "dependencies" {
+					run = &result.ScannerRuns[i]
+				}
+			}
+			msg := "EPSS/KEV enrichment incomplete: " + err.Error()
+			if e.config.FailOn.KEV && run.Error == "" {
+				// The KEV gate cannot be evaluated; fail closed instead of passing silently.
+				run.Error = msg
+			} else {
+				run.Warnings = append(run.Warnings, msg)
+			}
+		}
+	}
+
 	kept, inline := suppress.Filter(result.Findings, targetPath)
 	result.Findings = kept
+
+	var vexed []api.Finding
+	if len(e.config.VEX) > 0 {
+		paths := make([]string, len(e.config.VEX))
+		for i, p := range e.config.VEX {
+			if !filepath.IsAbs(p) {
+				p = filepath.Join(targetPath, p)
+			}
+			paths[i] = p
+		}
+		rules, err := vex.Load(paths)
+		if err != nil {
+			return nil, fmt.Errorf("load VEX: %w", err)
+		}
+		result.Findings, vexed = vex.Filter(result.Findings, rules)
+	}
 
 	if e.diffBase() != "" || e.Staged {
 		changed, derr := diff.Collect(diff.Spec{
@@ -217,6 +252,14 @@ func (e *Engine) Scan(ctx context.Context, targetPath string) (*api.ScanResult, 
 		if err := e.filterBaselineRef(ctx, targetPath, result); err != nil {
 			return nil, err
 		}
+	}
+	if len(vexed) > 0 {
+		if result.Baseline == nil {
+			result.Baseline = &api.BaselineSummary{Total: len(result.Findings), New: len(result.Findings)}
+		}
+		result.Baseline.Total += len(vexed)
+		result.Baseline.Suppressed += len(vexed)
+		result.Baseline.VEX = len(vexed)
 	}
 
 	if len(skipped) > 0 {

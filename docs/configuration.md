@@ -56,6 +56,7 @@ Run `sentinelflow init` to generate a starter configuration.
 | `severity` | string | `medium` | Minimum severity to report |
 | `ignore_dev` | bool | `false` | Skip dev dependencies |
 | `ignore_cves` | []string | — | CVE, GHSA, GO-, or OSV IDs to ignore |
+| `risk_enrichment` | bool | `true` | Add EPSS scores and CISA KEV flags to findings that have a CVE. Fetches the KEV catalog (cached 24h) and the FIRST.org EPSS API; lookup failures are warnings unless `fail_on.kev` is set |
 | `fail_on_error` | bool | `true` | Fail the CLI when the dependencies scanner errors (e.g. OSV network blips). Set `false` to keep any findings and print a warning instead of failing solely for transport errors |
 
 Default stays strict for security. Soft-fail is for flaky CI networks only — findings that were collected still go through `fail_on`.
@@ -167,8 +168,20 @@ Supported formats: `text`, `json`, `sarif`, `markdown`, `html`, `junit`, `gitlab
 | `severity` | string | `high` | Fail threshold: `critical`, `high`, `medium`, or `low` |
 | `secrets` | bool | `true` | Fail on any secret finding |
 | `policy_violations` | bool | `true` | Fail on policy violations |
+| `kev` | bool | `false` | Fail on any finding in the CISA Known Exploited Vulnerabilities catalog, whatever its severity. If the KEV lookup fails, the scan errors instead of passing |
 
-CLI override: `--fail-on high`
+CLI overrides: `--fail-on high`, `--fail-on-kev`
+
+## VEX (`vex`)
+
+A list of [OpenVEX](https://github.com/openvex/spec) documents, relative to the scan root. Statements with status `not_affected` or `fixed` suppress findings whose CVE or OSV/GHSA ID matches. If a statement lists `products` (purls such as `pkg:golang/github.com/foo/bar@v1.2.3`), it only applies to dependency findings for that package (and version, when given). Suppressed counts appear in the report summary.
+
+```yaml
+vex:
+  - .sentinelflow/vex.openvex.json
+```
+
+CLI: `--vex file.json` (repeatable).
 
 ## Git (`git`)
 

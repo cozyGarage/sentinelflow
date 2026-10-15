@@ -142,6 +142,12 @@ func (f *SARIFFormatter) Format(result *api.ScanResult) (string, error) {
 		if finding.CVSS > 0 {
 			properties["cvss"] = finding.CVSS
 		}
+		if finding.EPSS > 0 {
+			properties["epss"] = finding.EPSS
+		}
+		if finding.KEV {
+			properties["kev"] = true
+		}
 		if finding.Fingerprint != "" {
 			properties["fingerprint"] = finding.Fingerprint
 		}

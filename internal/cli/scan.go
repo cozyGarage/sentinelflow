@@ -40,6 +40,8 @@ var (
 	scanStaged       bool
 	diffBase         string
 	baselineRef      string
+	failOnKEV        bool
+	vexFiles         []string
 	scanSBOM         string
 	verifySecrets    bool
 	emitAnnotations  bool
@@ -96,6 +98,8 @@ func init() {
 	scanCmd.Flags().StringVar(&scanTimeoutFlag, "timeout", "", "scan deadline (Go duration, e.g. 10m, 90s); overrides scan_timeout")
 	scanCmd.Flags().BoolVar(&scanStaged, "staged", false, "limit findings to git staged files")
 	scanCmd.Flags().StringVar(&baselineRef, "baseline-ref", "", "report only findings not present at this git ref (scans the ref in a temporary worktree)")
+	scanCmd.Flags().BoolVar(&failOnKEV, "fail-on-kev", false, "fail if any finding is in the CISA Known Exploited Vulnerabilities catalog")
+	scanCmd.Flags().StringSliceVar(&vexFiles, "vex", nil, "OpenVEX document(s); not_affected/fixed statements suppress matching findings")
 	scanCmd.Flags().StringVar(&diffBase, "diff-base", "", "limit findings to files/lines changed since this git ref")
 	scanCmd.Flags().StringVar(&scanSBOM, "sbom", "", "scan a CycloneDX JSON SBOM for vulnerable components")
 	scanCmd.Flags().BoolVar(&verifySecrets, "verify-secrets", false, "opt-in live verification of detected secrets (network)")
@@ -298,6 +302,11 @@ func applyScanFlags(cfg *config.Config) error {
 	if verifySecrets {
 		cfg.Scanners.Secrets.Verify = true
 	}
+	if failOnKEV {
+		cfg.FailOn.KEV = true
+		cfg.Scanners.Dependencies.RiskEnrichment = true
+	}
+	cfg.VEX = append(cfg.VEX, vexFiles...)
 	if emitAnnotations {
 		cfg.Reporting.EmitAnnotations = true
 	}
@@ -438,6 +447,9 @@ func printScanSummary(result *api.ScanResult) {
 	if result.Baseline != nil && result.Baseline.Enabled {
 		fmt.Printf("  Baseline:       %d suppressed, %d new\n", result.Baseline.Suppressed, result.Baseline.New)
 	}
+	if result.Baseline != nil && result.Baseline.VEX > 0 {
+		fmt.Printf("  VEX suppressed: %d\n", result.Baseline.VEX)
+	}
 	if result.Baseline != nil && result.Baseline.Inline > 0 {
 		fmt.Printf("  Inline ignore:  %d\n", result.Baseline.Inline)
 	}
@@ -477,6 +489,14 @@ func shouldFail(result *api.ScanResult, cfg *config.Config) bool {
 			}
 		case "info":
 			if len(result.Findings) > 0 {
+				return true
+			}
+		}
+	}
+
+	if cfg.FailOn.KEV {
+		for _, f := range result.Findings {
+			if f.KEV {
 				return true
 			}
 		}

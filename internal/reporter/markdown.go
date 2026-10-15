@@ -109,6 +109,9 @@ func (f *MarkdownFormatter) Format(result *api.ScanResult) (string, error) {
 				if finding.CVSS > 0 {
 					md.WriteString(fmt.Sprintf("**CVSS Score:** %.1f\n\n", finding.CVSS))
 				}
+				if risk := api.RiskLabel(finding); risk != "" {
+					md.WriteString(fmt.Sprintf("**Exploitability:** %s\n\n", risk))
+				}
 
 				if finding.Remediation != "" {
 					md.WriteString(fmt.Sprintf("**Remediation:** %s\n\n", escapeMarkdownText(finding.Remediation)))
