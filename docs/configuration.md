@@ -57,6 +57,7 @@ Run `sentinelflow init` to generate a starter configuration.
 | `ignore_dev` | bool | `false` | Skip dev dependencies |
 | `ignore_cves` | []string | — | CVE, GHSA, GO-, or OSV IDs to ignore |
 | `risk_enrichment` | bool | `true` | Add EPSS scores and CISA KEV flags to findings that have a CVE. Fetches the KEV catalog (cached 24h) and the FIRST.org EPSS API; lookup failures are warnings unless `fail_on.kev` is set |
+| `reachability` | string | `off` | `auto` / `required` / `off`. Runs [`govulncheck`](https://go.dev/doc/security/vuln/) in each Go module with findings and marks each Go finding `reachable: true/false` (is the vulnerable function actually called). `auto` skips with a warning when govulncheck is not on PATH; `required` errors |
 | `fail_on_error` | bool | `true` | Fail the CLI when the dependencies scanner errors (e.g. OSV network blips). Set `false` to keep any findings and print a warning instead of failing solely for transport errors |
 
 Default stays strict for security. Soft-fail is for flaky CI networks only — findings that were collected still go through `fail_on`.
@@ -161,6 +162,7 @@ Supported formats: `text`, `json`, `sarif`, `markdown`, `html`, `junit`, `gitlab
 | `secrets` | bool | `true` | Fail on any secret finding |
 | `policy_violations` | bool | `true` | Fail on policy violations |
 | `kev` | bool | `false` | Fail on any finding in the CISA Known Exploited Vulnerabilities catalog, whatever its severity. If the KEV lookup fails, the scan errors instead of passing |
+| `reachable_only` | bool | `false` | Ignore findings proven unreachable (`reachable: false`) for the `severity` gate. Findings that were not analysed (non-Go, or reachability off) still count |
 
 CLI overrides: `--fail-on high`, `--fail-on-kev`
 

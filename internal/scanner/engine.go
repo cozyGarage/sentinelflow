@@ -3,6 +3,7 @@ package scanner
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io/fs"
 	"os"
@@ -16,6 +17,7 @@ import (
 	"github.com/cozygarage/sentinelflow/internal/baseline"
 	"github.com/cozygarage/sentinelflow/internal/buildinfo"
 	"github.com/cozygarage/sentinelflow/internal/config"
+	"github.com/cozygarage/sentinelflow/internal/scanner/dependencies"
 	"github.com/cozygarage/sentinelflow/internal/scanner/diff"
 	"github.com/cozygarage/sentinelflow/internal/scanner/filter"
 	"github.com/cozygarage/sentinelflow/internal/scanner/fingerprint"
@@ -168,18 +170,28 @@ func (e *Engine) Scan(ctx context.Context, targetPath string) (*api.ScanResult, 
 
 	if e.config.Scanners.Dependencies.RiskEnrichment {
 		if err := enrichRisk(ctx, result.Findings); err != nil && len(result.ScannerRuns) > 0 {
-			run := &result.ScannerRuns[0]
-			for i := range result.ScannerRuns {
-				if result.ScannerRuns[i].Scanner == "dependencies" {
-					run = &result.ScannerRuns[i]
-				}
-			}
+			run := depsRun(result)
 			msg := "EPSS/KEV enrichment incomplete: " + err.Error()
 			if e.config.FailOn.KEV && run.Error == "" {
 				// The KEV gate cannot be evaluated; fail closed instead of passing silently.
 				run.Error = msg
 			} else {
 				run.Warnings = append(run.Warnings, msg)
+			}
+		}
+	}
+
+	if mode := config.ExternalMode(e.config.Scanners.Dependencies.Reachability); mode != "off" {
+		err := dependencies.AnnotateGoReachability(ctx, targetPath, result.Findings)
+		if err != nil && len(result.ScannerRuns) > 0 {
+			run := depsRun(result)
+			switch {
+			case mode == "required" && run.Error == "":
+				run.Error = "reachability: " + err.Error()
+			case errors.Is(err, dependencies.ErrGovulncheckMissing):
+				run.Warnings = append(run.Warnings, "reachability: govulncheck not on PATH (mode=auto; skipping)")
+			default:
+				run.Warnings = append(run.Warnings, "reachability: "+err.Error())
 			}
 		}
 	}
@@ -382,4 +394,14 @@ func (e *Engine) shouldSkip(path string) bool {
 		return filter.ShouldSkip(path, nil)
 	}
 	return filter.ShouldSkip(path, e.config.Scanners.Exclude)
+}
+
+// depsRun returns the dependencies scanner run (or the first run) for warnings.
+func depsRun(result *api.ScanResult) *api.ScannerRun {
+	for i := range result.ScannerRuns {
+		if result.ScannerRuns[i].Scanner == "dependencies" {
+			return &result.ScannerRuns[i]
+		}
+	}
+	return &result.ScannerRuns[0]
 }

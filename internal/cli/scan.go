@@ -477,6 +477,16 @@ func printScanSummary(result *api.ScanResult) {
 }
 
 func shouldFail(result *api.ScanResult, cfg *config.Config) bool {
+	if cfg.FailOn.ReachableOnly {
+		gated := *result
+		gated.Findings = nil
+		for _, f := range result.Findings {
+			if f.Reachable == nil || *f.Reachable {
+				gated.Findings = append(gated.Findings, f)
+			}
+		}
+		result = &gated
+	}
 	counts := result.CountBySeverity()
 
 	threshold := strings.ToLower(strings.TrimSpace(cfg.FailOn.Severity))
