@@ -76,6 +76,9 @@ func NewScanner(cfg *config.Config) *Scanner {
 	s.ecosystems["maven"] = &MavenScanner{}
 	s.ecosystems["cargo"] = &CargoScanner{}
 	s.ecosystems["rubygems"] = &RubyGemsScanner{}
+	s.ecosystems["gradle"] = &GradleScanner{}
+	s.ecosystems["composer"] = &ComposerScanner{}
+	s.ecosystems["nuget"] = &NuGetScanner{}
 
 	return s
 }
@@ -92,11 +95,12 @@ func (s *Scanner) Supports(path string) bool {
 	// Only files that implemented parsers actually read (bare Gemfile unsupported).
 	supportedFiles := []string{
 		"go.mod",
-		"package.json", "package-lock.json", "npm-shrinkwrap.json", "yarn.lock",
+		"package.json", "package-lock.json", "npm-shrinkwrap.json", "yarn.lock", "pnpm-lock.yaml",
 		"requirements.txt", "Pipfile.lock", "poetry.lock", "pyproject.toml",
 		"pom.xml",
 		"Cargo.toml", "Cargo.lock",
 		"Gemfile.lock",
+		"gradle.lockfile", "composer.lock", "packages.lock.json",
 	}
 
 	for _, f := range supportedFiles {
@@ -591,22 +595,27 @@ func (n *NpmScanner) scanLockfile(path string) ([]Dependency, error) {
 		}
 	}
 
-	yarnPath := filepath.Join(path, "yarn.lock")
-	content, err := os.ReadFile(yarnPath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, os.ErrNotExist
+	for _, lf := range []struct {
+		name  string
+		parse func([]byte, string) ([]Dependency, error)
+	}{{"yarn.lock", parseYarnLock}, {"pnpm-lock.yaml", parsePnpmLock}} {
+		lockPath := filepath.Join(path, lf.name)
+		content, err := os.ReadFile(lockPath)
+		if err != nil {
+			if os.IsNotExist(err) {
+				continue
+			}
+			return nil, err
 		}
-		return nil, err
+		deps, err := lf.parse(content, lockPath)
+		if err != nil {
+			return nil, fmt.Errorf("%s: %w", lf.name, err)
+		}
+		if len(deps) > 0 {
+			return deps, nil
+		}
 	}
-	deps, err := parseYarnLock(content, yarnPath)
-	if err != nil {
-		return nil, fmt.Errorf("yarn.lock: %w", err)
-	}
-	if len(deps) == 0 {
-		return nil, os.ErrNotExist
-	}
-	return deps, nil
+	return nil, os.ErrNotExist
 }
 
 // parseYarnLock parses classic Yarn v1 lockfiles (not Berry).

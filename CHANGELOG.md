@@ -42,6 +42,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Terraform is parsed with `hashicorp/hcl/v2` instead of regexes and brace counting. The IaC scanner and the OPA policy input share one parser, which removes a duplicate parser. The demo project's IaC and policy findings are unchanged.
 - **Upgrade note:** if `.sentinelflow.yaml` lists `scanners.iac.frameworks` explicitly, add `github-actions` and `compose` to enable the new checks.
+### Added
+
+- **Dependencies:** `pnpm-lock.yaml` (v5, v6, v9), `gradle.lockfile`, `composer.lock` (Packagist), and NuGet `packages.lock.json`. All are checked against OSV.
 
 ## [1.2.0] - 2026-10-03
 
