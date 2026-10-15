@@ -42,6 +42,7 @@ var (
 	baselineRef      string
 	failOnKEV        bool
 	vexFiles         []string
+	markdownOut      string
 	scanSBOM         string
 	verifySecrets    bool
 	emitAnnotations  bool
@@ -111,6 +112,7 @@ func init() {
 	scanCmd.Flags().BoolVar(&noDependencies, "no-deps", false, "with --all, disable dependency scanning (policy stays enabled)")
 	scanCmd.Flags().BoolVar(&noSAST, "no-sast", false, "with --all, disable SAST (policy stays enabled)")
 	scanCmd.Flags().StringVarP(&outputFile, "output", "o", "", "output file path")
+	scanCmd.Flags().StringVar(&markdownOut, "markdown-out", "", "also write a markdown report to this path (e.g. for a PR comment)")
 	scanCmd.Flags().StringVar(&failOnSeverity, "fail-on", "", "fail if findings match severity (critical, high, medium, low, info)")
 }
 
@@ -208,6 +210,16 @@ func runScan(cmd *cobra.Command, args []string) error {
 		fmt.Printf("\n%s Report saved to %s\n", color.GreenString("✓"), outputFile)
 	} else {
 		fmt.Println(report)
+	}
+
+	if markdownOut != "" {
+		md, err := rep.Generate(result, "markdown")
+		if err != nil {
+			return api.ErrTool(fmt.Sprintf("failed to generate markdown report: %v", err))
+		}
+		if err := os.WriteFile(markdownOut, []byte(md), 0644); err != nil {
+			return api.ErrTool(fmt.Sprintf("failed to write markdown report: %v", err))
+		}
 	}
 
 	if emitAnnotations || cfg.Reporting.EmitAnnotations {

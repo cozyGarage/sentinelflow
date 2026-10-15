@@ -95,6 +95,8 @@ Third-party `uses:` in this repository are pinned by commit SHA (Dependabot keep
 | `timeout` | — | Scan deadline (`10m`, `90s`, …); empty uses config default |
 | `diff-base` | — | Limit findings to files/lines changed since this git ref |
 | `baseline-ref` | — | Report only findings absent at this git ref. The ref is scanned in a temporary worktree, so it needs `fetch-depth: 0` (or that ref fetched) |
+| `pr-comment` | `false` | On `pull_request` events, post or update one sticky PR comment with the markdown report. Needs `permissions: pull-requests: write`. On fork PRs the token is read-only, so you get a warning instead of a failure |
+| `github-token` | `github.token` | Token used for the PR comment |
 | `emit-annotations` | `false` | Print GitHub workflow annotations |
 | `format` | `sarif` | Report format (`text`, `json`, `sarif`, `markdown`, `html`, `junit`, `gitlab-sast`, `gitlab-deps`) |
 | `output` | `report.sarif` | Output file path |

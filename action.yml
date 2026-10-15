@@ -95,6 +95,14 @@ inputs:
     description: Report only findings that do not already exist at this git ref (needs that ref fetched, e.g. fetch-depth 0)
     required: false
     default: ''
+  pr-comment:
+    description: "On pull_request events, post (or update) one sticky PR comment with the markdown report. Needs `pull-requests: write`"
+    required: false
+    default: 'false'
+  github-token:
+    description: Token used for the PR comment
+    required: false
+    default: ${{ github.token }}
   emit-annotations:
     description: Print GitHub Actions workflow annotations for findings
     required: false
@@ -213,6 +221,7 @@ runs:
         SF_DIFF_BASE: ${{ inputs.diff-base }}
         SF_BASELINE_REF: ${{ inputs.baseline-ref }}
         SF_EMIT_ANNOTATIONS: ${{ inputs.emit-annotations }}
+        SF_PR_COMMENT: ${{ inputs.pr-comment == 'true' && github.event_name == 'pull_request' }}
         SF_WORKSPACE: ${{ github.workspace }}
         SF_ACTION_PATH: ${{ github.action_path }}
         SENTINELFLOW_CACHE_DIR: ${{ runner.temp }}/sentinelflow-vulndb
@@ -266,6 +275,14 @@ runs:
         fi
         if [ "${SF_EMIT_ANNOTATIONS}" = "true" ]; then
           ARGS+=(--emit-annotations)
+        fi
+        # Markdown for the PR comment step; inside the workspace so docker delivery can write it.
+        if [ "${SF_PR_COMMENT}" = "true" ]; then
+          if [ "${SF_DELIVERY}" = "docker" ]; then
+            ARGS+=(--markdown-out /workspace/.sentinelflow-pr-comment.md)
+          else
+            ARGS+=(--markdown-out "${SF_WORKSPACE}/.sentinelflow-pr-comment.md")
+          fi
         fi
 
         if [[ "${SF_OUTPUT}" = /* ]]; then
@@ -331,3 +348,13 @@ runs:
         fi
 
         exit $EXIT_CODE
+
+    - name: Comment on pull request
+      if: always() && inputs.pr-comment == 'true' && github.event_name == 'pull_request'
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
+        SF_REPO: ${{ github.repository }}
+        SF_PR: ${{ github.event.pull_request.number }}
+        SF_REPORT: ${{ github.workspace }}/.sentinelflow-pr-comment.md
+      run: bash "${{ github.action_path }}/scripts/pr-comment.sh"

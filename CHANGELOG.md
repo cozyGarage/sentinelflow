@@ -25,6 +25,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Risk ranking:** findings with a CVE now carry `epss` (FIRST.org exploit probability) and `kev` (in the CISA Known Exploited Vulnerabilities catalog). Both appear in the JSON and SARIF properties and as an "Exploitability" line in the text and markdown reports. Turn this off with `scanners.dependencies.risk_enrichment: false`.
 - **`fail_on.kev` / `--fail-on-kev` / Action `fail-on-kev`:** fail on any actively exploited CVE whatever its severity. If the KEV lookup fails, the scan errors rather than passing silently.
 - **OpenVEX ingest:** `vex:` config, `--vex`, Action `vex`. `not_affected`/`fixed` statements suppress matching findings, optionally scoped to a package purl and version. Counts appear as "VEX suppressed" in the summary and as `baseline.vex` in the JSON.
+### Added
+
+- **Action `pr-comment: true`:** posts one sticky PR comment with the markdown report, updated in place on each push, truncated under GitHub's size limit, and harmless on read-only fork tokens. This replaces the `github-script` steps that each repo had to copy.
+- `scan --markdown-out <path>` writes a markdown report in addition to the main `--format` output.
+
+### Changed
+
+- Dogfood workflow uses `pr-comment` instead of re-running the full scan for markdown. `govulncheck` is pinned to v1.9.0.
 
 ## [1.2.0] - 2026-10-03
 
