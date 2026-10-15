@@ -60,7 +60,7 @@ Config knobs:
 
 ### Data source
 
-Queries the [OSV API](https://osv.dev/) (`/v1/querybatch`, retries, on-disk cache) for Go, npm, pip, Maven, Cargo, and RubyGems ecosystems (auto-detected from lockfiles and manifests). Results are cached on disk for 24h (`$XDG_CACHE_HOME/sentinelflow/vulndb`; override with `SENTINELFLOW_CACHE_DIR`). Fully offline scanning is not supported yet.
+Queries the [OSV API](https://osv.dev/) (`/v1/querybatch`, retries, on-disk cache) for Go, npm, pip, Maven (incl. Gradle lockfiles), Cargo, RubyGems, Composer (Packagist), and NuGet ecosystems (auto-detected from lockfiles and manifests). Results are cached on disk for 24h (`$XDG_CACHE_HOME/sentinelflow/vulndb`; override with `SENTINELFLOW_CACHE_DIR`). Fully offline scanning is not supported yet.
 
 ### Supported files
 
@@ -69,11 +69,14 @@ Dependencies **prefer lockfiles when present** (`package-lock.json`, `npm-shrink
 | Ecosystem | Manifests / lockfiles |
 | --- | --- |
 | Go | `go.mod` (+ `go.sum` when present) |
-| npm | `package-lock.json` / `npm-shrinkwrap.json` / classic `yarn.lock` (preferred), `package.json` fallback |
+| npm | `package-lock.json` / `npm-shrinkwrap.json` / classic `yarn.lock` / `pnpm-lock.yaml` v5–v9 (preferred), `package.json` fallback |
 | Python (PyPI) | `poetry.lock` / `Pipfile.lock` (preferred), `requirements.txt`, `pyproject.toml` |
 | Maven | `pom.xml` (resolves basic `${property}` versions) |
 | Cargo | `Cargo.lock` (preferred), `Cargo.toml` fallback |
 | RubyGems | `Gemfile.lock` only (bare `Gemfile` unsupported) |
+| Gradle (Maven) | `gradle.lockfile` (enable [dependency locking](https://docs.gradle.org/current/userguide/dependency_locking.html)); test-only configurations count as dev |
+| Composer (Packagist) | `composer.lock` (`packages-dev` count as dev; `dev-*` branches skipped) |
+| NuGet | `packages.lock.json` (`RestorePackagesWithLockFile`) |
 
 Unpinned or URL-based Python/Cargo requirements without a concrete version are skipped so OSV queries stay meaningful.
 

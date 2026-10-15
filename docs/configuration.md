@@ -52,7 +52,7 @@ Run `sentinelflow init` to generate a starter configuration.
 | Field | Type | Default | Description |
 | --- | --- | --- | --- |
 | `enabled` | bool | `true` | Enable dependency scanning |
-| `ecosystems` | []string | `["auto"]` | Package ecosystems to scan |
+| `ecosystems` | []string | `["auto"]` | Package ecosystems to scan: `go`, `npm`, `pip`, `maven`, `gradle`, `cargo`, `rubygems`, `composer`, `nuget` |
 | `severity` | string | `medium` | Minimum severity to report |
 | `ignore_dev` | bool | `false` | Skip dev dependencies |
 | `ignore_cves` | []string | — | CVE, GHSA, GO-, or OSV IDs to ignore |

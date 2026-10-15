@@ -193,6 +193,8 @@ func mapEcosystem(ecosystem string) string {
 		"maven":    "Maven",
 		"cargo":    "crates.io",
 		"rubygems": "RubyGems",
+		"composer": "Packagist",
+		"nuget":    "NuGet",
 	}
 
 	if mapped, ok := mapping[ecosystem]; ok {
