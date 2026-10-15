@@ -132,3 +132,34 @@ func TestScannerHonorsEngineFileList(t *testing.T) {
 		t.Fatalf("excluded file was scanned: %+v", result.Findings)
 	}
 }
+
+func TestScannerAcceptsV0AndOptInV1Rego(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "pod.yaml"), []byte("apiVersion: v1\nkind: Pod\nbad: true\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	policyDir := filepath.Join(root, "policies")
+	if err := os.MkdirAll(policyDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	policies := map[string]string{
+		"v0.rego": "package sentinelflow.v0\n\ndeny[msg] {\n  input.bad\n  msg := \"v0\"\n}\n",
+		"v1.rego": "package sentinelflow.v1\n\nimport rego.v1\n\ndeny contains msg if {\n  input.bad\n  msg := \"v1\"\n}\n",
+	}
+	for name, src := range policies {
+		if err := os.WriteFile(filepath.Join(policyDir, name), []byte(src), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	res, err := NewScanner(&config.Config{Policies: config.PoliciesConfig{Enabled: true}}).Scan(context.Background(), root, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]bool{}
+	for _, f := range res.Findings {
+		got[f.Description] = true
+	}
+	if !got["v0"] || !got["v1"] {
+		t.Fatalf("want violations from both syntaxes, got %+v", res.Findings)
+	}
+}

@@ -32,8 +32,8 @@ Run `sentinelflow init` to generate a starter configuration.
 | `allowlist` | []string | test file globs | Glob patterns skipped **only** by the secrets scanner (does not hide paths from IaC/SAST) |
 | `patterns` | []string | — | Extra secret **regex** patterns (compiled as Go RE2). Invalid regexes are skipped |
 | `entropy_threshold` | float | `4.5` | Minimum Shannon entropy to flag |
-| `scan_git_history` | bool | `false` | Scan git history for secrets |
-| `max_history_depth` | int | `50` | Max commits to scan in history |
+| `scan_git_history` | bool | `false` | **Deprecated**: use `git.scan_history`. Still enables history scanning |
+| `max_history_depth` | int | — | **Deprecated**: use `git.history_depth`. Applies only while `git.history_depth` is left at its default |
 | `verify` | bool | `false` | Opt-in live verification (`--verify-secrets`; network) |
 
 `--diff-base <ref>` limits history scanning to `ref..HEAD` in pull requests.
@@ -127,15 +127,7 @@ License coverage is intentionally limited: it uses available `package-lock.json`
 
 ### AI (`scanners.ai`)
 
-AI-powered code review is **planned** and not available in this release. Setting `enabled: true` or passing `--ai` is rejected with a clear error. Config fields are retained for forward compatibility.
-
-| Field | Type | Default | Description |
-| --- | --- | --- | --- |
-| `enabled` | bool | `false` | Must remain `false` (rejected if `true`) |
-| `provider` | string | `openai` | Reserved for a future release |
-| `model` | string | `gpt-4` | Reserved for a future release |
-| `api_key` | string | env | Reserved (`SENTINELFLOW_AI_API_KEY` / `OPENAI_API_KEY`) |
-| `focus` | []string | injection, auth, crypto | Reserved focus areas |
+AI-powered code review is **not available**. Setting `scanners.ai.enabled: true` or passing `--ai` is rejected with a clear error. SentinelFlow never reads `OPENAI_API_KEY` or `SENTINELFLOW_AI_API_KEY`.
 
 ## Policies (`policies`)
 

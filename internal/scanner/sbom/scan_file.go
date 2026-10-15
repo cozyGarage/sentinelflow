@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"os"
 	"strings"
 
@@ -33,13 +34,16 @@ func (s *Scanner) ScanFile(ctx context.Context, path string) (*api.ScanResult, e
 			Scanner: "sbom", FilesCount: 1,
 		}},
 	}
+	var errs []string
 	for _, c := range doc.Components {
-		eco, name := purlEcosystem(c.PURL, c.Name)
-		if c.Version == "" {
+		eco, name := purlEcosystem(c.PURL)
+		if c.Version == "" || eco == "" {
 			continue
 		}
 		vulns, err := client.Query(ctx, eco, name, strings.TrimPrefix(c.Version, "v"))
 		if err != nil {
+			// Record it: a dropped lookup must not turn into a silent pass.
+			errs = append(errs, fmt.Sprintf("%s: %v", c.PURL, err))
 			continue
 		}
 		for _, v := range vulns {
@@ -65,27 +69,45 @@ func (s *Scanner) ScanFile(ctx context.Context, path string) (*api.ScanResult, e
 		}
 	}
 	result.ScannerRuns[0].FindingsCount = len(result.Findings)
+	if len(errs) > 0 {
+		result.ScannerRuns[0].Error = fmt.Sprintf("%d component lookups failed: %s", len(errs), strings.Join(errs, "; "))
+	}
 	return result, nil
 }
 
-func purlEcosystem(purl, name string) (eco, pkg string) {
-	pkg = name
-	switch {
-	case strings.HasPrefix(purl, "pkg:golang/"):
-		return "go", strings.TrimPrefix(strings.Split(purl, "@")[0], "pkg:golang/")
-	case strings.HasPrefix(purl, "pkg:npm/"):
-		return "npm", strings.TrimPrefix(strings.Split(purl, "@")[0], "pkg:npm/")
-	case strings.HasPrefix(purl, "pkg:pypi/"):
-		return "pip", strings.TrimPrefix(strings.Split(purl, "@")[0], "pkg:pypi/")
-	case strings.HasPrefix(purl, "pkg:cargo/"):
-		return "cargo", strings.TrimPrefix(strings.Split(purl, "@")[0], "pkg:cargo/")
-	case strings.HasPrefix(purl, "pkg:maven/"):
-		return "maven", strings.TrimPrefix(strings.Split(purl, "@")[0], "pkg:maven/")
-	case strings.HasPrefix(purl, "pkg:gem/"):
-		return "rubygems", strings.TrimPrefix(strings.Split(purl, "@")[0], "pkg:gem/")
-	default:
-		return "npm", pkg
+// purlEcosystem maps a package URL to our ecosystem name and OSV package name.
+// Unsupported or malformed purls return an empty ecosystem.
+func purlEcosystem(purl string) (eco, pkg string) {
+	rest, ok := strings.CutPrefix(purl, "pkg:")
+	if !ok {
+		return "", ""
 	}
+	rest, _, _ = strings.Cut(rest, "?")
+	rest, _, _ = strings.Cut(rest, "#")
+	typ, path, ok := strings.Cut(rest, "/")
+	if !ok {
+		return "", ""
+	}
+	if i := strings.LastIndex(path, "@"); i > 0 { // > 0: a leading @ is an npm scope
+		path = path[:i]
+	}
+	name, err := url.PathUnescape(path)
+	if err != nil || name == "" {
+		return "", ""
+	}
+	switch typ {
+	case "golang":
+		return "go", name
+	case "npm", "cargo", "composer", "nuget":
+		return typ, name
+	case "pypi":
+		return "pip", name
+	case "gem":
+		return "rubygems", name
+	case "maven":
+		return "maven", strings.Replace(name, "/", ":", 1) // OSV uses group:artifact
+	}
+	return "", ""
 }
 
 func firstNonEmpty(v ...string) string {

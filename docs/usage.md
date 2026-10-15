@@ -212,11 +212,6 @@ In GitHub Actions, set `use-baseline: 'true'` (requires the baseline file commit
 Enable in configuration (requires `fetch-depth: 0` in CI checkout):
 
 ```yaml
-scanners:
-  secrets:
-    scan_git_history: true
-    max_history_depth: 50
-
 git:
   scan_history: true
   history_depth: 50

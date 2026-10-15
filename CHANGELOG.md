@@ -45,6 +45,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **Dependencies:** `pnpm-lock.yaml` (v5, v6, v9), `gradle.lockfile`, `composer.lock` (Packagist), and NuGet `packages.lock.json`. All are checked against OSV.
+- `scan --sbom` no longer passes silently when OSV lookups fail. Failures are reported as a scanner error (exit 2).
+- `scan --sbom` purl parsing: scoped npm packages (`pkg:npm/%40scope/name`, `pkg:npm/@scope/name`) and Maven coordinates (`group/artifact` to OSV `group:artifact`) are now queried correctly. Unknown purl types are skipped instead of being queried as npm.
+- An empty generated SBOM writes `"components": []` instead of `null`.
+
+### Changed
+
+- `sentinelflow sbom` reuses the dependency scanner's parsers, so SBOMs now cover every supported ecosystem (requirements.txt, pom.xml, yarn.lock, `go.sum` transitives, …) instead of five hand-written parsers. This repo's own SBOM went from 48 to 79 components.
+- Policy engine uses the OPA v1 Go API (`opa/v1/rego`) and keeps Rego v0 syntax, so existing policies compile unchanged. Add `import rego.v1` to opt a policy into v1 syntax.
+- `secrets.scan_git_history` / `secrets.max_history_depth` are deprecated aliases of `git.scan_history` / `git.history_depth`. Both still work, and one documented precedence rule lives in `Config.GitHistory`.
+
+### Removed
+
+- Unused `scanners.ai` fields (`provider`, `model`, `api_key`, `base_url`, `focus`, …). SentinelFlow no longer reads `OPENAI_API_KEY` or `SENTINELFLOW_AI_API_KEY`. `scanners.ai.enabled: true` and `--ai` are still rejected with a clear error.
 
 ## [1.2.0] - 2026-10-03
 

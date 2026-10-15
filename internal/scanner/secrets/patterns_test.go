@@ -93,7 +93,7 @@ func TestSecretsHistoryDepthPrefersSecretsWhenGitHistoryOff(t *testing.T) {
 	cfg.Git.HistoryDepth = 50
 	cfg.Scanners.Secrets.ScanGitHistory = true
 	cfg.Scanners.Secrets.MaxHistoryDepth = 7
-	if got := secretsHistoryDepth(cfg); got != 7 {
+	if _, got := cfg.GitHistory(); got != 7 {
 		t.Fatalf("expected secrets max depth 7, got %d", got)
 	}
 }
