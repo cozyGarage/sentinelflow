@@ -43,7 +43,7 @@ Run `sentinelflow init` to generate a starter configuration.
 | Field | Type | Default | Description |
 | --- | --- | --- | --- |
 | `enabled` | bool | `true` | Enable IaC scanning |
-| `frameworks` | []string | terraform, kubernetes, dockerfile | Frameworks to scan. Unknown names (including CloudFormation) fail config validation. CloudFormation is **not planned** / unsupported |
+| `frameworks` | []string | terraform, kubernetes, dockerfile, github-actions, compose | Frameworks to scan. Unknown names (including CloudFormation) fail config validation. CloudFormation is **not planned** / unsupported |
 | `severity` | string | `medium` | Minimum severity to report |
 | `skip_rules` | []string | — | Rule IDs to ignore |
 
@@ -214,6 +214,8 @@ scanners:
       - terraform
       - kubernetes
       - dockerfile
+      - github-actions
+      - compose
 
   dependencies:
     enabled: true

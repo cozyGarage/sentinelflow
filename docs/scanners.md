@@ -37,10 +37,13 @@ Findings mask secret values in snippets using the shared `redact` package — re
 | Terraform | `.tf` | Public S3 ACLs, open security groups, unencrypted RDS, etc. |
 | Kubernetes | `.yaml`, `.yml` | Privileged containers, root users, host namespaces, wildcard RBAC |
 | Dockerfile | `Dockerfile`, `*.dockerfile` | Root user, `latest` tags, curl-to-bash, missing HEALTHCHECK |
+| GitHub Actions | `.github/workflows/*.y(a)ml` | Actions not pinned to a commit SHA, untrusted `${{ github.event.* }}` in `run:`/`github-script`, PR head checked out under `pull_request_target`/`workflow_run`, `write-all` or default token permissions |
+| Docker Compose | `docker-compose*.y(a)ml`, `compose*.y(a)ml` | `privileged`, host network/PID/IPC, `SYS_ADMIN`/`ALL` capabilities, mounted `docker.sock` |
 
 ### Implementation
 
-- **Terraform**: per-resource parsing for S3 encryption/public-block and multi-line security group ingress (SSH/RDP open to the world)
+- **Terraform**: parsed with `hashicorp/hcl/v2` (`internal/scanner/tfparse`, shared with the OPA policy input). Per-resource checks cover S3 encryption/public-block and security group ingress (SSH/RDP open to the world). References such as `aws_s3_bucket.x[0].id` resolve to the resource
+- **GitHub Actions / Compose**: YAML node walk, so findings carry the exact line. First-party `actions/*` unpinned refs are `low`, everything else `medium`+
 - **Kubernetes**: multi-document YAML, `initContainers` / `ephemeralContainers`, pod-level `securityContext` inheritance, CronJob templates
 - **Dockerfile**: instruction parsing with line continuations, case-insensitive commands, final-stage `USER` / `HEALTHCHECK` checks
 

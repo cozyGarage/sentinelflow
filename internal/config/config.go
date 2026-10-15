@@ -283,7 +283,7 @@ func Default() *Config {
 				Enabled:     true,
 				Severity:    "medium",
 				Concurrency: 5,
-				Frameworks:  []string{"terraform", "kubernetes", "dockerfile"},
+				Frameworks:  []string{"terraform", "kubernetes", "dockerfile", "github-actions", "compose"},
 			},
 			Dependencies: DependenciesConfig{
 				Enabled:        true,
@@ -444,7 +444,7 @@ func (c *Config) Validate() error {
 	}
 
 	knownFrameworks := map[string]bool{
-		"terraform": true, "kubernetes": true, "dockerfile": true,
+		"terraform": true, "kubernetes": true, "dockerfile": true, "github-actions": true, "compose": true,
 	}
 	for _, fw := range c.Scanners.IaC.Frameworks {
 		name := strings.ToLower(strings.TrimSpace(fw))
@@ -452,7 +452,7 @@ func (c *Config) Validate() error {
 			continue
 		}
 		if !knownFrameworks[name] {
-			return fmt.Errorf("unsupported scanners.iac.frameworks value %q (supported: terraform, kubernetes, dockerfile)", fw)
+			return fmt.Errorf("unsupported scanners.iac.frameworks value %q (supported: terraform, kubernetes, dockerfile, github-actions, compose)", fw)
 		}
 	}
 
