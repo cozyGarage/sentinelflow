@@ -17,6 +17,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Secrets:** fixed a data race when the same scanner instance ran concurrent scans with `.sentinelflow/patterns.yaml`.
 - CI runs `go test -race`.
 
+### Added
+
+- `scan --baseline-ref <ref>` (Action input `baseline-ref`) reports only the findings that do not exist at a git ref. It scans the ref in a temporary `git worktree` and matches by fingerprint, so a pre-existing finding that moved lines is not reported as new. This lets a legacy repo gate PRs without committing a baseline file. Unlike `--diff-base`, it does not depend on line ranges: an old finding that only moved is still suppressed, and a new finding is reported even when its line was not touched (for example a policy violation caused by a change in another file).
+
 ## [1.2.0] - 2026-10-03
 
 Ships the R2–R6 release trains: a CI gate you can trust, diff-aware scans, deeper SAST and dependency analysis, and artifact/binary scanning.

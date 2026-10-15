@@ -33,6 +33,8 @@ type Engine struct {
 	scanners []Scanner
 	Staged   bool
 	DiffBase string
+	// BaselineRef, when set, reports only findings absent at this git ref.
+	BaselineRef string
 }
 
 // NewEngine creates a new scanning engine with configured scanners
@@ -208,6 +210,12 @@ func (e *Engine) Scan(ctx context.Context, targetPath string) (*api.ScanResult, 
 			Suppressed: len(inline),
 			New:        len(kept),
 			Inline:     len(inline),
+		}
+	}
+
+	if e.BaselineRef != "" {
+		if err := e.filterBaselineRef(ctx, targetPath, result); err != nil {
+			return nil, err
 		}
 	}
 
