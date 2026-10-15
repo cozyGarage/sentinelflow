@@ -33,6 +33,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - Dogfood workflow uses `pr-comment` instead of re-running the full scan for markdown. `govulncheck` is pinned to v1.9.0.
+### Added
+
+- **IaC: GitHub Actions workflows** (`github-actions` framework) cover unpinned `uses:` refs, script injection from `${{ github.event.* }}` / `github.head_ref` in `run:` or `github-script`, "pwn request" checkouts of the PR head under `pull_request_target`/`workflow_run`, `write-all`, and jobs left on default token permissions.
+- **IaC: Docker Compose** (`compose` framework) covers `privileged`, host network/PID/IPC, `SYS_ADMIN`/`ALL` capabilities, and `docker.sock` mounts.
+
+### Changed
+
+- Terraform is parsed with `hashicorp/hcl/v2` instead of regexes and brace counting. The IaC scanner and the OPA policy input share one parser, which removes a duplicate parser. The demo project's IaC and policy findings are unchanged.
+- **Upgrade note:** if `.sentinelflow.yaml` lists `scanners.iac.frameworks` explicitly, add `github-actions` and `compose` to enable the new checks.
 
 ## [1.2.0] - 2026-10-03
 

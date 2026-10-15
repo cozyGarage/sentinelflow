@@ -11,6 +11,7 @@ import (
 
 	"github.com/cozygarage/sentinelflow/internal/config"
 	"github.com/cozygarage/sentinelflow/internal/scanner/redact"
+	"github.com/cozygarage/sentinelflow/internal/scanner/tfparse"
 	"github.com/cozygarage/sentinelflow/pkg/api"
 )
 
@@ -41,7 +42,6 @@ type tfResource struct {
 	Attrs   map[string]interface{}
 }
 
-var tfResourcePattern = regexp.MustCompile(`(?m)^resource\s+"([^"]+)"\s+"([^"]+)"\s*\{`)
 
 // NewTerraformScanner creates a new Terraform scanner
 func NewTerraformScanner(cfg *config.Config) *TerraformScanner {
@@ -334,166 +334,20 @@ func tfFinding(ruleID string, line int, file string, res tfResource, title, desc
 }
 
 func parseTFResources(content string) []tfResource {
-	matches := tfResourcePattern.FindAllStringSubmatchIndex(content, -1)
-	var resources []tfResource
-	for i, loc := range matches {
-		resType := content[loc[2]:loc[3]]
-		resName := content[loc[4]:loc[5]]
-		open := loc[1] - 1
-		for open > 0 && content[open] != '{' {
-			open--
-		}
-		limit := len(content)
-		if i+1 < len(matches) {
-			limit = matches[i+1][0]
-		}
-		body := extractTFBlock(content, open, limit)
-		line := 1 + strings.Count(content[:loc[0]], "\n")
+	parsed := tfparse.Parse([]byte(content), "main.tf")
+	resources := make([]tfResource, 0, len(parsed))
+	for _, r := range parsed {
 		resources = append(resources, tfResource{
-			Type:  resType,
-			Name:  resName,
-			Body:  body,
-			Line:  line,
-			Attrs: parseTFAttrs(body),
+			Type: r.Type,
+			Name: r.Name,
+			Body: r.Body,
+			Line: r.Line,
+			Attrs: tfparse.Resolve(r.Attrs, func(ref tfparse.Ref) any {
+				return ref.Type + "." + ref.Name
+			}),
 		})
 	}
 	return resources
-}
-
-func extractTFBlock(content string, openBrace, limit int) string {
-	if openBrace < 0 || openBrace >= len(content) || content[openBrace] != '{' {
-		if openBrace+1 < limit {
-			return content[openBrace+1 : limit]
-		}
-		return ""
-	}
-	depth := 0
-	for i := openBrace; i < len(content); i++ {
-		switch content[i] {
-		case '{':
-			depth++
-		case '}':
-			depth--
-			if depth == 0 {
-				return content[openBrace+1 : i]
-			}
-		}
-	}
-	if openBrace+1 < limit {
-		return content[openBrace+1 : limit]
-	}
-	return content[openBrace+1:]
-}
-
-var (
-	tfAttrPattern  = regexp.MustCompile(`(?m)^\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*=\s*(.+)$`)
-	tfBlockPattern = regexp.MustCompile(`(?m)^\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*\{`)
-	tfRefPattern   = regexp.MustCompile(`^([a-zA-Z0-9_]+)\.([a-zA-Z0-9_]+)(?:\.[a-zA-Z0-9_]+)?$`)
-	tfListPattern  = regexp.MustCompile(`^\[(.*)\]$`)
-)
-
-func parseTFAttrs(body string) map[string]interface{} {
-	attrs := map[string]interface{}{}
-
-	for _, loc := range tfBlockPattern.FindAllStringSubmatchIndex(body, -1) {
-		name := body[loc[2]:loc[3]]
-		openIdx := strings.Index(body[loc[0]:loc[1]], "{")
-		if openIdx < 0 {
-			continue
-		}
-		absOpen := loc[0] + openIdx
-		blockBody := extractTFBlock(body, absOpen, len(body))
-		nested := parseTFAttrs(blockBody)
-		if existing, ok := attrs[name]; ok {
-			switch cur := existing.(type) {
-			case []interface{}:
-				attrs[name] = append(cur, nested)
-			default:
-				attrs[name] = []interface{}{cur, nested}
-			}
-		} else {
-			attrs[name] = nested
-		}
-	}
-
-	for _, line := range strings.Split(body, "\n") {
-		trimmed := strings.TrimSpace(line)
-		if trimmed == "" || strings.HasPrefix(trimmed, "#") || strings.HasPrefix(trimmed, "//") || strings.HasSuffix(trimmed, "{") {
-			continue
-		}
-		m := tfAttrPattern.FindStringSubmatch(trimmed)
-		if len(m) < 3 {
-			continue
-		}
-		key := m[1]
-		if _, exists := attrs[key]; exists {
-			if _, isMap := attrs[key].(map[string]interface{}); isMap {
-				continue
-			}
-			if _, isList := attrs[key].([]interface{}); isList {
-				continue
-			}
-		}
-		attrs[key] = normalizeTFValue(strings.TrimSpace(m[2]))
-	}
-	return attrs
-}
-
-func normalizeTFValue(raw string) interface{} {
-	raw = strings.TrimSuffix(strings.TrimSpace(raw), ",")
-	switch raw {
-	case "true":
-		return true
-	case "false":
-		return false
-	case "null":
-		return nil
-	}
-	if m := tfListPattern.FindStringSubmatch(raw); len(m) == 2 {
-		inner := strings.TrimSpace(m[1])
-		if inner == "" {
-			return []interface{}{}
-		}
-		parts := splitTFList(inner)
-		out := make([]interface{}, 0, len(parts))
-		for _, p := range parts {
-			out = append(out, normalizeTFValue(p))
-		}
-		return out
-	}
-	if strings.HasPrefix(raw, `"`) && strings.HasSuffix(raw, `"`) && len(raw) >= 2 {
-		return strings.ReplaceAll(raw[1:len(raw)-1], `\"`, `"`)
-	}
-	if m := tfRefPattern.FindStringSubmatch(raw); len(m) == 3 {
-		return m[1] + "." + m[2]
-	}
-	if n, err := strconv.Atoi(raw); err == nil {
-		return n
-	}
-	return raw
-}
-
-func splitTFList(inner string) []string {
-	var parts []string
-	var cur strings.Builder
-	inQuote := false
-	for i := 0; i < len(inner); i++ {
-		ch := inner[i]
-		switch {
-		case ch == '"' && (i == 0 || inner[i-1] != '\\'):
-			inQuote = !inQuote
-			cur.WriteByte(ch)
-		case ch == ',' && !inQuote:
-			parts = append(parts, strings.TrimSpace(cur.String()))
-			cur.Reset()
-		default:
-			cur.WriteByte(ch)
-		}
-	}
-	if s := strings.TrimSpace(cur.String()); s != "" {
-		parts = append(parts, s)
-	}
-	return parts
 }
 
 func (s *TerraformScanner) loadRules() []*TerraformRule {

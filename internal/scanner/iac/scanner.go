@@ -49,7 +49,9 @@ func (s *Scanner) Supports(path string) bool {
 	}
 
 	if ext == ".yaml" || ext == ".yml" {
-		return s.frameworkEnabled("kubernetes")
+		return s.frameworkEnabled("kubernetes") ||
+			(isWorkflowFile(path) && s.frameworkEnabled("github-actions")) ||
+			(isComposeFile(path) && s.frameworkEnabled("compose"))
 	}
 
 	if ext != ".go" && isDockerfileName(base) {
@@ -147,6 +149,14 @@ func (s *Scanner) scanFile(ctx context.Context, filePath, basePath string) []api
 
 	if ext != ".go" && isDockerfileName(base) && s.frameworkEnabled("dockerfile") {
 		return s.docker.ScanFile(ctx, filePath, basePath)
+	}
+
+	if isWorkflowFile(filePath) && s.frameworkEnabled("github-actions") {
+		return scanWorkflow(ctx, filePath, basePath)
+	}
+
+	if isComposeFile(filePath) && s.frameworkEnabled("compose") {
+		return scanCompose(ctx, filePath, basePath)
 	}
 
 	if (ext == ".yaml" || ext == ".yml") && s.frameworkEnabled("kubernetes") {
