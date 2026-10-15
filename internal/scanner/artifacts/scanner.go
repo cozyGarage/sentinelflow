@@ -12,6 +12,7 @@ import (
 
 	"github.com/cozygarage/sentinelflow/internal/config"
 	"github.com/cozygarage/sentinelflow/internal/scanner/filetype"
+	"github.com/cozygarage/sentinelflow/internal/scanner/filter"
 	"github.com/cozygarage/sentinelflow/internal/scanner/fingerprint"
 	"github.com/cozygarage/sentinelflow/internal/scanner/secrets"
 	"github.com/cozygarage/sentinelflow/internal/scanner/types"
@@ -73,6 +74,7 @@ func (s *Scanner) Scan(ctx context.Context, path string, opts interface{}) (*Sca
 	if err != nil {
 		return nil, err
 	}
+	files = append(files, s.outputDirFiles(path, files)...)
 
 	checks := s.enabledChecks()
 	var warnings []string
@@ -100,6 +102,40 @@ func (s *Scanner) Scan(ctx context.Context, path string, opts interface{}) (*Sca
 	}
 	result.Warnings = warnings
 	return result, nil
+}
+
+// outputDirFiles walks configured "dir/**" paths (dist/, build/) that the engine
+// file list skips for every other scanner, returning files not already listed.
+func (s *Scanner) outputDirFiles(root string, have []string) []string {
+	info, err := os.Stat(root)
+	if err != nil || !info.IsDir() {
+		return nil
+	}
+	seen := make(map[string]bool, len(have))
+	for _, f := range have {
+		seen[f] = true
+	}
+	var out []string
+	for _, g := range s.config.Scanners.Artifacts.Paths {
+		prefix, ok := strings.CutSuffix(g, "/**")
+		if !ok || strings.ContainsAny(prefix, "*?[") {
+			continue
+		}
+		dir := filepath.Join(root, filepath.FromSlash(prefix))
+		if fi, err := os.Stat(dir); err != nil || !fi.IsDir() {
+			continue
+		}
+		found, _ := s.collectFiles(dir)
+		for _, f := range found {
+			rel, _ := filepath.Rel(root, f)
+			if seen[f] || filter.ShouldSkip(filepath.ToSlash(rel), s.config.Scanners.Exclude) {
+				continue
+			}
+			seen[f] = true
+			out = append(out, f)
+		}
+	}
+	return out
 }
 
 func (s *Scanner) matchesPathGlob(root, file string) bool {

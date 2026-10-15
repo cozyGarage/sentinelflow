@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/cozygarage/sentinelflow/internal/config"
+	"github.com/cozygarage/sentinelflow/internal/scanner/types"
 	"github.com/cozygarage/sentinelflow/pkg/api"
 )
 
@@ -94,5 +95,40 @@ func TestBrokenCustomPolicySurfacesError(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "failed to load policies") {
 		t.Fatalf("expected load failure message, got %v", err)
+	}
+}
+
+func TestConvertToFindingsIDsIndependentOfPosition(t *testing.T) {
+	a := PolicyViolation{Message: "a", Resource: "pod.yaml"}
+	b := PolicyViolation{Message: "b", Resource: "pod.yaml"}
+	alone := ConvertToFindings(&PolicyResult{PolicyName: "p", Violations: []PolicyViolation{b}}, api.SeverityHigh)
+	both := ConvertToFindings(&PolicyResult{PolicyName: "p", Violations: []PolicyViolation{a, b}}, api.SeverityHigh)
+	if alone[0].ID != both[1].ID {
+		t.Fatalf("ID of violation b changed when a appeared: %s vs %s", alone[0].ID, both[1].ID)
+	}
+}
+
+func TestScannerHonorsEngineFileList(t *testing.T) {
+	root := t.TempDir()
+	manifest := "apiVersion: v1\nkind: Pod\nmetadata:\n  name: p\nspec:\n  containers:\n    - name: app\n      securityContext:\n        privileged: true\n"
+	if err := os.WriteFile(filepath.Join(root, "pod.yaml"), []byte(manifest), 0644); err != nil {
+		t.Fatal(err)
+	}
+	policyDir := filepath.Join(root, "policies")
+	if err := os.MkdirAll(policyDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(policyDir, "no-privileged-containers.rego"), []byte(testPrivilegedPolicy), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// The engine excluded pod.yaml, so the policy scanner must not walk the tree and find it.
+	scanner := NewScanner(&config.Config{Policies: config.PoliciesConfig{Enabled: true}})
+	result, err := scanner.Scan(context.Background(), root, types.ScanOptions{Files: []string{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Findings) != 0 {
+		t.Fatalf("excluded file was scanned: %+v", result.Findings)
 	}
 }

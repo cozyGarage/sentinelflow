@@ -61,7 +61,11 @@ func (s *Scanner) Scan(ctx context.Context, path string, opts interface{}) (*Sca
 		return result, nil
 	}
 
-	inputs, err := collectPolicyInputs(path)
+	files, err := types.ResolveFiles(path, opts, walkFiles)
+	if err != nil {
+		return result, err
+	}
+	inputs, err := collectPolicyInputs(ctx, path, files)
 	if err != nil {
 		return result, err
 	}
@@ -77,7 +81,7 @@ func (s *Scanner) Scan(ctx context.Context, path string, opts interface{}) (*Sca
 			default:
 			}
 
-			policyResult, err := engine.EvaluatePolicy(name, input.Data)
+			policyResult, err := engine.EvaluatePolicy(ctx, name, input.Data)
 			if err != nil {
 				evalErrs = append(evalErrs, fmt.Sprintf("%s/%s: %v", input.FilePath, name, err))
 				continue

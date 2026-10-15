@@ -84,13 +84,15 @@ func (s *Scanner) Scan(ctx context.Context, path string, opts interface{}) (*Sca
 	}
 
 	// Load .sentinelflow/patterns.yaml relative to the scan root (not process CWD).
-	basePatterns := s.patterns
+	// Scan with a per-call copy so concurrent Scan/ScanReader calls never see
+	// another root's patterns.
 	filePatterns, err := s.loadFilePatterns(path)
 	if err != nil {
 		return nil, err
 	}
-	s.patterns = append(append([]*SecretPattern{}, basePatterns...), filePatterns...)
-	defer func() { s.patterns = basePatterns }()
+	run := *s
+	run.patterns = append(append([]*SecretPattern{}, s.patterns...), filePatterns...)
+	s = &run
 
 	files, err := types.ResolveFiles(path, opts, s.collectFiles)
 	if err != nil {

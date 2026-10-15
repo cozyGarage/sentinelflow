@@ -3,7 +3,10 @@ package secrets
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/cozygarage/sentinelflow/internal/config"
@@ -253,4 +256,23 @@ func TestPatternsRejectConcatenatedLiterals(t *testing.T) {
 			t.Errorf("%s on %q: got %v, want %v", c.rule, c.content, got, c.want)
 		}
 	}
+}
+
+// Run with -race: Scan must not mutate shared pattern state.
+func TestConcurrentScanAndScanReader(t *testing.T) {
+	s := NewScanner(config.Default())
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "a.env"), []byte("x=1\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	var wg sync.WaitGroup
+	for i := 0; i < 4; i++ {
+		wg.Add(2)
+		go func() { defer wg.Done(); _, _ = s.Scan(context.Background(), root, nil) }()
+		go func() {
+			defer wg.Done()
+			_, _ = s.ScanReader(context.Background(), strings.NewReader("x=1\n"), "b.env", "")
+		}()
+	}
+	wg.Wait()
 }

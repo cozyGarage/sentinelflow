@@ -89,7 +89,7 @@ func (s *OSVSource) QueryBatch(ctx context.Context, queries []OSVRequest) ([][]O
 	if len(queries) == 0 {
 		return nil, nil
 	}
-	const chunk = 100
+	const chunk = 1000 // OSV querybatch limit
 	var all [][]OSVVulnerability
 	for i := 0; i < len(queries); i += chunk {
 		end := i + chunk
@@ -107,6 +107,10 @@ func (s *OSVSource) QueryBatch(ctx context.Context, queries []OSVRequest) ([][]O
 		if err := s.doJSON(ctx, http.MethodPost, s.baseURL+"/v1/querybatch", payload, &resp); err != nil {
 			return nil, err
 		}
+		if len(resp.Results) != len(part) {
+			return nil, fmt.Errorf("OSV querybatch returned %d results for %d queries", len(resp.Results), len(part))
+		}
+		// ponytail: ignores per-query next_page_token (>1000 vulns for one package); page if OSV ever returns one.
 		for _, r := range resp.Results {
 			all = append(all, r.Vulns)
 		}

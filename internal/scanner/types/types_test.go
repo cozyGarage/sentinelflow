@@ -55,3 +55,17 @@ func TestAsScanOptions(t *testing.T) {
 		t.Fatalf("pointer opts failed")
 	}
 }
+
+func TestResolveFilesEmptyListIsAuthoritative(t *testing.T) {
+	dir := t.TempDir()
+	walked := false
+	fallback := func(string) ([]string, error) { walked = true; return []string{"x"}, nil }
+
+	files, err := ResolveFiles(dir, ScanOptions{Files: []string{}}, fallback)
+	if err != nil || len(files) != 0 || walked {
+		t.Fatalf("empty engine list must not re-walk: files=%v walked=%v err=%v", files, walked, err)
+	}
+	if _, _ = ResolveFiles(dir, ScanOptions{}, fallback); !walked {
+		t.Fatal("nil list should use fallback")
+	}
+}

@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Dependencies:** manifests in subdirectories are now scanned, so monorepos (e.g. `svc/a/go.mod`, `web/package-lock.json`) get vulnerability findings. Previously only the scan root was checked.
+- **Dependencies:** OSV lookups go through one `/v1/querybatch` call plus deduplicated `/v1/vulns` fetches, instead of one request per package. A cold-cache self-scan dropped from about 20s to under 1s.
+- **Artifacts:** `scan --artifacts` now reaches the default `dist/**` and `build/**` paths. The engine's walk skipped those directories for every scanner.
+- **Excludes:** when `scanners.exclude` removes every file, scanners no longer fall back to an unfiltered walk of the tree.
+- **Policy:** honours `scanners.exclude` and cancellation, finding IDs no longer depend on violation order, and Terraform findings report `.` instead of the absolute scan root.
+- **Secrets:** fixed a data race when the same scanner instance ran concurrent scans with `.sentinelflow/patterns.yaml`.
+- CI runs `go test -race`.
+
 ## [1.2.0] - 2026-10-03
 
 Ships the R2–R6 release trains: a CI gate you can trust, diff-aware scans, deeper SAST and dependency analysis, and artifact/binary scanning.

@@ -270,7 +270,7 @@ func (e *Engine) diffBase() string {
 }
 
 func (e *Engine) collectFiles(ctx context.Context, targetPath string) ([]string, []api.SkippedFile, error) {
-	var files []string
+	files := []string{} // non-nil: an empty list means "nothing to scan", not "walk again"
 	var skipped []api.SkippedFile
 	maxSize := e.config.EffectiveMaxFileSize()
 

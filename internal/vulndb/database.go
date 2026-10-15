@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -88,7 +89,7 @@ func NewClient(opts ...Option) (*Client, error) {
 // Query searches for vulnerabilities across all sources
 func (c *Client) Query(ctx context.Context, ecosystem, pkg, version string) ([]Vulnerability, error) {
 	// Check cache first
-	cacheKey := fmt.Sprintf("%s:%s:%s", ecosystem, pkg, version)
+	cacheKey := cacheKey(ecosystem, pkg, version)
 	if vulns, err := c.cache.Get(cacheKey); err == nil {
 		return vulns, nil
 	}
@@ -125,6 +126,122 @@ func (c *Client) Query(ctx context.Context, ecosystem, pkg, version string) ([]V
 	_ = c.cache.Set(cacheKey, allVulns, 24*time.Hour)
 
 	return allVulns, nil
+}
+
+func cacheKey(ecosystem, pkg, version string) string {
+	return fmt.Sprintf("%s:%s:%s", ecosystem, pkg, version)
+}
+
+// PackageQuery identifies one package version to look up.
+type PackageQuery struct {
+	Ecosystem string
+	Name      string
+	Version   string
+}
+
+// batchSource is a source that supports OSV-style batch lookups.
+type batchSource interface {
+	QueryBatch(ctx context.Context, queries []OSVRequest) ([][]OSVVulnerability, error)
+	GetVuln(ctx context.Context, id string) (*OSVVulnerability, error)
+}
+
+// QueryMany looks up many packages; results are aligned with qs. Cache misses
+// go through one batched lookup when the only source supports batching.
+func (c *Client) QueryMany(ctx context.Context, qs []PackageQuery) ([][]Vulnerability, error) {
+	out := make([][]Vulnerability, len(qs))
+	var miss []int
+	for i, q := range qs {
+		if vulns, err := c.cache.Get(cacheKey(q.Ecosystem, q.Name, q.Version)); err == nil {
+			out[i] = vulns
+		} else {
+			miss = append(miss, i)
+		}
+	}
+	if len(miss) == 0 {
+		return out, nil
+	}
+
+	bs, ok := c.sources[0].(batchSource)
+	if len(c.sources) != 1 || !ok {
+		for _, i := range miss {
+			vulns, err := c.Query(ctx, qs[i].Ecosystem, qs[i].Name, qs[i].Version)
+			if err != nil {
+				return nil, err
+			}
+			out[i] = vulns
+		}
+		return out, nil
+	}
+
+	reqs := make([]OSVRequest, len(miss))
+	for j, i := range miss {
+		reqs[j].Package.Name = qs[i].Name
+		reqs[j].Package.Ecosystem = mapEcosystem(qs[i].Ecosystem)
+		reqs[j].Version = qs[i].Version
+	}
+	hits, err := bs.QueryBatch(ctx, reqs)
+	if err != nil {
+		return nil, fmt.Errorf("vulnerability batch lookup failed: %w", err)
+	}
+	if len(hits) != len(miss) {
+		return nil, fmt.Errorf("vulnerability batch lookup returned %d results for %d queries", len(hits), len(miss))
+	}
+
+	// querybatch returns only IDs; fetch each distinct vulnerability once.
+	details, err := fetchVulns(ctx, bs, hits)
+	if err != nil {
+		return nil, err
+	}
+	for j, i := range miss {
+		q := qs[i]
+		vulns := []Vulnerability{}
+		for _, h := range hits[j] {
+			vulns = append(vulns, details[h.ID].toVulnerability(q.Name, q.Ecosystem))
+		}
+		out[i] = vulns
+		_ = c.cache.Set(cacheKey(q.Ecosystem, q.Name, q.Version), vulns, 24*time.Hour)
+	}
+	return out, nil
+}
+
+func fetchVulns(ctx context.Context, bs batchSource, hits [][]OSVVulnerability) (map[string]OSVVulnerability, error) {
+	var ids []string
+	details := map[string]OSVVulnerability{}
+	for _, hs := range hits {
+		for _, h := range hs {
+			if _, ok := details[h.ID]; !ok {
+				details[h.ID] = h
+				ids = append(ids, h.ID)
+			}
+		}
+	}
+
+	var (
+		mu       sync.Mutex
+		wg       sync.WaitGroup
+		firstErr error
+		sem      = make(chan struct{}, 8)
+	)
+	for _, id := range ids {
+		wg.Add(1)
+		sem <- struct{}{}
+		go func(id string) {
+			defer wg.Done()
+			defer func() { <-sem }()
+			v, err := bs.GetVuln(ctx, id)
+			mu.Lock()
+			defer mu.Unlock()
+			if err != nil {
+				if firstErr == nil {
+					firstErr = fmt.Errorf("fetch %s: %w", id, err)
+				}
+				return
+			}
+			details[id] = *v
+		}(id)
+	}
+	wg.Wait()
+	return details, firstErr
 }
 
 // Option is a functional option for Client

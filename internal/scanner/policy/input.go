@@ -2,6 +2,7 @@ package policy
 
 import (
 	"bytes"
+	"context"
 	"io"
 	"os"
 	"path/filepath"
@@ -25,30 +26,10 @@ var skipDirs = map[string]bool{
 	"testdata": true,
 }
 
-func collectPolicyInputs(root string) ([]policyInput, error) {
-	var inputs []policyInput
-
-	k8sInputs, err := collectKubernetesInputs(root)
-	if err != nil {
-		return nil, err
-	}
-	inputs = append(inputs, k8sInputs...)
-
-	tfInput, err := collectTerraformInput(root)
-	if err != nil {
-		return nil, err
-	}
-	if tfInput != nil {
-		inputs = append(inputs, *tfInput)
-	}
-
-	return inputs, nil
-}
-
-func collectKubernetesInputs(root string) ([]policyInput, error) {
-	var inputs []policyInput
+// walkFiles is the fallback file list when the engine did not provide one.
+func walkFiles(root string) ([]string, error) {
 	root = filepath.Clean(root)
-
+	var files []string
 	err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
@@ -59,24 +40,52 @@ func collectKubernetesInputs(root string) ([]policyInput, error) {
 			}
 			return nil
 		}
+		files = append(files, path)
+		return nil
+	})
+	return files, err
+}
 
+func collectPolicyInputs(ctx context.Context, root string, files []string) ([]policyInput, error) {
+	inputs, err := collectKubernetesInputs(ctx, root, files)
+	if err != nil {
+		return nil, err
+	}
+
+	tfInput, err := collectTerraformInput(ctx, root, files)
+	if err != nil {
+		return nil, err
+	}
+	if tfInput != nil {
+		inputs = append(inputs, *tfInput)
+	}
+
+	return inputs, nil
+}
+
+func collectKubernetesInputs(ctx context.Context, root string, files []string) ([]policyInput, error) {
+	var inputs []policyInput
+	for _, path := range files {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
 		ext := strings.ToLower(filepath.Ext(path))
 		if ext != ".yaml" && ext != ".yml" {
-			return nil
+			continue
 		}
 
 		content, err := os.ReadFile(path)
 		if err != nil {
-			return nil
+			continue
 		}
 		if !strings.Contains(string(content), "apiVersion:") {
-			return nil
+			continue
 		}
 
 		rel, _ := filepath.Rel(root, path)
 		docs, err := decodeYAMLDocuments(content)
 		if err != nil {
-			return nil
+			continue
 		}
 
 		for i, doc := range docs {
@@ -93,11 +102,8 @@ func collectKubernetesInputs(root string) ([]policyInput, error) {
 			}
 			inputs = append(inputs, policyInput{Data: doc, FilePath: filePath})
 		}
-
-		return nil
-	})
-
-	return inputs, err
+	}
+	return inputs, nil
 }
 
 func decodeYAMLDocuments(content []byte) ([]map[string]interface{}, error) {
@@ -122,36 +128,21 @@ func decodeYAMLDocuments(content []byte) ([]map[string]interface{}, error) {
 
 var tfResourcePattern = regexp.MustCompile(`resource\s+"([^"]+)"\s+"([^"]+)"\s*\{`)
 
-func collectTerraformInput(root string) (*policyInput, error) {
+func collectTerraformInput(ctx context.Context, root string, files []string) (*policyInput, error) {
 	var changes []map[string]interface{}
-	root = filepath.Clean(root)
-
-	err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-		if info.IsDir() {
-			if filepath.Clean(path) != root && (skipDirs[info.Name()] || filter.IsBundledSampleDir(root, path)) {
-				return filepath.SkipDir
-			}
-			return nil
+	for _, path := range files {
+		if err := ctx.Err(); err != nil {
+			return nil, err
 		}
 		if filepath.Ext(path) != ".tf" {
-			return nil
+			continue
 		}
-
 		content, err := os.ReadFile(path)
 		if err != nil {
-			return nil
+			continue
 		}
-
 		rel, _ := filepath.Rel(root, path)
-		fileChanges := parseTerraformResources(string(content), rel)
-		changes = append(changes, fileChanges...)
-		return nil
-	})
-	if err != nil {
-		return nil, err
+		changes = append(changes, parseTerraformResources(string(content), rel)...)
 	}
 
 	if len(changes) == 0 {
@@ -162,7 +153,7 @@ func collectTerraformInput(root string) (*policyInput, error) {
 		Data: map[string]interface{}{
 			"resource_changes": changes,
 		},
-		FilePath: root,
+		FilePath: ".", // spans every .tf file; violations carry their own resource
 	}, nil
 }
 

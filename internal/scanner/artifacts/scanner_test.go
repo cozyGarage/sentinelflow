@@ -70,3 +70,24 @@ func TestGoStdlibVersionDropsExperimentSuffix(t *testing.T) {
 		}
 	}
 }
+
+func TestOutputDirFilesReachesDistSkippedByEngine(t *testing.T) {
+	root := t.TempDir()
+	for _, rel := range []string{"dist/app", "dist/sub/lib.jar", "build/skip.me"} {
+		p := filepath.Join(root, rel)
+		if err := os.MkdirAll(filepath.Dir(p), 0755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte("x"), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	cfg := config.Default()
+	cfg.Scanners.Exclude = []string{"build/**"}
+	s := NewScanner(cfg)
+
+	got := s.outputDirFiles(root, []string{filepath.Join(root, "dist/app")})
+	if len(got) != 1 || got[0] != filepath.Join(root, "dist/sub/lib.jar") {
+		t.Fatalf("want only dist/sub/lib.jar (dist/app already listed, build excluded), got %v", got)
+	}
+}
