@@ -50,7 +50,7 @@ func (s *Scanner) scanGoAST(ctx context.Context, files []string, base string) ([
 				strings.HasSuffix(name, ".FormValue") || strings.HasSuffix(name, ".PostFormValue") {
 				hasTaintSource = true
 			}
-			if name == "exec.Command" || name == "exec.CommandContext" {
+			if isTaintSinkName(name) {
 				hasShellSink = true
 			}
 			pos := fset.Position(call.Pos())
@@ -81,8 +81,12 @@ func (s *Scanner) scanGoAST(ctx context.Context, files []string, base string) ([
 			return true
 		})
 	}
+	// Request structs and framework contexts are sources too; cheap import check.
+	if !hasTaintSource {
+		hasTaintSource = importsRequestSource(files)
+	}
 	if hasTaintSource && hasShellSink {
-		findings = append(findings, scanGoShellTaintSSA(ctx, base, files)...)
+		findings = dropShadowedSQL(append(findings, scanGoTaintSSA(ctx, base, files)...))
 	}
 	return findings, nil
 }
@@ -139,4 +143,61 @@ func looksLikeSQLArg(e ast.Expr) bool {
 	}
 	// Non-constant first arg to Query/Exec is treated as possible SQL.
 	return !isStaticString(e)
+}
+
+// isTaintSinkName is a cheap syntactic pre-check before the SSA taint pass.
+func isTaintSinkName(name string) bool {
+	switch name {
+	case "exec.Command", "exec.CommandContext",
+		"os.Open", "os.OpenFile", "os.ReadFile", "os.WriteFile", "os.Create", "os.Remove", "os.RemoveAll", "os.ReadDir", "os.Mkdir", "os.MkdirAll",
+		"http.ServeFile", "http.Get", "http.Head", "http.Post", "http.PostForm", "http.NewRequest", "http.NewRequestWithContext":
+		return true
+	}
+	for _, m := range []string{".Query", ".QueryContext", ".QueryRow", ".QueryRowContext", ".Exec", ".ExecContext", ".Prepare", ".PrepareContext"} {
+		if strings.HasSuffix(name, m) {
+			return true
+		}
+	}
+	return false
+}
+
+// importsRequestSource reports whether any Go file imports an HTTP server package.
+func importsRequestSource(files []string) bool {
+	for _, file := range files {
+		if !strings.HasSuffix(file, ".go") {
+			continue
+		}
+		f, err := parser.ParseFile(token.NewFileSet(), file, nil, parser.ImportsOnly)
+		if err != nil {
+			continue
+		}
+		for _, imp := range f.Imports {
+			path := strings.Trim(imp.Path.Value, `"`)
+			if path == "net/http" || strings.HasPrefix(path, "github.com/gin-gonic/gin") ||
+				strings.HasPrefix(path, "github.com/labstack/echo") || strings.HasPrefix(path, "github.com/go-chi/chi") ||
+				strings.HasPrefix(path, "github.com/gorilla/mux") {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// dropShadowedSQL removes go-ast-sql-nonconst where the taint pass already
+// proved request data reaches the same query.
+func dropShadowedSQL(findings []api.Finding) []api.Finding {
+	proven := map[string]bool{}
+	for _, f := range findings {
+		if f.RuleID == "go-ssa-sql-tainted" {
+			proven[fmt.Sprintf("%s:%d", f.Location.File, f.Location.StartLine)] = true
+		}
+	}
+	out := findings[:0]
+	for _, f := range findings {
+		if f.RuleID == "go-ast-sql-nonconst" && proven[fmt.Sprintf("%s:%d", f.Location.File, f.Location.StartLine)] {
+			continue
+		}
+		out = append(out, f)
+	}
+	return out
 }
