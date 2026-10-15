@@ -1,6 +1,7 @@
 package policy
 
 import (
+	"context"
 	"testing"
 )
 
@@ -43,7 +44,7 @@ violation[msg] {
 		t.Fatalf("failed to load policy: %v", err)
 	}
 
-	result, err := engine.EvaluatePolicy("test", map[string]interface{}{"insecure": true})
+	result, err := engine.EvaluatePolicy(context.Background(), "test", map[string]interface{}{"insecure": true})
 	if err != nil {
 		t.Fatalf("evaluation failed: %v", err)
 	}
@@ -69,7 +70,7 @@ deny_privileged[msg] {
 	}
 
 	// Non-violating input still exposes workload_kinds as a string set in OPA data.
-	result, err := engine.EvaluatePolicy("no-priv", map[string]interface{}{
+	result, err := engine.EvaluatePolicy(context.Background(), "no-priv", map[string]interface{}{
 		"kind": "ConfigMap",
 		"metadata": map[string]interface{}{"name": "x"},
 	})
@@ -80,7 +81,7 @@ deny_privileged[msg] {
 		t.Fatalf("helper set must not become violations, got %+v", result.Violations)
 	}
 
-	result, err = engine.EvaluatePolicy("no-priv", map[string]interface{}{
+	result, err = engine.EvaluatePolicy(context.Background(), "no-priv", map[string]interface{}{
 		"kind": "Pod",
 		"spec": map[string]interface{}{
 			"containers": []interface{}{

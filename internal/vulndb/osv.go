@@ -108,76 +108,80 @@ func (s *OSVSource) Query(ctx context.Context, ecosystem, pkg, version string) (
 		return nil, fmt.Errorf("failed to query OSV: %w", err)
 	}
 
-	// Convert OSV vulnerabilities to our format
-	var vulns []Vulnerability
+	vulns := make([]Vulnerability, 0, len(osvResp.Vulns))
 	for _, osv := range osvResp.Vulns {
-		v := Vulnerability{
-			ID:        osv.ID,
-			Package:   pkg,
-			Ecosystem: ecosystem,
-			Summary:   osv.Summary,
-			Details:   osv.Details,
-			Source:    "osv",
-		}
-
-		// Extract CVE from aliases
-		for _, alias := range osv.Aliases {
-			if len(alias) > 3 && alias[:3] == "CVE" {
-				v.CVE = alias
-				break
-			}
-		}
-
-		// Extract CVSS score from vector or numeric score field
-		for _, sev := range osv.Severity {
-			if sev.Type == "CVSS_V3" || sev.Type == "CVSS_V4" {
-				v.CVSSVector = sev.Score
-				if score, err := strconv.ParseFloat(sev.Score, 64); err == nil {
-					v.CVSS = score
-					v.Severity = cvssToSeverity(score)
-				} else if score := parseCVSSBaseScore(sev.Score); score > 0 {
-					v.CVSS = score
-					v.Severity = cvssToSeverity(score)
-				}
-				// If vector could not be scored, leave Severity empty for
-				// database_specific / default fallback below.
-				break
-			}
-		}
-		if v.Severity == "" {
-			if sev := normalizeOSVSeverity(osv.DatabaseSpecific.Severity); sev != "" {
-				v.Severity = sev
-			} else {
-				v.Severity = "medium"
-			}
-		}
-
-		// Extract references
-		for _, ref := range osv.References {
-			v.References = append(v.References, ref.URL)
-		}
-
-		// Extract affected ranges
-		for _, affected := range osv.Affected {
-			for _, r := range affected.Ranges {
-				for _, event := range r.Events {
-					if event.Introduced != "" || event.Fixed != "" {
-						v.Affected = append(v.Affected, Range{
-							Introduced: event.Introduced,
-							Fixed:      event.Fixed,
-						})
-					}
-					if event.Fixed != "" {
-						v.Fixed = append(v.Fixed, event.Fixed)
-					}
-				}
-			}
-		}
-
-		vulns = append(vulns, v)
+		vulns = append(vulns, osv.toVulnerability(pkg, ecosystem))
 	}
 
 	return vulns, nil
+}
+
+// toVulnerability converts an OSV entry to our format.
+func (osv OSVVulnerability) toVulnerability(pkg, ecosystem string) Vulnerability {
+	v := Vulnerability{
+		ID:        osv.ID,
+		Package:   pkg,
+		Ecosystem: ecosystem,
+		Summary:   osv.Summary,
+		Details:   osv.Details,
+		Source:    "osv",
+	}
+
+	// Extract CVE from aliases
+	for _, alias := range osv.Aliases {
+		if len(alias) > 3 && alias[:3] == "CVE" {
+			v.CVE = alias
+			break
+		}
+	}
+
+	// Extract CVSS score from vector or numeric score field
+	for _, sev := range osv.Severity {
+		if sev.Type == "CVSS_V3" || sev.Type == "CVSS_V4" {
+			v.CVSSVector = sev.Score
+			if score, err := strconv.ParseFloat(sev.Score, 64); err == nil {
+				v.CVSS = score
+				v.Severity = cvssToSeverity(score)
+			} else if score := parseCVSSBaseScore(sev.Score); score > 0 {
+				v.CVSS = score
+				v.Severity = cvssToSeverity(score)
+			}
+			// If vector could not be scored, leave Severity empty for
+			// database_specific / default fallback below.
+			break
+		}
+	}
+	if v.Severity == "" {
+		if sev := normalizeOSVSeverity(osv.DatabaseSpecific.Severity); sev != "" {
+			v.Severity = sev
+		} else {
+			v.Severity = "medium"
+		}
+	}
+
+	// Extract references
+	for _, ref := range osv.References {
+		v.References = append(v.References, ref.URL)
+	}
+
+	// Extract affected ranges
+	for _, affected := range osv.Affected {
+		for _, r := range affected.Ranges {
+			for _, event := range r.Events {
+				if event.Introduced != "" || event.Fixed != "" {
+					v.Affected = append(v.Affected, Range{
+						Introduced: event.Introduced,
+						Fixed:      event.Fixed,
+					})
+				}
+				if event.Fixed != "" {
+					v.Fixed = append(v.Fixed, event.Fixed)
+				}
+			}
+		}
+	}
+
+	return v
 }
 
 // mapEcosystem maps our ecosystem names to OSV ecosystem names

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"hash/fnv"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/open-policy-agent/opa/rego"
@@ -43,13 +44,13 @@ func (e *OPAEngine) LoadPolicy(name, content string) error {
 }
 
 // EvaluatePolicy evaluates a policy against input data
-func (e *OPAEngine) EvaluatePolicy(policyName string, input interface{}) (*PolicyResult, error) {
+func (e *OPAEngine) EvaluatePolicy(ctx context.Context, policyName string, input interface{}) (*PolicyResult, error) {
 	query, ok := e.policies[policyName]
 	if !ok {
 		return nil, fmt.Errorf("policy %s not found", policyName)
 	}
 
-	results, err := query.Eval(context.Background(), rego.EvalInput(input))
+	results, err := query.Eval(ctx, rego.EvalInput(input))
 	if err != nil {
 		return nil, fmt.Errorf("policy evaluation failed: %w", err)
 	}
@@ -70,6 +71,14 @@ func (e *OPAEngine) EvaluatePolicy(policyName string, input interface{}) (*Polic
 	}
 
 	collectViolations(data, &result.Violations)
+	// Map iteration order is random; sort so reports are stable run to run.
+	sort.Slice(result.Violations, func(i, j int) bool {
+		a, b := result.Violations[i], result.Violations[j]
+		if a.Resource != b.Resource {
+			return a.Resource < b.Resource
+		}
+		return a.Message < b.Message
+	})
 	return result, nil
 }
 
@@ -155,9 +164,10 @@ func getString(m map[string]interface{}, key string) string {
 func ConvertToFindings(result *PolicyResult, severity api.Severity) []api.Finding {
 	var findings []api.Finding
 
-	for i, violation := range result.Violations {
+	for _, violation := range result.Violations {
 		finding := api.Finding{
-			ID:          fmt.Sprintf("POLICY-%s-%s-%d", result.PolicyName, pathToken(violation.Resource), i),
+			// Keyed by content, not position, so IDs survive unrelated violations appearing.
+			ID:          fmt.Sprintf("POLICY-%s-%s-%s", result.PolicyName, pathToken(violation.Resource), pathToken(violation.Message)),
 			Type:        api.FindingTypePolicyViolation,
 			Severity:    severity,
 			Title:       fmt.Sprintf("Policy Violation: %s", result.PolicyName),

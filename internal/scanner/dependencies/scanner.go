@@ -8,6 +8,7 @@ import (
 	"hash/fnv"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 
@@ -113,62 +114,107 @@ func (s *Scanner) Scan(ctx context.Context, path string, opts interface{}) (*Sca
 		Findings: []api.Finding{},
 	}
 
-	ecosystemsFound := s.detectEcosystems(path)
+	files, err := types.ResolveFiles(path, opts, rootFiles)
+	if err != nil {
+		return nil, err
+	}
 
 	var wg sync.WaitGroup
 	var mu sync.Mutex
 	var scanErrs []string
+	var deps []Dependency
 
-	for name, ecosys := range ecosystemsFound {
-		wg.Add(1)
-		go func(ecoName string, eco EcosystemScanner) {
-			defer wg.Done()
-
-			deps, err := eco.Scan(ctx, path)
-			if err != nil {
+	for _, dir := range s.manifestDirs(files) {
+		for name, ecosys := range s.detectEcosystems(dir) {
+			result.FilesCount++
+			wg.Add(1)
+			go func(ecoName, dir string, eco EcosystemScanner) {
+				defer wg.Done()
+				found, err := eco.Scan(ctx, dir)
 				mu.Lock()
-				scanErrs = append(scanErrs, fmt.Sprintf("%s: %v", ecoName, err))
-				mu.Unlock()
-				return
-			}
-
-			for _, dep := range deps {
-				if s.config.Scanners.Dependencies.IgnoreDev && dep.Dev {
-					continue
-				}
-
-				vulns, err := s.checkVulnerabilities(ctx, dep)
+				defer mu.Unlock()
 				if err != nil {
-					mu.Lock()
-					scanErrs = append(scanErrs, fmt.Sprintf("%s/%s@%s: %v", dep.Ecosystem, dep.Name, dep.Version, err))
-					mu.Unlock()
-					continue
+					rel, _ := filepath.Rel(path, dir)
+					scanErrs = append(scanErrs, fmt.Sprintf("%s (%s): %v", ecoName, filepath.ToSlash(rel), err))
+					return
 				}
-
-				for _, vuln := range vulns {
-					if s.shouldIgnoreVuln(vuln) {
+				for _, dep := range found {
+					if s.config.Scanners.Dependencies.IgnoreDev && dep.Dev {
 						continue
 					}
-					if !api.MeetsMinimum(vuln.Severity, s.config.Scanners.Dependencies.Severity) {
-						continue
-					}
-
-					finding := s.createFinding(dep, vuln, path)
-					mu.Lock()
-					result.Findings = append(result.Findings, finding)
-					mu.Unlock()
+					deps = append(deps, dep)
 				}
-			}
-		}(name, ecosys)
+			}(name, dir, ecosys)
+		}
 	}
-
 	wg.Wait()
 
-	result.FilesCount = len(ecosystemsFound)
+	// Stable order keeps findings and error messages deterministic.
+	sort.Slice(deps, func(i, j int) bool {
+		a, b := deps[i], deps[j]
+		if a.FilePath != b.FilePath {
+			return a.FilePath < b.FilePath
+		}
+		if a.Name != b.Name {
+			return a.Name < b.Name
+		}
+		return a.Version < b.Version
+	})
+	sort.Strings(scanErrs)
+
+	all, err := s.checkAll(ctx, deps)
+	if err != nil {
+		scanErrs = append(scanErrs, err.Error())
+	}
+	for i, vulns := range all {
+		for _, vuln := range vulns {
+			if s.shouldIgnoreVuln(vuln) {
+				continue
+			}
+			if !api.MeetsMinimum(vuln.Severity, s.config.Scanners.Dependencies.Severity) {
+				continue
+			}
+			result.Findings = append(result.Findings, s.createFinding(deps[i], vuln, path))
+		}
+	}
+
 	if len(scanErrs) > 0 {
 		return result, fmt.Errorf("dependency scan errors: %s", strings.Join(scanErrs, "; "))
 	}
 	return result, nil
+}
+
+// rootFiles is the fallback when no engine file list is provided: only the scan root is searched.
+func rootFiles(dir string) ([]string, error) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil, err
+	}
+	var files []string
+	for _, e := range entries {
+		if !e.IsDir() {
+			files = append(files, filepath.Join(dir, e.Name()))
+		}
+	}
+	return files, nil
+}
+
+// manifestDirs returns each directory that holds a supported manifest, sorted.
+func (s *Scanner) manifestDirs(files []string) []string {
+	seen := map[string]bool{}
+	var dirs []string
+	for _, f := range files {
+		if !s.Supports(f) {
+			continue
+		}
+		d := filepath.Dir(f)
+		if !seen[d] {
+			seen[d] = true
+			dirs = append(dirs, d)
+		}
+	}
+	sort.Strings(dirs)
+	return dirs
 }
 
 func (s *Scanner) shouldIgnoreVuln(vuln Vulnerability) bool {
@@ -210,30 +256,46 @@ func (s *Scanner) detectEcosystems(path string) map[string]EcosystemScanner {
 }
 
 func (s *Scanner) checkVulnerabilities(ctx context.Context, dep Dependency) ([]Vulnerability, error) {
+	all, err := s.checkAll(ctx, []Dependency{dep})
+	if err != nil {
+		return nil, err
+	}
+	return all[0], nil
+}
+
+// checkAll looks up every dependency in one batched query; results align with deps.
+func (s *Scanner) checkAll(ctx context.Context, deps []Dependency) ([][]Vulnerability, error) {
+	if len(deps) == 0 {
+		return nil, nil
+	}
 	if s.client == nil {
 		return nil, fmt.Errorf("vulnerability database unavailable")
 	}
 
-	version := normalizeVersion(dep.Version)
-	vulns, err := s.client.Query(ctx, dep.Ecosystem, dep.Name, version)
+	qs := make([]vulndb.PackageQuery, len(deps))
+	for i, dep := range deps {
+		qs[i] = vulndb.PackageQuery{Ecosystem: dep.Ecosystem, Name: dep.Name, Version: normalizeVersion(dep.Version)}
+	}
+	found, err := s.client.QueryMany(ctx, qs)
 	if err != nil {
 		return nil, err
 	}
 
-	var results []Vulnerability
-	for _, v := range vulns {
-		results = append(results, Vulnerability{
-			ID:          v.ID,
-			CVE:         v.CVE,
-			Severity:    severityFromVulnDB(v.Severity, v.CVSS),
-			CVSS:        v.CVSS,
-			Description: firstNonEmpty(v.Summary, v.Details),
-			FixedIn:     firstFixedVersion(v.Fixed, v.Affected),
-			References:  v.References,
-		})
+	out := make([][]Vulnerability, len(deps))
+	for i, vulns := range found {
+		for _, v := range vulns {
+			out[i] = append(out[i], Vulnerability{
+				ID:          v.ID,
+				CVE:         v.CVE,
+				Severity:    severityFromVulnDB(v.Severity, v.CVSS),
+				CVSS:        v.CVSS,
+				Description: firstNonEmpty(v.Summary, v.Details),
+				FixedIn:     firstFixedVersion(v.Fixed, v.Affected),
+				References:  v.References,
+			})
+		}
 	}
-
-	return results, nil
+	return out, nil
 }
 
 func normalizeVersion(version string) string {

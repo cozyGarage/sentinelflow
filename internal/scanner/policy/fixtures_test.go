@@ -1,6 +1,7 @@
 package policy
 
 import (
+	"context"
 	"encoding/json"
 	"testing"
 
@@ -34,7 +35,7 @@ func TestBuiltinPoliciesAgainstFixtures(t *testing.T) {
 			if err := engine.LoadPolicy(tc.policy, builtin.Content); err != nil {
 				t.Fatalf("load policy: %v", err)
 			}
-			result, err := engine.EvaluatePolicy(tc.policy, input)
+			result, err := engine.EvaluatePolicy(context.Background(), tc.policy, input)
 			if err != nil {
 				t.Fatalf("evaluate: %v", err)
 			}

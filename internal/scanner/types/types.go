@@ -40,8 +40,9 @@ func AsScanOptions(opts interface{}) (ScanOptions, bool) {
 }
 
 // ResolveFiles returns a pre-collected file list when available, otherwise falls back.
+// A non-nil empty list is authoritative (every file was excluded) and is not re-walked.
 func ResolveFiles(path string, opts interface{}, fallback func(string) ([]string, error)) ([]string, error) {
-	if so, ok := AsScanOptions(opts); ok && len(so.Files) > 0 {
+	if so, ok := AsScanOptions(opts); ok && so.Files != nil {
 		info, err := os.Stat(path)
 		if err == nil && info.IsDir() {
 			return so.Files, nil

@@ -105,7 +105,7 @@ var policyTestCmd = &cobra.Command{
 			return fmt.Errorf("failed to load policy: %w", err)
 		}
 
-		result, err := engine.EvaluatePolicy(policyName, input)
+		result, err := engine.EvaluatePolicy(cmd.Context(), policyName, input)
 		if err != nil {
 			return fmt.Errorf("policy evaluation failed: %w", err)
 		}

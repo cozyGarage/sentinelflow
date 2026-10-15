@@ -96,7 +96,11 @@ spec:
 		t.Fatal(err)
 	}
 
-	inputs, err := collectKubernetesInputs(root)
+	files, err := walkFiles(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	inputs, err := collectKubernetesInputs(context.Background(), root, files)
 	if err != nil {
 		t.Fatal(err)
 	}
