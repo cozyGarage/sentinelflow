@@ -42,6 +42,7 @@ var (
 	baselineRef      string
 	failOnKEV        bool
 	vexFiles         []string
+	offline          bool
 	markdownOut      string
 	scanSBOM         string
 	verifySecrets    bool
@@ -101,6 +102,7 @@ func init() {
 	scanCmd.Flags().StringVar(&baselineRef, "baseline-ref", "", "report only findings not present at this git ref (scans the ref in a temporary worktree)")
 	scanCmd.Flags().BoolVar(&failOnKEV, "fail-on-kev", false, "fail if any finding is in the CISA Known Exploited Vulnerabilities catalog")
 	scanCmd.Flags().StringSliceVar(&vexFiles, "vex", nil, "OpenVEX document(s); not_affected/fixed statements suppress matching findings")
+	scanCmd.Flags().BoolVar(&offline, "offline", false, "use the local OSV database from 'sentinelflow db update' (no network for vulnerability lookups)")
 	scanCmd.Flags().StringVar(&diffBase, "diff-base", "", "limit findings to files/lines changed since this git ref")
 	scanCmd.Flags().StringVar(&scanSBOM, "sbom", "", "scan a CycloneDX JSON SBOM for vulnerable components")
 	scanCmd.Flags().BoolVar(&verifySecrets, "verify-secrets", false, "opt-in live verification of detected secrets (network)")
@@ -319,6 +321,9 @@ func applyScanFlags(cfg *config.Config) error {
 		cfg.Scanners.Dependencies.RiskEnrichment = true
 	}
 	cfg.VEX = append(cfg.VEX, vexFiles...)
+	if offline {
+		cfg.Scanners.Dependencies.Offline = true
+	}
 	if emitAnnotations {
 		cfg.Reporting.EmitAnnotations = true
 	}

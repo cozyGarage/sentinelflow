@@ -16,7 +16,9 @@ import (
 )
 
 // Scanner generates SBOM documents from project lockfiles
-type Scanner struct{}
+type Scanner struct {
+	offline bool
+}
 
 // ScannerResult contains SBOM generation results
 type ScannerResult struct {
@@ -49,8 +51,8 @@ type Component struct {
 }
 
 // NewScanner creates a new SBOM scanner
-func NewScanner(_ *config.Config) *Scanner {
-	return &Scanner{}
+func NewScanner(cfg *config.Config) *Scanner {
+	return &Scanner{offline: cfg != nil && cfg.Scanners.Dependencies.Offline}
 }
 
 // Generate creates a CycloneDX SBOM from the target path.
