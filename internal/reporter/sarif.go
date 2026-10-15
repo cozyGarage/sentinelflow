@@ -148,6 +148,9 @@ func (f *SARIFFormatter) Format(result *api.ScanResult) (string, error) {
 		if finding.KEV {
 			properties["kev"] = true
 		}
+		if finding.Reachable != nil {
+			properties["reachable"] = *finding.Reachable
+		}
 		if finding.Fingerprint != "" {
 			properties["fingerprint"] = finding.Fingerprint
 		}

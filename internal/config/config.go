@@ -111,6 +111,9 @@ type DependenciesConfig struct {
 	FailOnError *bool `yaml:"fail_on_error" mapstructure:"fail_on_error"`
 	// RiskEnrichment adds EPSS scores and CISA KEV flags to findings with a CVE (network).
 	RiskEnrichment bool `yaml:"risk_enrichment" mapstructure:"risk_enrichment"`
+	// Reachability runs govulncheck on Go modules to mark findings reachable or
+	// not: auto (when installed) | required | off.
+	Reachability string `yaml:"reachability" mapstructure:"reachability"`
 }
 
 // DependenciesFailOnError returns whether dependency scanner errors should fail the CLI.
@@ -175,6 +178,9 @@ type FailOnConfig struct {
 	PolicyViolations bool   `yaml:"policy_violations" mapstructure:"policy_violations"`
 	// KEV fails the scan when any finding is in the CISA KEV catalog, regardless of severity.
 	KEV bool `yaml:"kev" mapstructure:"kev"`
+	// ReachableOnly ignores findings proven unreachable (Reachable == false)
+	// for the severity gate. Unanalysed findings still count.
+	ReachableOnly bool `yaml:"reachable_only" mapstructure:"reachable_only"`
 }
 
 // GitConfig configures git-related settings

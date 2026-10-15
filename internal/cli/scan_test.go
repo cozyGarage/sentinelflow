@@ -374,3 +374,23 @@ func TestShouldFailOnKEVRegardlessOfSeverity(t *testing.T) {
 		t.Fatal("fail_on.kev must fail on a KEV finding of any severity")
 	}
 }
+
+func TestShouldFailReachableOnly(t *testing.T) {
+	no, yes := false, true
+	result := &api.ScanResult{Findings: []api.Finding{
+		{Severity: api.SeverityCritical, Reachable: &no},
+		{Severity: api.SeverityLow, Reachable: &yes},
+	}}
+	cfg := &config.Config{FailOn: config.FailOnConfig{Severity: "high"}}
+	if !shouldFail(result, cfg) {
+		t.Fatal("without reachable_only the unreachable critical still gates")
+	}
+	cfg.FailOn.ReachableOnly = true
+	if shouldFail(result, cfg) {
+		t.Fatal("reachable_only must ignore the unreachable critical")
+	}
+	result.Findings = append(result.Findings, api.Finding{Severity: api.SeverityHigh}) // not analysed
+	if !shouldFail(result, cfg) {
+		t.Fatal("unanalysed findings must still gate")
+	}
+}

@@ -109,9 +109,12 @@ type Finding struct {
 	// EPSS is the FIRST.org probability (0-1) that the CVE is exploited in the next 30 days.
 	EPSS float64 `json:"epss,omitempty"`
 	// KEV is true when the CVE is in the CISA Known Exploited Vulnerabilities catalog.
-	KEV   bool     `json:"kev,omitempty"`
-	CWE   []string `json:"cwe,omitempty"`
-	OWASP []string `json:"owasp,omitempty"`
+	KEV bool `json:"kev,omitempty"`
+	// Reachable is set by reachability analysis (govulncheck for Go): true when
+	// the vulnerable function is called, false when it is not. Nil = not analysed.
+	Reachable *bool    `json:"reachable,omitempty"`
+	CWE       []string `json:"cwe,omitempty"`
+	OWASP     []string `json:"owasp,omitempty"`
 	// Fingerprint is a line-independent identity (rule + path + snippet/value
 	// hash). Used by baseline v2 and SARIF partialFingerprints.
 	Fingerprint string `json:"fingerprint,omitempty"`
@@ -222,6 +225,13 @@ func RiskLabel(f Finding) string {
 	}
 	if f.EPSS > 0 {
 		parts = append(parts, fmt.Sprintf("EPSS %.1f%%", f.EPSS*100))
+	}
+	if f.Reachable != nil {
+		if *f.Reachable {
+			parts = append(parts, "vulnerable code is called")
+		} else {
+			parts = append(parts, "vulnerable code is not called")
+		}
 	}
 	return strings.Join(parts, ", ")
 }
