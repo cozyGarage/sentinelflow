@@ -370,6 +370,7 @@ func (s *Scanner) createFinding(dep Dependency, vuln Vulnerability, basePath str
 			Snippet:   fmt.Sprintf("%s@%s", dep.Name, dep.Version),
 		},
 		Remediation: fmt.Sprintf("Update %s to a patched version%s", dep.Name, formatFixedIn(vuln.FixedIn)),
+		Metadata:    map[string]any{"package": dep.Name, "version": dep.Version, "ecosystem": dep.Ecosystem},
 		References:  vuln.References,
 		Scanner:     "dependencies",
 		RuleID:      vuln.ID,

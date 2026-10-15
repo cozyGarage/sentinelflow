@@ -25,6 +25,9 @@ type Config struct {
 	Git         GitConfig      `yaml:"git" mapstructure:"git"`
 	Baseline    BaselineConfig `yaml:"baseline" mapstructure:"baseline"`
 	DiffBase    string         `yaml:"diff_base" mapstructure:"diff_base"`
+	// VEX lists OpenVEX documents (relative to the scan root) whose
+	// not_affected/fixed statements suppress matching findings.
+	VEX []string `yaml:"vex" mapstructure:"vex"`
 }
 
 // ScannersConfig contains settings for all scanners
@@ -105,6 +108,8 @@ type DependenciesConfig struct {
 	// error (e.g. OSV network blips). Default true. Set false to keep findings
 	// and report ScannerRun.Error without failing CI solely for transport errors.
 	FailOnError *bool `yaml:"fail_on_error" mapstructure:"fail_on_error"`
+	// RiskEnrichment adds EPSS scores and CISA KEV flags to findings with a CVE (network).
+	RiskEnrichment bool `yaml:"risk_enrichment" mapstructure:"risk_enrichment"`
 }
 
 // DependenciesFailOnError returns whether dependency scanner errors should fail the CLI.
@@ -173,6 +178,8 @@ type FailOnConfig struct {
 	Severity         string `yaml:"severity" mapstructure:"severity"`
 	Secrets          bool   `yaml:"secrets" mapstructure:"secrets"`
 	PolicyViolations bool   `yaml:"policy_violations" mapstructure:"policy_violations"`
+	// KEV fails the scan when any finding is in the CISA KEV catalog, regardless of severity.
+	KEV bool `yaml:"kev" mapstructure:"kev"`
 }
 
 // GitConfig configures git-related settings
@@ -279,10 +286,11 @@ func Default() *Config {
 				Frameworks:  []string{"terraform", "kubernetes", "dockerfile"},
 			},
 			Dependencies: DependenciesConfig{
-				Enabled:    true,
-				Ecosystems: []string{"auto"},
-				Severity:   "medium",
-				IgnoreDev:  false,
+				Enabled:        true,
+				Ecosystems:     []string{"auto"},
+				Severity:       "medium",
+				IgnoreDev:      false,
+				RiskEnrichment: true,
 			},
 			SAST: SASTConfig{
 				Enabled:     false,

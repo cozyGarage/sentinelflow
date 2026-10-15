@@ -3,6 +3,7 @@ package api
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
 	"time"
 )
@@ -105,8 +106,12 @@ type Finding struct {
 	Confidence  float64        `json:"confidence,omitempty"`
 	CVE         string         `json:"cve,omitempty"`
 	CVSS        float64        `json:"cvss,omitempty"`
-	CWE         []string       `json:"cwe,omitempty"`
-	OWASP       []string       `json:"owasp,omitempty"`
+	// EPSS is the FIRST.org probability (0-1) that the CVE is exploited in the next 30 days.
+	EPSS float64 `json:"epss,omitempty"`
+	// KEV is true when the CVE is in the CISA Known Exploited Vulnerabilities catalog.
+	KEV   bool     `json:"kev,omitempty"`
+	CWE   []string `json:"cwe,omitempty"`
+	OWASP []string `json:"owasp,omitempty"`
 	// Fingerprint is a line-independent identity (rule + path + snippet/value
 	// hash). Used by baseline v2 and SARIF partialFingerprints.
 	Fingerprint string `json:"fingerprint,omitempty"`
@@ -152,6 +157,7 @@ type BaselineSummary struct {
 	Suppressed int  `json:"suppressed"`
 	New        int  `json:"new"`
 	Inline     int  `json:"inline,omitempty"`
+	VEX        int  `json:"vex,omitempty"`
 }
 
 // ScanResult contains the complete results of a security scan
@@ -206,4 +212,16 @@ func (r *ScanResult) FilterBySeverity(severity Severity) []Finding {
 		}
 	}
 	return filtered
+}
+
+// RiskLabel summarises EPSS and KEV for display, e.g. "CISA KEV, EPSS 94.1%".
+func RiskLabel(f Finding) string {
+	var parts []string
+	if f.KEV {
+		parts = append(parts, "CISA KEV (exploited in the wild)")
+	}
+	if f.EPSS > 0 {
+		parts = append(parts, fmt.Sprintf("EPSS %.1f%%", f.EPSS*100))
+	}
+	return strings.Join(parts, ", ")
 }

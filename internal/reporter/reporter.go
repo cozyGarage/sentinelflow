@@ -162,6 +162,9 @@ func (f *TextFormatter) Format(result *api.ScanResult) (string, error) {
 				output += fmt.Sprintf("[%s] %s\n", finding.RuleID, finding.Title)
 				output += fmt.Sprintf("  File: %s:%d\n", finding.Location.File, finding.Location.StartLine)
 				output += fmt.Sprintf("  %s\n", finding.Description)
+				if risk := api.RiskLabel(finding); risk != "" {
+					output += fmt.Sprintf("  Exploitability: %s\n", risk)
+				}
 				if finding.Remediation != "" {
 					output += fmt.Sprintf("  Fix: %s\n", finding.Remediation)
 				}

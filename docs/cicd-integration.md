@@ -88,6 +88,8 @@ Third-party `uses:` in this repository are pinned by commit SHA (Dependabot keep
 | `scan-artifacts` | `false` | Binary/archive scanning (**opt-in**; not part of `scan-all`) |
 | `scan-container` | `false` | Container scan (requires `delivery=build` or `release` + Trivy) |
 | `container-image` | — | Image to scan when container enabled |
+| `fail-on-kev` | `false` | Fail on any CISA KEV finding regardless of severity |
+| `vex` | — | Comma-separated OpenVEX documents; `not_affected`/`fixed` statements suppress findings |
 | `use-baseline` | `false` | Skip baselined findings. CLI, JSON, and Markdown reports include suppressed vs new counts; the fail gate uses the new (post-filter) set |
 | `fail-on` | `high` | Pipeline failure threshold |
 | `timeout` | — | Scan deadline (`10m`, `90s`, …); empty uses config default |
