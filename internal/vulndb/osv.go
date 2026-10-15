@@ -66,8 +66,9 @@ type OSVVulnerability struct {
 		Ranges []struct {
 			Type   string `json:"type"`
 			Events []struct {
-				Introduced string `json:"introduced,omitempty"`
-				Fixed      string `json:"fixed,omitempty"`
+				Introduced   string `json:"introduced,omitempty"`
+				Fixed        string `json:"fixed,omitempty"`
+				LastAffected string `json:"last_affected,omitempty"`
 			} `json:"events"`
 		} `json:"ranges"`
 		Versions []string `json:"versions,omitempty"`
@@ -83,7 +84,8 @@ type OSVVulnerability struct {
 		Type string `json:"type"`
 		URL  string `json:"url"`
 	} `json:"references,omitempty"`
-	Aliases []string `json:"aliases,omitempty"`
+	Aliases   []string `json:"aliases,omitempty"`
+	Withdrawn string   `json:"withdrawn,omitempty"`
 }
 
 // Query queries the OSV API for vulnerabilities

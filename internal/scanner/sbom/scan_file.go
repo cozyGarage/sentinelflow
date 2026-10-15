@@ -23,7 +23,7 @@ func (s *Scanner) ScanFile(ctx context.Context, path string) (*api.ScanResult, e
 	if err := json.Unmarshal(data, &doc); err != nil {
 		return nil, fmt.Errorf("parse SBOM: %w", err)
 	}
-	client, err := vulndb.NewClient()
+	client, err := vulndb.NewClient(vulndb.OfflineOptions(s.offline)...)
 	if err != nil {
 		return nil, err
 	}

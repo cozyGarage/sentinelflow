@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Offline vulnerability database:** `sentinelflow db update [--ecosystems …]` downloads OSV's per-ecosystem exports into a trimmed local index (all 8 ecosystems take about 18 MB and under a minute), and `db status` shows their age. `scan --offline` / `scanners.dependencies.offline: true` evaluates OSV ranges locally (semver plus ecosystem ordering, explicit version lists, `last_affected`, withdrawn advisories dropped) for dependency, SBOM, and artifact scans. On a mixed Composer/NuGet/Gradle/pip/npm fixture it produced the same 90 findings as the online API.
+
 ### Fixed
 
 - **Dependencies:** manifests in subdirectories are now scanned, so monorepos (e.g. `svc/a/go.mod`, `web/package-lock.json`) get vulnerability findings. Previously only the scan root was checked.

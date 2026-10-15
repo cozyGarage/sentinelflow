@@ -168,7 +168,6 @@ From the v1.2.0 review. Ordered by impact on signal quality.
 | Coverage on security boundaries | `unpack` 47%, `artifacts` 14%, `adapter` 6%, `cli` 28% | `go test -cover ./...` |
 | Perf budget with SAST on | Current budget times secrets only; SSA loads packages | `TestPerfBudgetSmallTree` |
 | Go-aware binary hardening | Canary/FORTIFY/RELRO checks are C-oriented and flag every static Go binary | `scan-artifact` on SentinelFlow itself |
-| Offline OSV DB | Air-gapped CI; needs a local range matcher per ecosystem | `db update` removed in v1.2.0 |
 
 ---
 

@@ -260,3 +260,13 @@ func WithCache(cache Cache) Option {
 		c.cache = cache
 	}
 }
+
+// OfflineOptions makes a client answer from the local OSV database
+// (`sentinelflow db update`) with no network access when offline is true.
+func OfflineOptions(offline bool) []Option {
+	if !offline {
+		return nil
+	}
+	// Memory cache: online results in the disk cache must not mix with the offline DB.
+	return []Option{WithSources(NewOfflineSource("")), WithCache(NewMemoryCache())}
+}

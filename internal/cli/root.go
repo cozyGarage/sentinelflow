@@ -88,6 +88,7 @@ func init() {
 	rootCmd.AddCommand(hookCmd)
 	rootCmd.AddCommand(baselineCmd)
 	rootCmd.AddCommand(sbomCmd)
+	rootCmd.AddCommand(dbCmd)
 
 	initCmd.Flags().BoolVar(&initForce, "force", false, "overwrite an existing .sentinelflow.yaml")
 }

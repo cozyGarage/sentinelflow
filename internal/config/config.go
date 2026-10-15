@@ -111,6 +111,9 @@ type DependenciesConfig struct {
 	FailOnError *bool `yaml:"fail_on_error" mapstructure:"fail_on_error"`
 	// RiskEnrichment adds EPSS scores and CISA KEV flags to findings with a CVE (network).
 	RiskEnrichment bool `yaml:"risk_enrichment" mapstructure:"risk_enrichment"`
+	// Offline answers vulnerability lookups from the local OSV database built by
+	// `sentinelflow db update` and skips EPSS/KEV enrichment (no network).
+	Offline bool `yaml:"offline" mapstructure:"offline"`
 }
 
 // DependenciesFailOnError returns whether dependency scanner errors should fail the CLI.

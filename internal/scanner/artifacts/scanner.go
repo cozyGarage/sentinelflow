@@ -31,7 +31,7 @@ type ScannerResult = types.ScannerResult
 
 func NewScanner(cfg *config.Config) *Scanner {
 	s := &Scanner{config: cfg, secret: secrets.NewScanner(cfg)}
-	client, err := vulndb.NewClient()
+	client, err := vulndb.NewClient(vulndb.OfflineOptions(cfg.Scanners.Dependencies.Offline)...)
 	if err == nil {
 		s.client = client
 	}

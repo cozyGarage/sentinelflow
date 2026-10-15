@@ -166,7 +166,7 @@ func (e *Engine) Scan(ctx context.Context, targetPath string) (*api.ScanResult, 
 
 	fingerprint.Ensure(result.Findings)
 
-	if e.config.Scanners.Dependencies.RiskEnrichment {
+	if e.config.Scanners.Dependencies.RiskEnrichment && !e.config.Scanners.Dependencies.Offline {
 		if err := enrichRisk(ctx, result.Findings); err != nil && len(result.ScannerRuns) > 0 {
 			run := &result.ScannerRuns[0]
 			for i := range result.ScannerRuns {

@@ -63,7 +63,7 @@ func NewScanner(cfg *config.Config) *Scanner {
 		ecosystems: make(map[string]EcosystemScanner),
 	}
 
-	client, err := vulndb.NewClient()
+	client, err := vulndb.NewClient(vulndb.OfflineOptions(cfg.Scanners.Dependencies.Offline)...)
 	if err != nil {
 		s.client = nil
 	} else {
