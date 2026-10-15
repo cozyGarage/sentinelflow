@@ -105,6 +105,9 @@ type DependenciesConfig struct {
 	Severity   string   `yaml:"severity" mapstructure:"severity"`
 	IgnoreDev  bool     `yaml:"ignore_dev" mapstructure:"ignore_dev"`
 	IgnoreCVEs []string `yaml:"ignore_cves" mapstructure:"ignore_cves"`
+	// Offline answers vulnerability lookups from the local OSV database built by
+	// `sentinelflow db update` and skips EPSS/KEV enrichment (no network).
+	Offline bool `yaml:"offline" mapstructure:"offline"`
 	// FailOnError fails the scan CLI when the dependencies scanner returns an
 	// error (e.g. OSV network blips). Default true. Set false to keep findings
 	// and report ScannerRun.Error without failing CI solely for transport errors.
