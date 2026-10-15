@@ -10,6 +10,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **Go reachability** (`scanners.dependencies.reachability: auto|required`): runs `govulncheck` per Go module and marks dependency findings `reachable: true/false`, depending on whether the vulnerable function is called. Shown in JSON, SARIF (`reachable`), and the "Exploitability" line. `fail_on.reachable_only: true` stops unreachable findings from tripping the severity gate. On this repo, all 6 Go advisories are correctly marked not called.
+- **Go SAST taint:** new SSA sinks for SQL (`go-ssa-sql-tainted`), file paths (`go-ssa-path-tainted`), and SSRF (`go-ssa-ssrf-tainted`). Sources now include `*http.Request` fields, `PathValue`/`Cookie`, and gin/echo/chi/gorilla accessors. `strconv` parsers and `filepath.Base` act as sanitizers.
+
+### Changed
+
+- Taint through helper functions is summarised per parameter, which removes false positives where a helper returning one tainted argument tainted every call site. Environment-variable input only feeds the shell rule.
 
 ### Fixed
 
