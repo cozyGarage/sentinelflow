@@ -57,8 +57,8 @@ Run `sentinelflow init` to generate a starter configuration.
 | `ignore_dev` | bool | `false` | Skip dev dependencies |
 | `ignore_cves` | []string | — | CVE, GHSA, GO-, or OSV IDs to ignore |
 | `risk_enrichment` | bool | `true` | Add EPSS scores and CISA KEV flags to findings that have a CVE. Fetches the KEV catalog (cached 24h) and the FIRST.org EPSS API; lookup failures are warnings unless `fail_on.kev` is set |
-| `offline` | bool | `false` | Answer lookups from the local OSV database built by `sentinelflow db update` (no network); skips EPSS/KEV. CLI: `--offline` |
 | `fail_on_error` | bool | `true` | Fail the CLI when the dependencies scanner errors (e.g. OSV network blips). Set `false` to keep any findings and print a warning instead of failing solely for transport errors |
+| `offline` | bool | `false` | Answer lookups from the local OSV database built by `sentinelflow db update` (no network); skips EPSS/KEV. CLI: `--offline` |
 
 Default stays strict for security. Soft-fail is for flaky CI networks only — findings that were collected still go through `fail_on`.
 
