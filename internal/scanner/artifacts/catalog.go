@@ -3,6 +3,7 @@ package artifacts
 import (
 	"bufio"
 	"bytes"
+	"cmp"
 	"context"
 	"debug/buildinfo"
 	"encoding/json"
@@ -202,7 +203,7 @@ func (s *Scanner) componentFindings(ctx context.Context, c Component) []api.Find
 		f.Type = api.FindingTypeVulnerability
 		f.Severity = api.ParseSeverity(v.Severity)
 		f.Title = fmt.Sprintf("Vulnerable component: %s@%s (%s)", c.Name, c.Version, v.ID)
-		f.Description = firstNonEmpty(v.Summary, v.Details)
+		f.Description = cmp.Or(v.Summary, v.Details)
 		f.CVE = v.CVE
 		f.CVSS = v.CVSS
 		f.RuleID = v.ID
@@ -238,15 +239,6 @@ func splitArtifact(path string) (file, artifact string) {
 		return path[:i], path
 	}
 	return path, ""
-}
-
-func firstNonEmpty(values ...string) string {
-	for _, v := range values {
-		if v != "" {
-			return v
-		}
-	}
-	return ""
 }
 
 // goStdlibVersion drops the "go" prefix and any GOEXPERIMENT suffix

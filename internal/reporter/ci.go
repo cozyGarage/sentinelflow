@@ -1,6 +1,7 @@
 package reporter
 
 import (
+	"cmp"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -60,7 +61,7 @@ func (f *GitLabSASTFormatter) Format(result *api.ScanResult) (string, error) {
 			continue
 		}
 		v := vuln{
-			ID:          firstNonEmpty(finding.Fingerprint, finding.ID),
+			ID:          cmp.Or(finding.Fingerprint, finding.ID),
 			Category:    "sast",
 			Name:        finding.Title,
 			Message:     finding.Title,
@@ -105,7 +106,7 @@ func (f *GitLabDepsFormatter) Format(result *api.ScanResult) (string, error) {
 			continue
 		}
 		vulns = append(vulns, map[string]any{
-			"id":          firstNonEmpty(finding.Fingerprint, finding.ID),
+			"id":          cmp.Or(finding.Fingerprint, finding.ID),
 			"category":    "dependency_scanning",
 			"name":        finding.Title,
 			"message":     finding.Title,
@@ -115,8 +116,8 @@ func (f *GitLabDepsFormatter) Format(result *api.ScanResult) (string, error) {
 				"file": finding.Location.File,
 			},
 			"identifiers": []map[string]string{{
-				"type": "cve", "name": firstNonEmpty(finding.CVE, finding.RuleID),
-				"value": firstNonEmpty(finding.CVE, finding.RuleID),
+				"type": "cve", "name": cmp.Or(finding.CVE, finding.RuleID),
+				"value": cmp.Or(finding.CVE, finding.RuleID),
 			}},
 		})
 	}
@@ -154,15 +155,6 @@ func xmlEscape(s string) string {
 	s = strings.ReplaceAll(s, ">", "&gt;")
 	s = strings.ReplaceAll(s, `"`, "&quot;")
 	return s
-}
-
-func firstNonEmpty(v ...string) string {
-	for _, s := range v {
-		if s != "" {
-			return s
-		}
-	}
-	return ""
 }
 
 // GitHubAnnotations returns workflow command annotations for findings.

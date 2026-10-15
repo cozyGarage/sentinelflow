@@ -27,6 +27,9 @@ jobs:
           go-version-file: go.mod
           cache: true
 
+      - name: gofmt
+        run: test -z "$(gofmt -l . | tee /dev/stderr)"
+
       - name: Go test
         run: go test -race ./...
 

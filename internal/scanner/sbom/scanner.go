@@ -36,7 +36,7 @@ type CycloneDX struct {
 
 // Metadata contains BOM metadata
 type Metadata struct {
-	Timestamp string `json:"timestamp"`
+	Timestamp string    `json:"timestamp"`
 	Component Component `json:"component"`
 }
 

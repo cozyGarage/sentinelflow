@@ -4,6 +4,8 @@ package fingerprint
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"fmt"
+	"hash/fnv"
 	"path/filepath"
 	"strings"
 	"unicode"
@@ -83,4 +85,11 @@ func Ensure(findings []api.Finding) {
 			findings[i].Fingerprint = Of(findings[i])
 		}
 	}
+}
+
+// Token is a short, stable hash of a path or package name for finding IDs.
+func Token(s string) string {
+	h := fnv.New32a()
+	_, _ = h.Write([]byte(filepath.ToSlash(s)))
+	return fmt.Sprintf("%08x", h.Sum32())
 }

@@ -1,6 +1,7 @@
 package sbom
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -52,7 +53,7 @@ func (s *Scanner) ScanFile(ctx context.Context, path string) (*api.ScanResult, e
 				Type:        api.FindingTypeVulnerability,
 				Severity:    api.ParseSeverity(v.Severity),
 				Title:       fmt.Sprintf("%s in %s@%s", v.ID, c.Name, c.Version),
-				Description: firstNonEmpty(v.Summary, v.Details),
+				Description: cmp.Or(v.Summary, v.Details),
 				Location:    api.Location{File: path, Snippet: c.PURL},
 				Scanner:     "sbom",
 				RuleID:      v.ID,
@@ -108,15 +109,6 @@ func purlEcosystem(purl string) (eco, pkg string) {
 		return "maven", strings.Replace(name, "/", ":", 1) // OSV uses group:artifact
 	}
 	return "", ""
-}
-
-func firstNonEmpty(v ...string) string {
-	for _, s := range v {
-		if s != "" {
-			return s
-		}
-	}
-	return ""
 }
 
 // WriteSPDX writes a minimal SPDX 2.3 JSON document from a CycloneDX BOM.

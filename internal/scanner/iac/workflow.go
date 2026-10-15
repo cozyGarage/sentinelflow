@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/cozygarage/sentinelflow/internal/scanner/fingerprint"
 	"github.com/cozygarage/sentinelflow/internal/scanner/redact"
 	"github.com/cozygarage/sentinelflow/pkg/api"
 	"gopkg.in/yaml.v3"
@@ -51,7 +52,7 @@ func scanWorkflow(ctx context.Context, filePath, basePath string) []api.Finding 
 			line = n.Line
 		}
 		findings = append(findings, api.Finding{
-			ID:          fmt.Sprintf("IAC-GHA-%s-%s-%d", ruleID, pathToken(rel), line),
+			ID:          fmt.Sprintf("IAC-GHA-%s-%s-%d", ruleID, fingerprint.Token(rel), line),
 			Type:        api.FindingTypeMisconfiguration,
 			Severity:    sev,
 			Title:       title,

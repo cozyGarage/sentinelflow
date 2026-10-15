@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/cozygarage/sentinelflow/internal/scanner/fingerprint"
 	"github.com/cozygarage/sentinelflow/internal/scanner/redact"
 	"github.com/cozygarage/sentinelflow/pkg/api"
 	"gopkg.in/yaml.v3"
@@ -45,7 +46,7 @@ func scanCompose(ctx context.Context, filePath, basePath string) []api.Finding {
 		name, svc := services.Content[i-1].Value, services.Content[i]
 		add := func(ruleID, title, desc string, sev api.Severity, n *yaml.Node, remediation string) {
 			findings = append(findings, api.Finding{
-				ID:          fmt.Sprintf("IAC-COMPOSE-%s-%s-%s-%d", ruleID, name, pathToken(rel), n.Line),
+				ID:          fmt.Sprintf("IAC-COMPOSE-%s-%s-%s-%d", ruleID, name, fingerprint.Token(rel), n.Line),
 				Type:        api.FindingTypeMisconfiguration,
 				Severity:    sev,
 				Title:       title,

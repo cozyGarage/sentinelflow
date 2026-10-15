@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/cozygarage/sentinelflow/internal/config"
+	"github.com/cozygarage/sentinelflow/internal/scanner/fingerprint"
 	"github.com/cozygarage/sentinelflow/internal/scanner/redact"
 	"github.com/cozygarage/sentinelflow/pkg/api"
 )
@@ -80,7 +81,7 @@ func (s *DockerfileScanner) ScanFile(ctx context.Context, filePath, basePath str
 				continue
 			}
 			findings = append(findings, api.Finding{
-				ID:          fmt.Sprintf("IAC-DOCKER-%s-%s-%d", rule.ID, pathToken(relPath), inst.Line),
+				ID:          fmt.Sprintf("IAC-DOCKER-%s-%s-%d", rule.ID, fingerprint.Token(relPath), inst.Line),
 				Type:        api.FindingTypeMisconfiguration,
 				Severity:    rule.Severity,
 				Title:       rule.Name,
@@ -109,7 +110,7 @@ func (s *DockerfileScanner) ScanFile(ctx context.Context, filePath, basePath str
 			line = instructions[len(instructions)-1].EndLine
 		}
 		findings = append(findings, api.Finding{
-			ID:          fmt.Sprintf("IAC-DOCKER-%s-%s-%d", rule.ID, pathToken(relPath), line),
+			ID:          fmt.Sprintf("IAC-DOCKER-%s-%s-%d", rule.ID, fingerprint.Token(relPath), line),
 			Type:        api.FindingTypeMisconfiguration,
 			Severity:    rule.Severity,
 			Title:       rule.Name,
@@ -132,9 +133,9 @@ func (s *DockerfileScanner) ScanFile(ctx context.Context, filePath, basePath str
 func parseDockerfileInstructions(content string) []instruction {
 	rawLines := strings.Split(content, "\n")
 	var logical []struct {
-		text     string
-		start    int
-		end      int
+		text  string
+		start int
+		end   int
 	}
 
 	for i := 0; i < len(rawLines); {

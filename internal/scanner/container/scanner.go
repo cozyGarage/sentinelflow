@@ -5,13 +5,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"hash/fnv"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 
 	"github.com/cozygarage/sentinelflow/internal/config"
+	"github.com/cozygarage/sentinelflow/internal/scanner/fingerprint"
 	"github.com/cozygarage/sentinelflow/internal/scanner/types"
 	"github.com/cozygarage/sentinelflow/pkg/api"
 )
@@ -113,12 +113,6 @@ func parseDockerfileFrom(fromLine string) string {
 	return ""
 }
 
-func pkgToken(name string) string {
-	h := fnv.New32a()
-	_, _ = h.Write([]byte(name))
-	return fmt.Sprintf("%08x", h.Sum32())
-}
-
 type trivyReport struct {
 	Results []struct {
 		Target          string `json:"Target"`
@@ -202,7 +196,7 @@ func (s *Scanner) parseTrivyOutput(image string, output []byte) ([]api.Finding, 
 			}
 
 			findings = append(findings, api.Finding{
-				ID:          fmt.Sprintf("CONTAINER-%s-%s", v.VulnerabilityID, pkgToken(v.PkgName)),
+				ID:          fmt.Sprintf("CONTAINER-%s-%s", v.VulnerabilityID, fingerprint.Token(v.PkgName)),
 				Type:        api.FindingTypeVulnerability,
 				Severity:    sev,
 				Title:       fmt.Sprintf("Container vulnerability: %s in %s", v.VulnerabilityID, v.PkgName),
