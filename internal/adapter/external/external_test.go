@@ -57,7 +57,8 @@ func TestSC033_RequiredAdapterRejectsMalformedOrTruncatedReport(t *testing.T) {
 			}
 			t.Setenv("PATH", dir)
 			a := &Adapter{name: "fake", bin: "fake-scanner", mode: "required", args: func(string) []string { return nil }, parse: parseSemgrep, requiresOutput: true}
-			if _, err := a.Scan(t.Context(), t.TempDir(), nil); err == nil {
+			result, err := a.Scan(t.Context(), t.TempDir(), nil)
+			if err == nil || result.Status != api.ScanStatusFailed {
 				t.Fatal("malformed or truncated required report must fail")
 			}
 		})
@@ -227,6 +228,20 @@ func TestAutoAdapterMissingIsWarning(t *testing.T) {
 	}
 	if len(res.Warnings) == 0 {
 		t.Fatal("auto missing tool must warn")
+	}
+	if res.Status != api.ScanStatusSkipped {
+		t.Fatalf("missing optional tool must be visibly skipped, got %q", res.Status)
+	}
+}
+
+func TestRequiredAdapterMissingHasFailedOutcome(t *testing.T) {
+	a := &Adapter{name: "missing-tool", bin: "definitely-not-on-path-sentinelflow", mode: "required",
+		args:  func(string) []string { return nil },
+		parse: func(string, []byte) ([]api.Finding, error) { return nil, nil },
+	}
+	result, err := a.Scan(t.Context(), ".", nil)
+	if err == nil || result.Status != api.ScanStatusFailed {
+		t.Fatalf("required missing tool must fail with explicit status: result=%+v err=%v", result, err)
 	}
 }
 

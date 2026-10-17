@@ -28,6 +28,9 @@ func (f *MarkdownFormatter) Format(result *api.ScanResult) (string, error) {
 	md.WriteString(fmt.Sprintf("| **Target** | `%s` |\n", escapeMarkdownInline(result.Metadata.TargetPath)))
 	md.WriteString(fmt.Sprintf("| **Scan Duration** | %s |\n", result.Duration.Std().Round(time.Millisecond)))
 	md.WriteString(fmt.Sprintf("| **Scanners Run** | %d |\n", len(result.ScannerRuns)))
+	if result.Status != "" {
+		md.WriteString(fmt.Sprintf("| **Scan Outcome** | %s |\n", result.Status))
+	}
 	md.WriteString(fmt.Sprintf("| **Total Findings** | **%d** |\n", totalFindings))
 	if result.Baseline != nil && result.Baseline.Enabled {
 		md.WriteString(fmt.Sprintf("| **Baselined (suppressed)** | %d |\n", result.Baseline.Suppressed))
@@ -60,12 +63,12 @@ func (f *MarkdownFormatter) Format(result *api.ScanResult) (string, error) {
 	md.WriteString("|---------|--------|----------|----------|\n")
 
 	for _, run := range result.ScannerRuns {
-		status := "✅"
-		if run.Error != "" {
-			status = "❌"
+		status := string(run.Status)
+		if status == "" {
+			status = "unknown (legacy)"
 		}
 		md.WriteString(fmt.Sprintf("| %s | %s | %d | %s |\n",
-			escapeMarkdownCell(run.Scanner), status, run.FindingsCount, run.Duration.Std().Round(time.Millisecond)))
+			escapeMarkdownCell(run.Scanner), escapeMarkdownCell(status), run.FindingsCount, run.Duration.Std().Round(time.Millisecond)))
 	}
 	md.WriteString("\n")
 

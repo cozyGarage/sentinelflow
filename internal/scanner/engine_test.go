@@ -255,6 +255,9 @@ exit 2
 	if len(result.ScannerRuns) != 1 || !strings.Contains(result.ScannerRuns[0].Error, "reachability:") {
 		t.Fatalf("required reachability failure must be visible in scanner outcome: %+v", result.ScannerRuns)
 	}
+	if result.ScannerRuns[0].Status != api.ScanStatusFailed || result.Status != api.ScanStatusFailed {
+		t.Fatalf("required reachability failure must remain failed in status: aggregate=%s run=%s", result.Status, result.ScannerRuns[0].Status)
+	}
 }
 
 func TestEnginePreservesFindingsOnScannerError(t *testing.T) {
@@ -280,6 +283,70 @@ func TestEnginePreservesFindingsOnScannerError(t *testing.T) {
 	}
 	if len(result.ScannerRuns) != 1 || result.ScannerRuns[0].Error == "" {
 		t.Fatalf("expected ScannerRun.Error set, got %+v", result.ScannerRuns)
+	}
+	if result.ScannerRuns[0].Status != api.ScanStatusPartial || result.Status != api.ScanStatusPartial {
+		t.Fatalf("findings plus scanner failure should be partial: result=%s run=%s", result.Status, result.ScannerRuns[0].Status)
+	}
+}
+
+func TestEngineCleanZeroFindingsAndNoConfiguredScannersHaveDifferentOutcomes(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		scanners []Scanner
+		want     api.ScanStatus
+	}{
+		{name: "clean empty result", scanners: []Scanner{&stubScanner{name: "secrets"}}, want: api.ScanStatusComplete},
+		{name: "no scanner ran", scanners: []Scanner{}, want: api.ScanStatusSkipped},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			engine := NewEngine(&config.Config{})
+			engine.scanners = tc.scanners
+			result, err := engine.Scan(context.Background(), t.TempDir())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if result.Status != tc.want {
+				t.Fatalf("status = %q, want %q", result.Status, tc.want)
+			}
+		})
+	}
+}
+
+func TestEngineVEXFailureReturnsCollectedFindings(t *testing.T) {
+	for _, stage := range []string{"vex", "diff", "baseline"} {
+		t.Run(stage, func(t *testing.T) {
+			root := t.TempDir()
+			cfg := &config.Config{}
+			engine := NewEngine(cfg)
+			switch stage {
+			case "vex":
+				bad := filepath.Join(root, "bad-vex.json")
+				if err := os.WriteFile(bad, []byte("{"), 0600); err != nil {
+					t.Fatal(err)
+				}
+				cfg.VEX = []string{bad}
+			case "diff":
+				engine.DiffBase = "ref-that-does-not-exist"
+			case "baseline":
+				bad := filepath.Join(root, "bad-baseline.json")
+				if err := os.WriteFile(bad, []byte("{"), 0600); err != nil {
+					t.Fatal(err)
+				}
+				cfg.Baseline.Enabled = true
+				cfg.Baseline.File = bad
+			}
+			engine.scanners = []Scanner{&stubScanner{name: "secrets", findings: []api.Finding{{ID: "F1", Scanner: "secrets", Severity: api.SeverityHigh}}}}
+			result, err := engine.Scan(context.Background(), root)
+			if err == nil {
+				t.Fatalf("invalid %s input should fail the scan", stage)
+			}
+			if result == nil || len(result.Findings) != 1 || result.Findings[0].ID != "F1" {
+				t.Fatalf("%s failure should preserve collected finding evidence: result=%+v err=%v", stage, result, err)
+			}
+			if result.Status != api.ScanStatusFailed || result.ScannerRuns[len(result.ScannerRuns)-1].Scanner != "postprocess:"+stage {
+				t.Fatalf("%s failure must be explicit in overall outcome: status=%q runs=%+v", stage, result.Status, result.ScannerRuns)
+			}
+		})
 	}
 }
 

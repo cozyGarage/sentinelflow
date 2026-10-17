@@ -54,6 +54,7 @@ func redactResult(result *api.ScanResult) *api.ScanResult {
 		return nil
 	}
 	out := *result
+	out.Metadata.TargetPath = redact.Line(out.Metadata.TargetPath)
 	if len(result.ScannerRuns) > 0 {
 		out.ScannerRuns = make([]api.ScannerRun, len(result.ScannerRuns))
 		copy(out.ScannerRuns, result.ScannerRuns)
@@ -125,6 +126,9 @@ func (f *TextFormatter) Format(result *api.ScanResult) (string, error) {
 	output += fmt.Sprintf("Target:   %s\n", result.Metadata.TargetPath)
 	output += fmt.Sprintf("Started:  %s\n", result.Metadata.StartTime.Format("2006-01-02 15:04:05"))
 	output += fmt.Sprintf("Duration: %s\n", result.Duration.Std())
+	if result.Status != "" {
+		output += fmt.Sprintf("Outcome:  %s\n", result.Status)
+	}
 	output += fmt.Sprintf("Scanners: %d\n\n", len(result.ScannerRuns))
 
 	// Summary by severity
@@ -140,9 +144,9 @@ func (f *TextFormatter) Format(result *api.ScanResult) (string, error) {
 	// Scanner results
 	output += "Scanner Results:\n"
 	for _, run := range result.ScannerRuns {
-		status := "✓"
-		if run.Error != "" {
-			status = "✗"
+		status := string(run.Status)
+		if status == "" {
+			status = "unknown (legacy)"
 		}
 		output += fmt.Sprintf("  %s %s - %d findings in %s\n",
 			status, run.Scanner, run.FindingsCount, run.Duration.Std())

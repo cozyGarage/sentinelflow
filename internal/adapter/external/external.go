@@ -35,13 +35,16 @@ func (a *Adapter) Supports(path string) bool { return true }
 func (a *Adapter) Scan(ctx context.Context, path string, opts interface{}) (*types.ScannerResult, error) {
 	result := &types.ScannerResult{Findings: []api.Finding{}}
 	if config.ExternalMode(a.mode) == "off" {
+		result.Status = api.ScanStatusSkipped
 		return result, nil
 	}
 	if _, err := exec.LookPath(a.bin); err != nil {
 		msg := fmt.Sprintf("%s not found on PATH", a.bin)
 		if config.ExternalMode(a.mode) == "required" {
+			result.Status = api.ScanStatusFailed
 			return result, fmt.Errorf("%s", msg)
 		}
+		result.Status = api.ScanStatusSkipped
 		result.Warnings = []string{msg + " (mode=auto; skipping)"}
 		return result, nil
 	}
@@ -73,9 +76,20 @@ func (a *Adapter) Scan(ctx context.Context, path string, opts interface{}) (*typ
 			failure = fmt.Errorf("%w (%s)", failure, detail)
 		}
 		if config.ExternalMode(a.mode) == "required" {
+			if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
+				result.Status = api.ScanStatusTimedOut
+			} else if len(findings) > 0 {
+				result.Status = api.ScanStatusPartial
+			} else {
+				result.Status = api.ScanStatusFailed
+			}
 			return result, fmt.Errorf("%s: %w", a.bin, failure)
 		}
 		result.Warnings = append(result.Warnings, fmt.Sprintf("%s: %v", a.bin, failure))
+		result.Status = api.ScanStatusPartial
+	}
+	if result.Status == "" {
+		result.Status = api.ScanStatusComplete
 	}
 	return result, nil
 }

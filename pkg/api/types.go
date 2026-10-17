@@ -166,17 +166,21 @@ type BaselineSummary struct {
 
 // ScanResult contains the complete results of a security scan
 type ScanResult struct {
-	Findings    []Finding        `json:"findings"`
-	ScannerRuns []ScannerRun     `json:"scanner_runs"`
-	Metadata    ScanMetadata     `json:"metadata"`
-	Duration    DurationMS       `json:"duration_ms"`
-	Baseline    *BaselineSummary `json:"baseline,omitempty"`
-	Skipped     []SkippedFile    `json:"skipped,omitempty"`
+	Findings    []Finding    `json:"findings"`
+	ScannerRuns []ScannerRun `json:"scanner_runs"`
+	// Status summarizes analysis coverage. It is additive; empty means a legacy producer.
+	Status   ScanStatus       `json:"status,omitempty"`
+	Metadata ScanMetadata     `json:"metadata"`
+	Duration DurationMS       `json:"duration_ms"`
+	Baseline *BaselineSummary `json:"baseline,omitempty"`
+	Skipped  []SkippedFile    `json:"skipped,omitempty"`
 }
 
 // ScannerRun contains information about an individual scanner execution
 type ScannerRun struct {
-	Scanner       string     `json:"scanner"`
+	Scanner string `json:"scanner"`
+	// Status distinguishes a clean empty result from analysis that did not complete.
+	Status        ScanStatus `json:"status,omitempty"`
 	StartTime     time.Time  `json:"start_time"`
 	EndTime       time.Time  `json:"end_time"`
 	Duration      DurationMS `json:"duration_ms"`
@@ -187,6 +191,18 @@ type ScannerRun struct {
 	// not fail CI by themselves — use Error for hard failures.
 	Warnings []string `json:"warnings,omitempty"`
 }
+
+// ScanStatus is the execution and coverage outcome for a scan or scanner.
+type ScanStatus string
+
+const (
+	ScanStatusComplete      ScanStatus = "complete"
+	ScanStatusPartial       ScanStatus = "partial"
+	ScanStatusFailed        ScanStatus = "failed"
+	ScanStatusTimedOut      ScanStatus = "timed-out"
+	ScanStatusNotApplicable ScanStatus = "not-applicable"
+	ScanStatusSkipped       ScanStatus = "skipped"
+)
 
 // ScanMetadata contains information about the scan environment
 type ScanMetadata struct {

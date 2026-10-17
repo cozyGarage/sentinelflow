@@ -382,6 +382,9 @@ func loadScanConfig(targetPath string) (*config.Config, error) {
 }
 
 func scannerErrors(result *api.ScanResult, cfg *config.Config) error {
+	if result.Status == api.ScanStatusSkipped {
+		return fmt.Errorf("no scanners executed; scan outcome is skipped")
+	}
 	var errs []string
 	for _, run := range result.ScannerRuns {
 		if run.Error == "" {
@@ -490,7 +493,11 @@ func printScanSummary(result *api.ScanResult) {
 
 	if len(result.Findings) == 0 {
 		fmt.Println()
-		fmt.Println(color.GreenString("  ✓ No security issues found!"))
+		if result.Status == api.ScanStatusComplete {
+			fmt.Println(color.GreenString("  ✓ No security issues found!"))
+		} else {
+			fmt.Printf("  ⚠ No findings reported; scan outcome is %s.\n", result.Status)
+		}
 	}
 }
 
