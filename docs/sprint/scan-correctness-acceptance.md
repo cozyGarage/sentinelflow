@@ -41,7 +41,7 @@ Prepared 2026-10-17. Repository: `/home/trung/Projects/sentinelflow`. Checked-ou
 | SC-097 | Local documentation | Go/npm, baseline/fingerprint, adapter, reachability and exit compatibility notes written; final code review and hosted checks pending. |
 | SC-098 | Local evidence | Failing-first tests showed diagnostic leakage in engine and text/JSON/SARIF output, including a pre-result VEX load error leaking a marker from the target path through CLI stderr. Engine, reporter, and top-level CLI scan errors now redact it; built-CLI marker checks pass. |
 | SC-099 | In progress | Local implementation revision and integrated gate results are recorded; hosted exact-commit Actions, PR link, and final acceptance remain absent. |
-| SC-100 | Draft and reconciliation check added | [Proposed next assignment](next-assignment.md) orders follow-up risks. `scripts/check-scan-sprint-docs.py` verifies all 32 core IDs have backlog rows, acceptance rows and named Actions coverage; local positive/negative controls pass. Hosted evidence and final reconciliation remain. |
+| SC-100 | Draft and tested reconciliation check added | [Proposed next assignment](next-assignment.md) orders follow-up risks. `scripts/check-scan-sprint-docs.py` verifies all 32 core IDs have backlog rows, acceptance rows and named Actions coverage; four Python regressions cover valid docs, missing acceptance, missing job, and duplicate acceptance. Hosted evidence and final reconciliation remain. |
 
 ## Commands observed locally
 
@@ -63,12 +63,12 @@ Commands below were rerun against implementation commit `3e128766b4e497136984bb0
 | `bash scripts/qualify-govulncheck.sh` | Pass locally against pinned govulncheck v1.9.0 and local synthetic module/DB fixtures; called=true, imported-only=unknown, absent=unknown, missing `go.mod`=operational error with unknown reachability. |
 | `bash scripts/run-go-test-selector.sh ./internal/scanner/dependencies 'TestSC043_(GovulncheckNegativeRequiresQualifiedPackageObservation|NonSymbolScanCannotEstablishUnreachable)'` | Pass; both named tests were observed in JSON test events. A deliberately nonexistent selector failed with `no tests matched`, confirming green-with-no-tests is rejected. |
 | Current `.github/workflows/ci.yml` `scan-correctness` matrix via `scripts/run-go-test-selector.sh` | Pass, 37 of 37 configured selector rows executed at least one passing test on the current source. The final rerun used `/home/trung/.cache/tmp` and loopback-enabled execution because `/tmp` quota and the default sandbox blocked temp writes and `httptest` listeners. This local selection audit does not replace hosted Actions. |
-| `python3 scripts/check-scan-sprint-docs.py` plus missing-SC-001 negative control | Pass: all 32 core IDs have backlog, acceptance and named Actions entries; removing SC-001 from a temporary acceptance fixture is rejected. |
+| `python3 scripts/test_scan_sprint_docs.py`; `python3 scripts/check-scan-sprint-docs.py` | Pass: all four SC-100 positive/negative tests and the 32-ID positive audit pass locally. |
 | SC-001 clean-checkout baseline step | Pass at `9e9c8a30d868214f6affa87bab19a705be11777a`: worktree clean, revision recorded, and `go version` reported Go 1.27.2 linux/amd64. |
 | Built CLI `TestSC091_BuiltCLIExitAndPartialReport/pre-result_engine_error_redacts_sensitive_target_path` | Failing-first: missing VEX file exposed `api_key=SENTINELFLOW_SECRET_MARKER` on stderr. After redacting top-level engine errors, the CLI returns exit `2`, omits the marker, and retains a useful redacted `load VEX` reason. |
 | `test -z "$(gofmt -l .)"` | Pass after formatting the Go fixture modules. |
 
-The Go race suite, vet, tagged integration suite, pinned govulncheck fixture and all 37 test selectors passed against implementation source commit `3e128766b4e497136984bb0f9fbcafe9d91e7693`. This follow-up adds named SC-001 and SC-100 jobs, the documentation reconciler, and README/acceptance updates; `actionlint`, the 32-ID positive check, and a missing-ID negative control pass on those current changes. No Go source changed after the cited implementation commit. No claim is made about hosted Actions.
+The Go race suite, vet, tagged integration suite, pinned govulncheck fixture and all 37 test selectors passed against implementation source commit `3e128766b4e497136984bb0f9fbcafe9d91e7693`. Follow-up changes add named SC-001 and SC-100 jobs and the documentation reconciler; the SC-100 four-case test suite, 32-ID audit, actionlint, and SC-001 clean-checkout/toolchain step also pass locally. No Go source changed after the cited implementation commit. No claim is made about hosted Actions.
 
 ## Hosted and upstream-tool evidence
 

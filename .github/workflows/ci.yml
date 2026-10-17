@@ -305,4 +305,6 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Validate core backlog and acceptance coverage
-        run: python3 scripts/check-scan-sprint-docs.py
+        run: |
+          python3 scripts/test_scan_sprint_docs.py
+          python3 scripts/check-scan-sprint-docs.py

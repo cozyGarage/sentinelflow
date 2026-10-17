@@ -11,7 +11,10 @@ from pathlib import Path
 
 CORE_ROW = re.compile(r"^\| (SC-\d{3}) \| C \|", re.MULTILINE)
 ACCEPTANCE_ROW = re.compile(r"^\| (SC-\d{3}) \|", re.MULTILINE)
-ACTION_ID = re.compile(r"\bid: (SC-\d{3})\b|Scan correctness / (SC-\d{3}) /")
+ACTION_ID = re.compile(
+    r"^\s+- id: (SC-\d{3})\s*$|^\s+name: Scan correctness / (SC-\d{3}) /",
+    re.MULTILINE,
+)
 
 
 def duplicates(items: list[str]) -> set[str]:
