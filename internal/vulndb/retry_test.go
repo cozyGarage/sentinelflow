@@ -3,11 +3,57 @@ package vulndb
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync/atomic"
 	"testing"
 )
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
+
+type cancelAtEOF struct {
+	io.Reader
+	cancel context.CancelFunc
+}
+
+func (r cancelAtEOF) Read(p []byte) (int, error) {
+	n, err := r.Reader.Read(p)
+	if err == io.EOF {
+		r.cancel()
+	}
+	return n, err
+}
+
+func TestSC088_QueryBatchRetainsCompletedAlignedChunksOnCancellation(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	results := strings.TrimSuffix(strings.Repeat("{},", 1000), ",")
+	body := `{"results":[` + results + `]}`
+	client := &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     make(http.Header),
+			Body:       io.NopCloser(cancelAtEOF{Reader: strings.NewReader(body), cancel: cancel}),
+		}, nil
+	})}
+	source := NewOSVSource(client)
+	queries := make([]OSVRequest, 1001)
+	resultsByQuery, err := source.QueryBatch(ctx, queries)
+	if err == nil {
+		t.Fatal("cancelled second querybatch chunk should return an error")
+	}
+	if len(resultsByQuery) != 1000 {
+		t.Fatalf("completed first chunk should remain aligned: got %d results, want 1000; err=%v", len(resultsByQuery), err)
+	}
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("want cancellation error, got %v", err)
+	}
+}
 
 func TestQueryRetriesThenSucceeds(t *testing.T) {
 	var hits atomic.Int32

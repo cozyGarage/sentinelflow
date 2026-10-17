@@ -295,6 +295,9 @@ func (s *Scanner) detectEcosystems(path string) map[string]EcosystemScanner {
 func (s *Scanner) checkVulnerabilities(ctx context.Context, dep Dependency) ([]Vulnerability, error) {
 	all, err := s.checkAll(ctx, []Dependency{dep})
 	if err != nil {
+		if len(all) > 0 {
+			return all[0], err
+		}
 		return nil, err
 	}
 	return all[0], nil
@@ -314,9 +317,6 @@ func (s *Scanner) checkAll(ctx context.Context, deps []Dependency) ([][]Vulnerab
 		qs[i] = vulndb.PackageQuery{Ecosystem: dep.Ecosystem, Name: dep.Name, Version: normalizeVersion(dep.Version)}
 	}
 	found, err := s.client.QueryMany(ctx, qs)
-	if err != nil {
-		return nil, err
-	}
 
 	out := make([][]Vulnerability, len(deps))
 	for i, vulns := range found {
@@ -334,7 +334,7 @@ func (s *Scanner) checkAll(ctx context.Context, deps []Dependency) ([][]Vulnerab
 			})
 		}
 	}
-	return out, nil
+	return out, err
 }
 
 func normalizeVersion(version string) string {

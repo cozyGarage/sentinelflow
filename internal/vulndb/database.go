@@ -3,6 +3,7 @@ package vulndb
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"sort"
@@ -163,11 +164,9 @@ func (c *Client) Query(ctx context.Context, ecosystem, pkg, version string) ([]V
 	var allVulns []Vulnerability
 	seen := make(map[string]bool)
 	var sourceErrs []string
-	queried := 0
 
 	// Query all sources
 	for _, source := range c.sources {
-		queried++
 		vulns, err := source.Query(ctx, ecosystem, pkg, version)
 		status := "available"
 		if err != nil {
@@ -177,9 +176,10 @@ func (c *Client) Query(ctx context.Context, ecosystem, pkg, version string) ([]V
 			}
 			sourceErrs = append(sourceErrs, fmt.Sprintf("%s: %v", source.Name(), err))
 			c.recordSource(source, ecosystem, status)
-			continue
 		}
-		c.recordSource(source, ecosystem, status)
+		if err == nil {
+			c.recordSource(source, ecosystem, status)
+		}
 
 		// Deduplicate by ID
 		for _, v := range vulns {
@@ -190,9 +190,10 @@ func (c *Client) Query(ctx context.Context, ecosystem, pkg, version string) ([]V
 		}
 	}
 
-	// If every source failed, surface the error and do not cache emptiness
-	if queried > 0 && len(sourceErrs) == queried && len(allVulns) == 0 {
-		return nil, fmt.Errorf("vulnerability lookup failed for %s/%s@%s: %s", ecosystem, pkg, version, strings.Join(sourceErrs, "; "))
+	// Any failed source leaves the answer incomplete. Keep safe positives but
+	// surface the error and do not cache a partial or potentially empty answer.
+	if len(sourceErrs) > 0 {
+		return allVulns, fmt.Errorf("vulnerability lookup incomplete for %s/%s@%s: %s", ecosystem, pkg, version, strings.Join(sourceErrs, "; "))
 	}
 
 	// Cache successful results only (including empty = no known vulns)
@@ -243,10 +244,10 @@ func (c *Client) QueryMany(ctx context.Context, qs []PackageQuery) ([][]Vulnerab
 	if len(c.sources) != 1 || !ok {
 		for _, i := range miss {
 			vulns, err := c.Query(ctx, qs[i].Ecosystem, qs[i].Name, qs[i].Version)
-			if err != nil {
-				return nil, err
-			}
 			out[i] = vulns
+			if err != nil {
+				return out, err
+			}
 		}
 		return out, nil
 	}
@@ -260,15 +261,27 @@ func (c *Client) QueryMany(ctx context.Context, qs []PackageQuery) ([][]Vulnerab
 	hits, err := bs.QueryBatch(ctx, reqs)
 	if err != nil {
 		for _, i := range miss {
-			c.recordSource(c.sources[0], qs[i].Ecosystem, "error")
+			status := "error"
+			if len(hits) > 0 {
+				status = "partial"
+			}
+			c.recordSource(c.sources[0], qs[i].Ecosystem, status)
 		}
-		return nil, fmt.Errorf("vulnerability batch lookup failed: %w", err)
+		// QueryBatch only returns a prefix of complete, aligned chunks on error.
+		if len(hits) <= len(miss) {
+			details, detailErr := fetchVulns(ctx, bs, hits)
+			out = attachBatchResults(out, miss, hits, details, qs, c.cache, detailErr == nil)
+			if detailErr != nil {
+				err = errors.Join(err, detailErr)
+			}
+		}
+		return out, fmt.Errorf("vulnerability batch lookup failed: %w", err)
 	}
 	if len(hits) != len(miss) {
 		for _, i := range miss {
 			c.recordSource(c.sources[0], qs[i].Ecosystem, "error")
 		}
-		return nil, fmt.Errorf("vulnerability batch lookup returned %d results for %d queries", len(hits), len(miss))
+		return out, fmt.Errorf("vulnerability batch lookup returned %d results for %d queries", len(hits), len(miss))
 	}
 
 	// querybatch returns only IDs; fetch each distinct vulnerability once.
@@ -277,21 +290,38 @@ func (c *Client) QueryMany(ctx context.Context, qs []PackageQuery) ([][]Vulnerab
 		for _, i := range miss {
 			c.recordSource(c.sources[0], qs[i].Ecosystem, "partial")
 		}
-		return nil, err
+		out = attachBatchResults(out, miss, hits, details, qs, c.cache, false)
+		return out, err
 	}
 	for _, i := range miss {
 		c.recordSource(c.sources[0], qs[i].Ecosystem, "available")
 	}
+	out = attachBatchResults(out, miss, hits, details, qs, c.cache, true)
+	return out, nil
+}
+
+func attachBatchResults(out [][]Vulnerability, miss []int, hits [][]OSVVulnerability, details map[string]OSVVulnerability, qs []PackageQuery, cache Cache, cacheComplete bool) [][]Vulnerability {
 	for j, i := range miss {
+		if j >= len(hits) {
+			break
+		}
 		q := qs[i]
-		vulns := []Vulnerability{}
+		vulns := make([]Vulnerability, 0, len(hits[j]))
+		complete := true
 		for _, h := range hits[j] {
-			vulns = append(vulns, details[h.ID].toVulnerability(q.Name, q.Ecosystem))
+			v, ok := details[h.ID]
+			if !ok {
+				complete = false
+				continue
+			}
+			vulns = append(vulns, v.toVulnerability(q.Name, q.Ecosystem))
 		}
 		out[i] = vulns
-		_ = c.cache.Set(cacheKey(q.Ecosystem, q.Name, q.Version), vulns, 24*time.Hour)
+		if cacheComplete && complete {
+			_ = cache.Set(cacheKey(q.Ecosystem, q.Name, q.Version), vulns, 24*time.Hour)
+		}
 	}
-	return out, nil
+	return out
 }
 
 func (c *Client) checkSourceFreshness(ecosystem string) error {
@@ -343,6 +373,20 @@ func fetchVulns(ctx context.Context, bs batchSource, hits [][]OSVVulnerability) 
 				if firstErr == nil {
 					firstErr = fmt.Errorf("fetch %s: %w", id, err)
 				}
+				delete(details, id)
+				return
+			}
+			if v == nil {
+				if firstErr == nil {
+					firstErr = fmt.Errorf("fetch %s: OSV returned an empty vulnerability", id)
+				}
+				return
+			}
+			if v.ID != id {
+				if firstErr == nil {
+					firstErr = fmt.Errorf("fetch %s: OSV returned mismatched vulnerability %s", id, v.ID)
+				}
+				delete(details, id)
 				return
 			}
 			details[id] = *v

@@ -3,6 +3,7 @@ package dependencies
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -16,6 +17,37 @@ import (
 	"github.com/cozygarage/sentinelflow/internal/vulndb"
 	"github.com/cozygarage/sentinelflow/pkg/api"
 )
+
+type partialDetailOSV struct{}
+
+func (partialDetailOSV) Name() string { return "partial-detail" }
+func (partialDetailOSV) Query(context.Context, string, string, string) ([]vulndb.Vulnerability, error) {
+	return nil, errors.New("unexpected single query")
+}
+func (partialDetailOSV) QueryBatch(context.Context, []vulndb.OSVRequest) ([][]vulndb.OSVVulnerability, error) {
+	return [][]vulndb.OSVVulnerability{{{ID: "OSV-A"}, {ID: "OSV-B"}}}, nil
+}
+func (partialDetailOSV) GetVuln(_ context.Context, id string) (*vulndb.OSVVulnerability, error) {
+	if id == "OSV-B" {
+		return nil, errors.New("synthetic detail failure")
+	}
+	return &vulndb.OSVVulnerability{ID: id, Summary: "matched advisory"}, nil
+}
+
+func TestSC088_CheckAllRetainsFindingsWithBatchLookupError(t *testing.T) {
+	client, err := vulndb.NewClient(vulndb.WithSources(partialDetailOSV{}), vulndb.WithCache(vulndb.NewMemoryCache()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	scanner := &Scanner{config: &config.Config{}, client: client}
+	results, err := scanner.checkAll(context.Background(), []Dependency{{Name: "example.com/lib", Version: "1.0.0", Ecosystem: "go"}})
+	if err == nil {
+		t.Fatal("lookup detail failure should be reported")
+	}
+	if len(results) != 1 || len(results[0]) != 1 || results[0][0].ID != "OSV-A" {
+		t.Fatalf("safe partial match was discarded: %+v", results)
+	}
+}
 
 func TestSeverityFromVulnDB(t *testing.T) {
 	tests := []struct {

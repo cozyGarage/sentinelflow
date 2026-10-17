@@ -102,6 +102,18 @@ jobs:
           - id: SC-087
             package: ./internal/vulndb
             test: TestSC087_ConcurrentRefreshesAndReadersSeeCompleteSnapshots
+          - id: SC-088
+            package: ./internal/vulndb
+            test: TestSC088_QueryManyPreservesSuccessfulDetailsButDoesNotCachePartialResults
+          - id: SC-088
+            package: ./internal/vulndb
+            test: TestSC088_QueryRetainsPartialPositiveAndDoesNotCache
+          - id: SC-088
+            package: ./internal/vulndb
+            test: TestSC088_QueryBatchRetainsCompletedAlignedChunksOnCancellation
+          - id: SC-088
+            package: ./internal/scanner/dependencies
+            test: TestSC088_CheckAllRetainsFindingsWithBatchLookupError
           - id: SC-076
             package: ./internal/scanner
             test: TestSC076_SuppressedObservationsRetainSafeProvenance
