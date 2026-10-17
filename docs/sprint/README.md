@@ -1,6 +1,6 @@
 # Scan correctness work package
 
-**Status: in progress.** The 32-item scan-correctness core has implementation and local regression evidence on branch `codex/scan-correctness-sprint`. The current worktree has additional SC-001/SC-100 evidence checks in progress. No PR is open and no hosted Action result exists yet; this package is not an acceptance or release claim.
+**Status: in progress.** The 32-item scan-correctness core has implementation and local regression evidence on branch `codex/scan-correctness-sprint`. SC-001's exact-checkout baseline and SC-100's 32-ID reconciliation checks are configured and passed locally. No PR is open and no hosted Action result exists yet; this package is not an acceptance or release claim.
 
 This package develops the readiness review into one developer's **14-working-day plan** and a **100-item assignment backlog**. The core is 32 dependency-ordered items; the other 68 are follow-up work, not extra scope for the same timebox.
 
@@ -11,7 +11,7 @@ This package develops the readiness review into one developer's **14-working-day
 - [Real-tool qualification](real-tool-qualification.md): exact command/version evidence and unavailable-tool limits.
 - [Proposed next assignment](next-assignment.md): ordered work after the core.
 
-The implementation source was validated at `3e128766b4e497136984bb0f9fbcafe9d91e7693`; the report-only commit that followed is `409db8e185de9e46de67eeee98daaf2cbe6c0832`. The branch was clean at that checkpoint. Current repository state is authoritative; use `git status --short --branch` and `git rev-parse HEAD` before assigning or accepting work.
+The implementation source was validated at `3e128766b4e497136984bb0f9fbcafe9d91e7693`; local SC-001/SC-100 and matrix checks passed at `347dbeee6c3c3574e38933918e257056545aec03`. Subsequent commits update only the acceptance report and status index. Current repository state is authoritative; use `git status --short --branch` and `git rev-parse HEAD` before assigning or accepting work.
 
 ## Evidence and current limits
 
