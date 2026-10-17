@@ -309,6 +309,158 @@ func TestSC017_LocalAndUnversionedReplacementsFailWithoutRegistryIdentity(t *tes
 	}
 }
 
+func TestSC018_WorkspaceUsesSelectedGraphOnceAndKeepsMemberAttribution(t *testing.T) {
+	root := t.TempDir()
+	moduleA, moduleB := filepath.Join(root, "a"), filepath.Join(root, "b")
+	if err := os.MkdirAll(moduleA, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(moduleB, 0700); err != nil {
+		t.Fatal(err)
+	}
+	goModA := filepath.Join(moduleA, "go.mod")
+	goModB := filepath.Join(moduleB, "go.mod")
+	if err := os.WriteFile(goModA, []byte("module example.com/a\n\ngo 1.22\n\nrequire example.com/lib v1.1.0\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(goModB, []byte("module example.com/b\n\ngo 1.22\n\nrequire example.com/lib v1.2.0\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	goWork := filepath.Join(root, "go.work")
+	workContent := "go 1.22\n\nuse (\n\t./a\n\t./b\n)\n\nreplace example.com/lib => example.com/fork/lib v2.0.0\n"
+	if err := os.WriteFile(goWork, []byte(workContent), 0600); err != nil {
+		t.Fatal(err)
+	}
+	marker := filepath.Join(root, "go-list-invocations")
+	fake := filepath.Join(root, "fake-go")
+	script := "#!/bin/sh\necho invoked >> '" + marker + "'\ntest \"$GOWORK\" = '" + goWork + "' || exit 20\ntest \"$1 $2 $3 $4 $5\" = 'list -m -json -mod=readonly all' || exit 21\nprintf '%s\\n' '{\"Path\":\"example.com/a\",\"Main\":true}' '{\"Path\":\"example.com/b\",\"Main\":true}' '{\"Path\":\"example.com/lib\",\"Version\":\"v1.2.0\",\"Replace\":{\"Path\":\"example.com/fork/lib\",\"Version\":\"v2.0.0\"}}' '{\"Path\":\"example.com/transitive\",\"Version\":\"v3.1.0\"}'\n"
+	if err := os.WriteFile(fake, []byte(script), 0700); err != nil {
+		t.Fatal(err)
+	}
+	var queried []vulndb.OSVRequest
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/v1/querybatch":
+			var req struct {
+				Queries []vulndb.OSVRequest `json:"queries"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+				t.Errorf("decode query: %v", err)
+			}
+			queried = append(queried, req.Queries...)
+			results := make([]vulndb.OSVResponse, len(req.Queries))
+			for i, query := range req.Queries {
+				if query.Package.Name == "example.com/fork/lib" {
+					results[i].Vulns = []vulndb.OSVVulnerability{{ID: "OSV-WORKSPACE"}}
+				} else if query.Package.Name == "example.com/transitive" {
+					results[i].Vulns = []vulndb.OSVVulnerability{{ID: "OSV-TRANSITIVE"}}
+				}
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{"results": results})
+		case "/v1/vulns/OSV-WORKSPACE":
+			_, _ = w.Write([]byte(`{"id":"OSV-WORKSPACE","summary":"workspace replacement advisory"}`))
+		case "/v1/vulns/OSV-TRANSITIVE":
+			_, _ = w.Write([]byte(`{"id":"OSV-TRANSITIVE","summary":"workspace transitive advisory"}`))
+		default:
+			t.Errorf("unexpected request: %s", r.URL.Path)
+		}
+	}))
+	t.Cleanup(server.Close)
+	s := &Scanner{
+		config: config.Default(), client: testClient(t, server),
+		ecosystems: map[string]EcosystemScanner{"go": &GoModScanner{ResolveGraph: true, goCommand: fake}},
+	}
+	result, err := s.Scan(context.Background(), root, types.ScanOptions{Files: []string{goModA, goModB}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	invocations, err := os.ReadFile(marker)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Count(string(invocations), "invoked"); got != 1 {
+		t.Fatalf("workspace graph should be resolved once, got %d invocations", got)
+	}
+	if len(result.Warnings) != 1 || !strings.Contains(result.Warnings[0], "resolved once for the selected `go.work` workspace") {
+		t.Fatalf("workspace resolution provenance missing: %+v", result.Warnings)
+	}
+	queries := map[string]bool{}
+	for _, query := range queried {
+		queries[query.Package.Name+"@"+query.Version] = true
+	}
+	for _, coordinate := range []string{"example.com/lib@1.2.0", "example.com/fork/lib@2.0.0", "example.com/transitive@3.1.0"} {
+		if !queries[coordinate] {
+			t.Errorf("workspace-selected advisory coordinate %s missing from %v", coordinate, queries)
+		}
+	}
+	if len(result.Findings) != 3 {
+		t.Fatalf("workspace findings should include both module declarations and the transitive component: %+v", result.Findings)
+	}
+	locations := map[string]bool{}
+	for _, finding := range result.Findings {
+		locations[finding.Location.File] = true
+		wantPackage := "example.com/lib"
+		if finding.RuleID == "OSV-TRANSITIVE" {
+			wantPackage = "example.com/transitive"
+		}
+		if finding.Metadata["package"] != wantPackage {
+			t.Errorf("finding lost declared module attribution: %+v", finding.Metadata)
+		}
+	}
+	if !locations[filepath.Join("a", "go.mod")] || !locations[filepath.Join("b", "go.mod")] {
+		t.Fatalf("workspace member source locations missing: %v", locations)
+	}
+	if !locations["go.work"] {
+		t.Fatalf("transitive workspace component should use the stable workspace manifest location: %v", locations)
+	}
+	if err := os.Remove(marker); err != nil {
+		t.Fatal(err)
+	}
+	subdirectoryResult, err := s.Scan(context.Background(), moduleA, types.ScanOptions{Files: []string{goModA}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(subdirectoryResult.Findings) != 3 {
+		t.Fatalf("subdirectory scan should honor parent workspace membership: %+v", subdirectoryResult.Findings)
+	}
+	subdirectoryInvocations, err := os.ReadFile(marker)
+	if err != nil || strings.Count(string(subdirectoryInvocations), "invoked") != 1 {
+		t.Fatalf("subdirectory workspace graph should resolve once: calls=%q err=%v", subdirectoryInvocations, err)
+	}
+}
+
+func TestSC018_LocalWorkspaceReplacementFailsBeforeGraphCommand(t *testing.T) {
+	root := t.TempDir()
+	moduleDir := filepath.Join(root, "a")
+	if err := os.MkdirAll(moduleDir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	goMod := filepath.Join(moduleDir, "go.mod")
+	if err := os.WriteFile(goMod, []byte("module example.com/a\n\ngo 1.22\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	goWork := filepath.Join(root, "go.work")
+	if err := os.WriteFile(goWork, []byte("go 1.22\n\nuse ./a\nreplace example.com/lib => ./fork\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	marker := filepath.Join(root, "unexpected-go-list")
+	fake := filepath.Join(root, "fake-go")
+	if err := os.WriteFile(fake, []byte("#!/bin/sh\ntouch '"+marker+"'\nexit 99\n"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	deps, err := (&GoModScanner{ResolveGraph: true, WorkspacePath: goWork, goCommand: fake}).Scan(context.Background(), moduleDir)
+	if err == nil || !strings.Contains(err.Error(), "local workspace replacements are not yet supported") {
+		t.Fatalf("local workspace replacement must fail with explicit coverage error: deps=%+v err=%v", deps, err)
+	}
+	if len(deps) != 0 {
+		t.Fatalf("local workspace replacement must not invent dependencies: %+v", deps)
+	}
+	if _, err := os.Stat(marker); !os.IsNotExist(err) {
+		t.Fatalf("graph command must not run for unsupported local workspace replacement: stat err=%v", err)
+	}
+}
+
 func TestSC011_GoInventoryUsesSelectedGoModRequirement(t *testing.T) {
 	tmp := t.TempDir()
 	if err := os.WriteFile(filepath.Join(tmp, "go.mod"), []byte("module example.com/demo\n\ngo 1.22\n\nrequire (\n\tgithub.com/acme/lib v1.2.0 // indirect\n)\n"), 0644); err != nil {

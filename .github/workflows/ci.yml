@@ -156,6 +156,12 @@ jobs:
           - id: SC-017
             package: ./internal/scanner/dependencies
             test: TestSC017_LocalAndUnversionedReplacementsFailWithoutRegistryIdentity
+          - id: SC-018
+            package: ./internal/scanner/dependencies
+            test: TestSC018_WorkspaceUsesSelectedGraphOnceAndKeepsMemberAttribution
+          - id: SC-018
+            package: ./internal/scanner/dependencies
+            test: TestSC018_LocalWorkspaceReplacementFailsBeforeGraphCommand
           - id: SC-076
             package: ./internal/scanner
             test: TestSC076_SuppressedObservationsRetainSafeProvenance

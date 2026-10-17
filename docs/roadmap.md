@@ -117,7 +117,7 @@ Residual detail: [audit-residual-risks.md](audit-residual-risks.md). Release ste
 | Semgrep adapter | Dataflow SAST | When `semgrep` is on PATH (or `mode: required`). |
 | Secrets providers + gitleaks + `--verify-secrets` | Coverage gaps; live verify is opt-in | Additional providers; gitleaks adapter; `--verify-secrets` off by default (network). |
 | OSV `querybatch` + retry + disk cache | Per-package `/v1/query`, no retry, memory-only cache | Batch queries, bounded workers, exponential backoff + `Retry-After`, on-disk cache. (Offline DB deferred: needs a local OSV range matcher.) |
-| Go module graph | Declared `go.mod` requirements by default | Opt-in selected `go list -m` metadata with explicit offline/network policy; versioned replacements use dual advisory coordinates, while local replacements and workspaces remain separate follow-ups. |
+| Go module graph | Declared `go.mod` requirements by default | Opt-in selected `go list -m` metadata with explicit offline/network policy; workspace selection resolves once per scan, versioned replacements use dual advisory coordinates, and local replacements fail closed. |
 | Grype adapter | Depth beyond native parsers | Optional. |
 | SBOM ingest + SPDX | Generate-only, 3 ecosystems, Cargo missing versions | `scan --sbom file.cdx.json`; Cargo versions; SPDX output. |
 

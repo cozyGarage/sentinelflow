@@ -58,7 +58,7 @@ Run `sentinelflow init` to generate a starter configuration.
 | `severity` | string | `medium` | Minimum severity to report |
 | `ignore_dev` | bool | `false` | Skip dev dependencies |
 | `ignore_cves` | []string | — | CVE, GHSA, GO-, or OSV IDs to ignore |
-| `go_module_graph` | bool | `false` | Opt in to selected Go module metadata from `go list -m -json -mod=readonly all`; versioned replacements query both identities, while local replacements and workspaces fail visibly |
+| `go_module_graph` | bool | `false` | Opt in to selected Go module metadata from `go list -m -json -mod=readonly all`; workspaces resolve once per scan, versioned replacements query both identities, and local replacements fail visibly |
 | `go_module_graph_allow_network` | bool | `false` | Allow configured Go module proxies during graph resolution. Requires `go_module_graph` and is rejected in offline mode |
 | `risk_enrichment` | bool | `true` | Add EPSS scores and CISA KEV flags to findings that have a CVE. Fetches the KEV catalog (cached 24h) and the FIRST.org EPSS API; lookup failures are warnings unless `fail_on.kev` is set |
 | `reachability` | string | `off` | `auto` / `required` / `off`. Runs [`govulncheck`](https://go.dev/doc/security/vuln/) in each Go module with findings and marks each Go finding `reachable: true/false` (is the vulnerable function actually called). `auto` skips with a warning when govulncheck is not on PATH; `required` errors |

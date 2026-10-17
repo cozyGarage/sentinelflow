@@ -158,9 +158,33 @@ func (s *Scanner) Scan(ctx context.Context, path string, opts interface{}) (*Sca
 	var scanErrs []string
 	var deps []Dependency
 	var scanWarnings []string
+	resolvedWorkspaces := map[string]bool{}
 
 	for _, dir := range s.manifestDirs(files) {
 		for name, ecosys := range s.detectEcosystems(dir) {
+			if goScanner, ok := ecosys.(*GoModScanner); ok && goScanner.ResolveGraph {
+				workspacePath, found, workspaceErr := findGoWorkspace(dir)
+				if workspaceErr != nil {
+					scanErrs = append(scanErrs, fmt.Sprintf("go (%s): discover Go workspace: %v", filepath.ToSlash(dir), workspaceErr))
+					continue
+				}
+				if found {
+					member, err := goWorkspaceIncludes(workspacePath, dir)
+					if err != nil {
+						scanErrs = append(scanErrs, fmt.Sprintf("go (%s): parse Go workspace membership: %v", filepath.ToSlash(dir), err))
+						continue
+					}
+					if member && resolvedWorkspaces[workspacePath] {
+						continue
+					}
+					if member {
+						resolvedWorkspaces[workspacePath] = true
+					}
+					workspaceScanner := *goScanner
+					workspaceScanner.WorkspacePath = workspacePath
+					ecosys = &workspaceScanner
+				}
+			}
 			result.FilesCount++
 			wg.Add(1)
 			go func(ecoName, dir string, eco EcosystemScanner) {
@@ -177,7 +201,11 @@ func (s *Scanner) Scan(ctx context.Context, path string, opts interface{}) (*Sca
 					rel, _ := filepath.Rel(path, dir)
 					message := "Go inventory is read from go.mod requirements; go.sum, workspace selection, and replacements are not used to establish a resolved package graph"
 					if goScanner, ok := eco.(*GoModScanner); ok && goScanner.ResolveGraph {
-						message = "Go inventory is resolved with `go list -m all` for this module with workspace mode disabled; this is module metadata, not proof of build, platform, or artifact contents"
+						if goScanner.WorkspacePath != "" {
+							message = "Go inventory is resolved once for the selected `go.work` workspace; workspace module requirements retain their source locations, and transitive modules are workspace-level metadata, not proof of build or artifact contents"
+						} else {
+							message = "Go inventory is resolved with `go list -m all` for this module with workspace mode disabled; this is module metadata, not proof of build, platform, or artifact contents"
+						}
 					}
 					scanWarnings = append(scanWarnings, fmt.Sprintf("%s: %s", filepath.ToSlash(filepath.Join(rel, "go.mod")), message))
 				}
@@ -478,9 +506,10 @@ func formatFixedIn(fixed string) string {
 
 // GoModScanner scans declared Go requirements or an explicitly selected module graph.
 type GoModScanner struct {
-	ResolveGraph bool
-	AllowNetwork bool
-	goCommand    string
+	ResolveGraph  bool
+	AllowNetwork  bool
+	WorkspacePath string
+	goCommand     string
 }
 
 func (g *GoModScanner) Name() string { return "go" }
@@ -500,6 +529,12 @@ func (g *GoModScanner) Scan(ctx context.Context, path string) ([]Dependency, err
 	parsed, err := modfile.Parse(goModPath, content, nil)
 	if err != nil {
 		return nil, fmt.Errorf("parse go.mod: %w", err)
+	}
+	if g.ResolveGraph && (parsed.Module == nil || parsed.Module.Mod.Path == "") {
+		return nil, fmt.Errorf("resolve Go module graph: go.mod is missing a module path")
+	}
+	if g.ResolveGraph && g.WorkspacePath != "" {
+		return g.scanWorkspace(ctx, goModPath)
 	}
 	if g.ResolveGraph {
 		for _, replace := range parsed.Replace {
@@ -521,7 +556,7 @@ func (g *GoModScanner) Scan(ctx context.Context, path string) ([]Dependency, err
 		})
 	}
 	if g.ResolveGraph {
-		return g.resolveGraph(ctx, goModPath, deps)
+		return g.resolveGraph(ctx, goModPath, deps, "", []string{parsed.Module.Mod.Path})
 	}
 	return deps, nil
 }
