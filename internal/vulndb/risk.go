@@ -3,8 +3,10 @@ package vulndb
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"net/url"
 	"os"
@@ -26,6 +28,38 @@ type Risk struct {
 	KEV  map[string]bool    // CVE -> listed in CISA Known Exploited Vulnerabilities
 }
 
+// RiskLookupError separates KEV and EPSS completeness so a KEV policy does not
+// fail merely because optional EPSS enrichment is unavailable.
+type RiskLookupError struct {
+	KEV  error
+	EPSS error
+}
+
+func (e *RiskLookupError) Error() string {
+	var parts []error
+	if e.KEV != nil {
+		parts = append(parts, fmt.Errorf("CISA KEV: %w", e.KEV))
+	}
+	if e.EPSS != nil {
+		parts = append(parts, fmt.Errorf("EPSS: %w", e.EPSS))
+	}
+	if len(parts) == 0 {
+		return "risk lookup incomplete"
+	}
+	return errors.Join(parts...).Error()
+}
+
+func (e *RiskLookupError) Unwrap() []error {
+	var errs []error
+	if e.KEV != nil {
+		errs = append(errs, e.KEV)
+	}
+	if e.EPSS != nil {
+		errs = append(errs, e.EPSS)
+	}
+	return errs
+}
+
 // FetchRisk looks up EPSS scores and KEV membership for cves.
 // The KEV catalog is cached on disk for 24h; EPSS is queried in batches of 100.
 func FetchRisk(ctx context.Context, client *http.Client, cves []string) (Risk, error) {
@@ -37,17 +71,20 @@ func FetchRisk(ctx context.Context, client *http.Client, cves []string) (Risk, e
 		return risk, nil
 	}
 
-	kev, err := kevCatalog(ctx, client)
-	if err != nil {
-		return risk, fmt.Errorf("CISA KEV: %w", err)
-	}
-	for _, c := range cves {
-		if kev[c] {
-			risk.KEV[c] = true
+	var lookupErr RiskLookupError
+	kev, kevErr := kevCatalog(ctx, client)
+	if kevErr != nil {
+		lookupErr.KEV = kevErr
+	} else {
+		for _, c := range cves {
+			if kev[c] {
+				risk.KEV[c] = true
+			}
 		}
 	}
 
 	// ponytail: EPSS is not cached; a scan makes ceil(len(cves)/100) requests. Cache if rate limits bite.
+	seenEPSS := map[string]bool{}
 	for i := 0; i < len(cves); i += 100 {
 		end := min(i+100, len(cves))
 		var resp struct {
@@ -58,13 +95,33 @@ func FetchRisk(ctx context.Context, client *http.Client, cves []string) (Risk, e
 		}
 		u := EPSSURL + "?cve=" + url.QueryEscape(strings.Join(cves[i:end], ","))
 		if err := getJSON(ctx, client, u, &resp); err != nil {
-			return risk, fmt.Errorf("EPSS: %w", err)
+			lookupErr.EPSS = errors.Join(lookupErr.EPSS, err)
+			continue
 		}
 		for _, d := range resp.Data {
-			if p, err := strconv.ParseFloat(d.EPSS, 64); err == nil {
-				risk.EPSS[d.CVE] = p
+			p, err := strconv.ParseFloat(d.EPSS, 64)
+			if err != nil || math.IsNaN(p) || math.IsInf(p, 0) || p < 0 || p > 1 {
+				if err == nil {
+					err = fmt.Errorf("score %q is outside [0,1]", d.EPSS)
+				}
+				lookupErr.EPSS = errors.Join(lookupErr.EPSS, fmt.Errorf("%s: invalid score: %w", d.CVE, err))
+				continue
 			}
+			risk.EPSS[d.CVE] = p
+			seenEPSS[d.CVE] = true
 		}
+	}
+	var missing []string
+	for _, cve := range cves {
+		if !seenEPSS[cve] {
+			missing = append(missing, cve)
+		}
+	}
+	if len(missing) > 0 {
+		lookupErr.EPSS = errors.Join(lookupErr.EPSS, fmt.Errorf("response omitted requested CVEs: %s", strings.Join(missing, ", ")))
+	}
+	if lookupErr.KEV != nil || lookupErr.EPSS != nil {
+		return risk, &lookupErr
 	}
 	return risk, nil
 }

@@ -3,6 +3,7 @@ package scanner
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -16,8 +17,54 @@ import (
 	"github.com/cozygarage/sentinelflow/internal/scanner/dependencies"
 	"github.com/cozygarage/sentinelflow/internal/scanner/fingerprint"
 	"github.com/cozygarage/sentinelflow/internal/scanner/types"
+	"github.com/cozygarage/sentinelflow/internal/vulndb"
 	"github.com/cozygarage/sentinelflow/pkg/api"
 )
+
+func TestSC089_RequiredKEVOnlyFailsWhenKEVIsUnknown(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		err        error
+		required   bool
+		wantFailed bool
+	}{
+		{"required KEV unavailable", &vulndb.RiskLookupError{KEV: errors.New("catalog down")}, true, true},
+		{"KEV available but optional EPSS missing", &vulndb.RiskLookupError{EPSS: errors.New("score missing")}, true, false},
+		{"optional enrichment unavailable", errors.New("risk source down"), false, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			result := &api.ScanResult{ScannerRuns: []api.ScannerRun{{Scanner: "dependencies", Status: api.ScanStatusComplete}}}
+			applyRiskLookupError(result, tc.err, tc.required)
+			run := result.ScannerRuns[0]
+			if (run.Status == api.ScanStatusFailed) != tc.wantFailed {
+				t.Fatalf("status=%s error=%q warnings=%v", run.Status, run.Error, run.Warnings)
+			}
+			if tc.wantFailed && run.Error == "" || !tc.wantFailed && len(run.Warnings) == 0 {
+				t.Fatalf("risk status was not retained: %+v", run)
+			}
+		})
+	}
+}
+
+func TestSC089_KEVLookupIsNeededOnlyForCVEFindings(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		cfg      *config.Config
+		findings []api.Finding
+		want     bool
+	}{
+		{"required policy with CVE", &config.Config{FailOn: config.FailOnConfig{KEV: true}}, []api.Finding{{CVE: "CVE-1"}}, true},
+		{"required policy without CVE", &config.Config{FailOn: config.FailOnConfig{KEV: true}}, []api.Finding{{ID: "secret-finding"}}, false},
+		{"optional policy disabled", &config.Config{}, []api.Finding{{CVE: "CVE-1"}}, false},
+		{"optional enrichment enabled", &config.Config{Scanners: config.ScannersConfig{Dependencies: config.DependenciesConfig{RiskEnrichment: true}}}, nil, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := riskLookupNeeded(tc.cfg, tc.findings); got != tc.want {
+				t.Fatalf("riskLookupNeeded = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
 
 func TestEngineInitialization(t *testing.T) {
 	cfg := &config.Config{

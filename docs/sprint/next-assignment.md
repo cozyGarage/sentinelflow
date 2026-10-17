@@ -14,7 +14,7 @@ SC-071–SC-075 are merged in [PR #58](https://github.com/cozyGarage/sentinelflo
 
 ## Active follow-up: vulnerability data quality (SC-081–SC-090)
 
-The current branch implements SC-081 provenance, SC-082 freshness, SC-083 comparator capability, SC-084 GIT range uncertainty, SC-085 OSV interval/withdrawal semantics, SC-086 online/offline fixture parity, SC-087 bounded atomic offline database updates, and SC-088 aligned batch-query partial results. Local full/race/vet/workflow/docs gates pass for these eight slices; PR and hosted checks remain pending. The next dependency-ready item is SC-089: define required versus optional KEV/EPSS enrichment behavior so unknown risk data cannot pass a required policy. Online sources without immutable snapshot IDs and cross-run cache entries without stored origin remain explicit provenance limits.
+The current branch implements SC-081 provenance, SC-082 freshness, SC-083 comparator capability, SC-084 GIT range uncertainty, SC-085 OSV interval/withdrawal semantics, SC-086 online/offline fixture parity, SC-087 bounded atomic offline database updates, SC-088 aligned batch-query partial results, and SC-089 KEV/EPSS completeness behavior. Local full/race/vet/workflow/docs gates pass for these nine slices; PR and hosted checks remain pending. The next dependency-ready item is SC-090: isolate lookup cache identity and ensure failures or partial answers never become clean cached results. Online sources without immutable snapshot IDs and cross-run cache entries without stored origin remain explicit provenance limits.
 
 ## Subsequent batches
 

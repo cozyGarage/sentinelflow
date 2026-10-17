@@ -25,6 +25,7 @@ import (
 	"github.com/cozygarage/sentinelflow/internal/scanner/suppress"
 	"github.com/cozygarage/sentinelflow/internal/scanner/types"
 	"github.com/cozygarage/sentinelflow/internal/scanner/vex"
+	"github.com/cozygarage/sentinelflow/internal/vulndb"
 	"github.com/cozygarage/sentinelflow/pkg/api"
 )
 
@@ -212,20 +213,19 @@ func (e *Engine) Scan(ctx context.Context, targetPath string) (*api.ScanResult, 
 
 	fingerprint.Ensure(result.Findings)
 
-	if e.config.Scanners.Dependencies.RiskEnrichment && !e.config.Scanners.Dependencies.Offline {
-		if err := enrichRisk(ctx, result.Findings); err != nil && len(result.ScannerRuns) > 0 {
-			run := depsRun(result)
-			msg := redact.Line("EPSS/KEV enrichment incomplete: " + err.Error())
-			if e.config.FailOn.KEV && run.Error == "" {
-				// The KEV gate cannot be evaluated; fail closed instead of passing silently.
-				run.Error = msg
-				run.Status = api.ScanStatusFailed
-			} else {
-				run.Warnings = append(run.Warnings, msg)
-				if run.Status == api.ScanStatusComplete {
-					run.Status = api.ScanStatusPartial
-				}
+	riskRequired := e.config.FailOn.KEV
+	riskEnabled := riskLookupNeeded(e.config, result.Findings)
+	if riskEnabled {
+		var riskErr error
+		if e.config.Scanners.Dependencies.Offline {
+			if riskRequired && hasCVEFinding(result.Findings) {
+				riskErr = &vulndb.RiskLookupError{KEV: errors.New("KEV policy requires online risk enrichment; offline mode disables it")}
 			}
+		} else {
+			riskErr = enrichRisk(ctx, result.Findings)
+		}
+		if riskErr != nil {
+			applyRiskLookupError(result, riskErr, riskRequired)
 		}
 	}
 
@@ -623,4 +623,48 @@ func depsRun(result *api.ScanResult) *api.ScannerRun {
 		}
 	}
 	return &result.ScannerRuns[0]
+}
+
+func riskRun(result *api.ScanResult) *api.ScannerRun {
+	if len(result.ScannerRuns) == 0 {
+		result.ScannerRuns = append(result.ScannerRuns, api.ScannerRun{Scanner: "risk-enrichment", Status: api.ScanStatusComplete})
+		return &result.ScannerRuns[0]
+	}
+	return depsRun(result)
+}
+
+func applyRiskLookupError(result *api.ScanResult, err error, requiredKEV bool) {
+	run := riskRun(result)
+	msg := redact.Line("EPSS/KEV enrichment incomplete: " + err.Error())
+	kevUnavailable := true
+	var lookupErr *vulndb.RiskLookupError
+	if errors.As(err, &lookupErr) {
+		kevUnavailable = lookupErr.KEV != nil
+	}
+	if requiredKEV && kevUnavailable {
+		// The KEV gate cannot be evaluated; fail closed instead of passing silently.
+		if run.Error != "" {
+			run.Error += "; "
+		}
+		run.Error += msg
+		run.Status = api.ScanStatusFailed
+		return
+	}
+	run.Warnings = append(run.Warnings, msg)
+	if run.Status == api.ScanStatusComplete {
+		run.Status = api.ScanStatusPartial
+	}
+}
+
+func hasCVEFinding(findings []api.Finding) bool {
+	for _, finding := range findings {
+		if finding.CVE != "" {
+			return true
+		}
+	}
+	return false
+}
+
+func riskLookupNeeded(cfg *config.Config, findings []api.Finding) bool {
+	return cfg.Scanners.Dependencies.RiskEnrichment || cfg.FailOn.KEV && hasCVEFinding(findings)
 }
