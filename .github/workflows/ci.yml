@@ -33,7 +33,8 @@ jobs:
           set -euo pipefail
           test -z "$(git status --porcelain)"
           printf 'revision=%s\n' "$(git rev-parse HEAD)"
-          printf 'go=%s\n' "$(go version)"
+          go_version="$(go version)"
+          printf 'go=%s\n' "$go_version"
 
   scan-correctness:
     name: Scan correctness / ${{ matrix.id }} / ${{ matrix.test }}
