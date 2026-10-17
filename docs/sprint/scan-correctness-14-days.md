@@ -1,6 +1,6 @@
 # Scan correctness: one developer, 14 working days
 
-Status: **in progress**. Go inventory, npm package-instance identity, external adapter outcomes, reachability, baseline-ref comparison, and built-CLI exit work have local implementation and regression evidence. The full core is not accepted: hosted Actions remain unrun, six optional scanner integrations are unqualified, and the final handoff is incomplete. Pinned govulncheck has a local synthetic-fixture qualification. Current evidence is tracked in the [sprint README](README.md); this file remains the authoritative 14-day scope and acceptance workflow. Prepared 2026-10-17 against the [source review](../organizational-readiness.md). The [backlog](scan-correctness-backlog.md) is the authoritative issue list.
+Status: **core accepted within the documented SC-095 boundary**. The 32-item core passed local and exact-head hosted gates on implementation commit `23e245da4be46e76a1fbfe2bc7b1e094e8f528dd`; evidence is tracked in the [sprint README](README.md) and [acceptance report](scan-correctness-acceptance.md). Six optional scanner integrations remain unqualified and must not be treated as production-ready. This file remains the authoritative 14-day scope and acceptance workflow. Prepared 2026-10-17 against the [source review](../organizational-readiness.md). The [backlog](scan-correctness-backlog.md) is the authoritative issue list.
 
 ## Outcome
 

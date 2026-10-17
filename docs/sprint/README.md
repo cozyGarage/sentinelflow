@@ -1,6 +1,6 @@
 # Scan correctness work package
 
-**Status: final exact-head validation in progress.** Previous code passed CI/security on `8c1dae578d4907724e33e56b9d48d68906b22b79`: [CI](https://github.com/cozyGarage/sentinelflow/actions/runs/39047811537) and [security](https://github.com/cozyGarage/sentinelflow/actions/runs/39047811527). This audit closes the missing SC-031 command/version assertions, SC-097 migration examples and updates the named CI selector; fresh Actions evidence on the resulting commit is still required. Draft [PR #56](https://github.com/cozyGarage/sentinelflow/pull/56) is open. SC-095 remains resolved only at its stated availability boundary: pinned govulncheck fixtures passed; six external tools remain unqualified. No organization-wide scanner-readiness claim is made.
+**Status: 32-item core accepted within the documented SC-095 boundary.** CI and Security Scan passed on implementation head `23e245da4be46e76a1fbfe2bc7b1e094e8f528dd`: [CI](https://github.com/cozyGarage/sentinelflow/actions/runs/39049882098) and [security](https://github.com/cozyGarage/sentinelflow/actions/runs/39049882006). This audit closed the SC-031 command/version assertions, SC-097 migration examples and named CI selector. Draft [PR #56](https://github.com/cozyGarage/sentinelflow/pull/56) remains open. SC-095 is resolved at its stated availability boundary: pinned govulncheck fixtures passed; six external tools remain unqualified. No organization-wide scanner-readiness claim is made.
 
 This package develops the readiness review into one developer's **14-working-day plan** and a **100-item assignment backlog**. The core is 32 dependency-ordered items; the other 68 are follow-up work, not extra scope for the same timebox.
 
@@ -11,7 +11,7 @@ This package develops the readiness review into one developer's **14-working-day
 - [Real-tool qualification](real-tool-qualification.md): exact command/version evidence and unavailable-tool limits.
 - [Proposed next assignment](next-assignment.md): ordered work after the core.
 
-The base implementation and previous exact-head runs are recorded in the acceptance report. The current source/test/workflow/documentation changes passed local adapter, race, vet, integration, documentation and actionlint gates; the named hosted matrix has not yet rerun on this work. Current repository state is authoritative; use `git status --short --branch` and `git rev-parse HEAD` before assigning or accepting work.
+The audited source/tests/workflow passed local and hosted gates on `23e245da4be46e76a1fbfe2bc7b1e094e8f528dd`; the acceptance report links hosted workflows and records item-level evidence. Current repository state is authoritative; use `git status --short --branch` and `git rev-parse HEAD` before assigning or accepting work.
 
 ## Evidence and current limits
 
