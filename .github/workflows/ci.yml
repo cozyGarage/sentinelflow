@@ -78,6 +78,15 @@ jobs:
           - id: SC-084
             package: ./internal/vulndb
             test: TestSC084_GitRangesRemainUnassessedButExactVersionsMatch
+          - id: SC-085
+            package: ./internal/vulndb
+            test: TestSC085_OSVRangeBoundariesAndLimit
+          - id: SC-085
+            package: ./internal/vulndb
+            test: TestSC085_WithdrawnTimestampIsEffectiveAtItsRFC3339Instant
+          - id: SC-085
+            package: ./internal/vulndb
+            test: TestSC085_LimitSurvivesOSVDecodeAndOfflineEvaluation
           - id: SC-076
             package: ./internal/scanner
             test: TestSC076_SuppressedObservationsRetainSafeProvenance

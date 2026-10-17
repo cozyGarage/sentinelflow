@@ -140,12 +140,33 @@ func affects(rangeType, ecosystem string, events []rangeEvent, version string) (
 	if _, err := compareVersions(rangeType, ecosystem, version, version); err != nil {
 		return false, err
 	}
+	for _, event := range events {
+		fields := 0
+		for _, value := range []string{event.Introduced, event.Fixed, event.LastAffected, event.Limit} {
+			if value != "" {
+				fields++
+			}
+		}
+		if fields != 1 {
+			return false, fmt.Errorf("invalid OSV range event for %s: expected exactly one of introduced, fixed, last_affected, or limit", ecosystem)
+		}
+	}
+	before, err := beforeLimits(rangeType, ecosystem, version, events)
+	if err != nil || !before {
+		return false, err
+	}
+	var timeline []rangeEvent
+	for _, event := range events {
+		if event.Limit == "" {
+			timeline = append(timeline, event)
+		}
+	}
 	var compareErr error
-	sort.SliceStable(events, func(i, j int) bool {
+	sort.SliceStable(timeline, func(i, j int) bool {
 		if compareErr != nil {
 			return false
 		}
-		left, right := events[i].version(), events[j].version()
+		left, right := timeline[i].version(), timeline[j].version()
 		if left == "" || right == "" {
 			return left == "" && right != ""
 		}
@@ -160,7 +181,7 @@ func affects(rangeType, ecosystem string, events []rangeEvent, version string) (
 		return false, compareErr
 	}
 	affected := false
-	for _, e := range events {
+	for _, e := range timeline {
 		switch {
 		case e.Introduced != "":
 			cmp := 1
@@ -195,8 +216,29 @@ func affects(rangeType, ecosystem string, events []rangeEvent, version string) (
 	return affected, nil
 }
 
+func beforeLimits(rangeType, ecosystem, version string, events []rangeEvent) (bool, error) {
+	found := false
+	for _, event := range events {
+		if event.Limit == "" {
+			continue
+		}
+		found = true
+		if strings.Contains(event.Limit, "*") {
+			return true, nil
+		}
+		cmp, err := compareVersions(rangeType, ecosystem, version, event.Limit)
+		if err != nil {
+			return false, err
+		}
+		if cmp < 0 {
+			return true, nil
+		}
+	}
+	return !found, nil
+}
+
 type rangeEvent struct {
-	Introduced, Fixed, LastAffected string
+	Introduced, Fixed, LastAffected, Limit string
 }
 
 func (e rangeEvent) version() string {

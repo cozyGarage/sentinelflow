@@ -93,6 +93,74 @@ func TestSC084_GitRangesRemainUnassessedButExactVersionsMatch(t *testing.T) {
 	}
 }
 
+func TestSC085_OSVRangeBoundariesAndLimit(t *testing.T) {
+	cases := []struct {
+		name   string
+		events []rangeEvent
+		ver    string
+		want   bool
+	}{
+		{"introduced inclusive", []rangeEvent{{Introduced: "1.0.0"}, {Fixed: "2.0.0"}}, "1.0.0", true},
+		{"fixed exclusive", []rangeEvent{{Introduced: "1.0.0"}, {Fixed: "2.0.0"}}, "2.0.0", false},
+		{"last affected inclusive", []rangeEvent{{Introduced: "1.0.0"}, {LastAffected: "2.0.0"}}, "2.0.0", true},
+		{"limit exclusive", []rangeEvent{{Introduced: "1.0.0"}, {Limit: "2.0.0"}}, "2.0.0", false},
+		{"limit before upper boundary", []rangeEvent{{Introduced: "1.0.0"}, {Limit: "3.0.0"}}, "2.0.0", true},
+		{"infinite limit", []rangeEvent{{Introduced: "1.0.0"}, {Limit: "*"}}, "9.0.0", true},
+		{"implicit infinite limit", []rangeEvent{{Introduced: "1.0.0"}}, "9.0.0", true},
+		{"limit does not reset a later interval", []rangeEvent{{Introduced: "3.0.0"}, {Fixed: "2.0.0"}, {Introduced: "1.0.0"}, {Limit: "4.0.0"}}, "3.5.0", true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := affects("SEMVER", "go", tc.events, tc.ver)
+			if err != nil || got != tc.want {
+				t.Fatalf("affects(%s) = %v, %v; want %v", tc.ver, got, err, tc.want)
+			}
+		})
+	}
+	if _, err := affects("SEMVER", "go", []rangeEvent{{Introduced: "1.0.0", Limit: "2.0.0"}}, "1.5.0"); err == nil {
+		t.Fatal("malformed event with two fields must be rejected before evaluating its limit")
+	}
+}
+
+func TestSC085_WithdrawnTimestampIsEffectiveAtItsRFC3339Instant(t *testing.T) {
+	withdrawal := time.Date(2026, 10, 17, 12, 0, 0, 0, time.UTC)
+	for _, tc := range []struct {
+		name string
+		now  time.Time
+		want bool
+	}{
+		{"before", withdrawal.Add(-time.Second), false},
+		{"at instant", withdrawal, true},
+		{"after", withdrawal.Add(time.Second), true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := withdrawnAt(withdrawal.Format(time.RFC3339), tc.now)
+			if err != nil || got != tc.want {
+				t.Fatalf("withdrawnAt = %v, %v; want %v", got, err, tc.want)
+			}
+		})
+	}
+	if _, err := withdrawnAt("not-a-timestamp", withdrawal); err == nil {
+		t.Fatal("malformed withdrawal timestamp must be visible")
+	}
+}
+
+func TestSC085_LimitSurvivesOSVDecodeAndOfflineEvaluation(t *testing.T) {
+	var advisory OSVVulnerability
+	if err := json.Unmarshal([]byte(`{"id":"OSV-LIMIT-1","affected":[{"package":{"name":"example","ecosystem":"Go"},"ranges":[{"type":"SEMVER","events":[{"introduced":"1.0.0"},{"limit":"2.0.0"}]}]}]}`), &advisory); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		version string
+		want    bool
+	}{{"1.9.0", true}, {"2.0.0", false}} {
+		got, err := versionAffected(advisory, "go", tc.version)
+		if err != nil || got != tc.want {
+			t.Errorf("versionAffected(%s) = %v, %v; want %v", tc.version, got, err, tc.want)
+		}
+	}
+}
+
 func TestSC082_OfflineFreshnessPolicyUsesSnapshotTimeAndReportsState(t *testing.T) {
 	now := time.Date(2026, 10, 17, 12, 0, 0, 0, time.UTC)
 	configured, err := NewClient(OfflineOptions(true, 24*time.Hour)...)
@@ -245,6 +313,9 @@ func TestOfflineUpdateAndQuery(t *testing.T) {
 			"GO-W.json": `{"id":"GO-W","withdrawn":"2024-01-01T00:00:00Z",
 				"affected":[{"package":{"name":"golang.org/x/net","ecosystem":"Go"},
 				"ranges":[{"type":"SEMVER","events":[{"introduced":"0"}]}]}]}`,
+			"GO-FUTURE-W.json": `{"id":"GO-FUTURE-W","withdrawn":"2099-01-01T00:00:00Z",
+				"affected":[{"package":{"name":"golang.org/x/net","ecosystem":"Go"},
+				"ranges":[{"type":"SEMVER","events":[{"introduced":"0"}]}]}]}`,
 		}),
 		"/PyPI/all.zip": zipOf(map[string]string{
 			"PYSEC-1.json": `{"id":"PYSEC-1","affected":[{"package":{"name":"requests","ecosystem":"PyPI"},
@@ -268,8 +339,8 @@ func TestOfflineUpdateAndQuery(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if counts["go"] != 1 || counts["pip"] != 1 {
-		t.Fatalf("withdrawn advisories must be dropped: %v", counts)
+	if counts["go"] != 2 || counts["pip"] != 1 {
+		t.Fatalf("only advisories withdrawn as of acquisition should be dropped: %v", counts)
 	}
 	status := OfflineStatus(dir)
 	goSnapshot := status["go"]
@@ -302,8 +373,8 @@ func TestOfflineUpdateAndQuery(t *testing.T) {
 		eco, pkg, version string
 		want              []string
 	}{
-		{"go", "golang.org/x/net", "0.37.0", []string{"GO-1"}},
-		{"go", "golang.org/x/net", "v0.38.0", nil},
+		{"go", "golang.org/x/net", "0.37.0", []string{"GO-1", "GO-FUTURE-W"}},
+		{"go", "golang.org/x/net", "v0.38.0", []string{"GO-FUTURE-W"}},
 		{"pip", "requests", "2.30.0", []string{"PYSEC-1"}},
 		{"pip", "requests", "2.4.0", []string{"PYSEC-1"}},
 		{"pip", "requests", "2.31.0", nil},

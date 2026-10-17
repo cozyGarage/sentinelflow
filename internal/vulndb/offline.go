@@ -110,7 +110,11 @@ func updateEcosystem(ctx context.Context, client *http.Client, dir, eco string) 
 		if err != nil {
 			return 0, fmt.Errorf("%s: %w", f.Name, err)
 		}
-		if v.Withdrawn != "" {
+		withdrawn, err := withdrawnAt(v.Withdrawn, time.Now())
+		if err != nil {
+			return 0, fmt.Errorf("%s: invalid withdrawn timestamp: %w", f.Name, err)
+		}
+		if withdrawn {
 			continue
 		}
 		count++
@@ -389,6 +393,13 @@ func (s *OfflineSource) Query(ctx context.Context, ecosystem, pkg, version strin
 	}
 	var out []Vulnerability
 	for _, v := range entries {
+		withdrawn, err := withdrawnAt(v.Withdrawn, time.Now())
+		if err != nil {
+			return nil, fmt.Errorf("offline advisory %s has invalid withdrawn timestamp: %w", v.ID, err)
+		}
+		if withdrawn {
+			continue
+		}
 		affected, err := versionAffected(v, ecosystem, version)
 		if err != nil {
 			return nil, fmt.Errorf("evaluate %s for %s/%s@%s: %w", v.ID, ecosystem, pkg, version, err)
@@ -414,7 +425,7 @@ func versionAffected(v OSVVulnerability, ecosystem, version string) (bool, error
 			}
 			events := make([]rangeEvent, 0, len(r.Events))
 			for _, e := range r.Events {
-				events = append(events, rangeEvent{Introduced: e.Introduced, Fixed: e.Fixed, LastAffected: e.LastAffected})
+				events = append(events, rangeEvent{Introduced: e.Introduced, Fixed: e.Fixed, LastAffected: e.LastAffected, Limit: e.Limit})
 			}
 			affected, err := affects(r.Type, ecosystem, events, version)
 			if err != nil {
