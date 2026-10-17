@@ -25,6 +25,7 @@ import (
 	"github.com/cozygarage/sentinelflow/internal/scanner/suppress"
 	"github.com/cozygarage/sentinelflow/internal/scanner/types"
 	"github.com/cozygarage/sentinelflow/internal/scanner/vex"
+	"github.com/cozygarage/sentinelflow/internal/vulndb"
 	"github.com/cozygarage/sentinelflow/pkg/api"
 )
 
@@ -137,8 +138,9 @@ func (e *Engine) Scan(ctx context.Context, targetPath string) (*api.ScanResult, 
 	}
 
 	type scanOutcome struct {
-		run      api.ScannerRun
-		findings []api.Finding
+		run               api.ScannerRun
+		findings          []api.Finding
+		vulnerabilityData []api.VulnerabilityDataSource
 	}
 	outcomes := make([]scanOutcome, len(e.scanners))
 	var wg sync.WaitGroup
@@ -170,6 +172,7 @@ func (e *Engine) Scan(ctx context.Context, targetPath string) (*api.ScanResult, 
 					run.Warnings[i] = redact.Line(warning)
 				}
 				outcomes[i].findings = scanResult.Findings
+				outcomes[i].vulnerabilityData = scanResult.VulnerabilityData
 				run.Status = scanResult.Status
 			}
 			if errors.Is(err, context.DeadlineExceeded) {
@@ -203,25 +206,26 @@ func (e *Engine) Scan(ctx context.Context, targetPath string) (*api.ScanResult, 
 	for _, outcome := range outcomes {
 		result.ScannerRuns = append(result.ScannerRuns, outcome.run)
 		result.Findings = append(result.Findings, outcome.findings...)
+		result.Metadata.VulnerabilityData = append(result.Metadata.VulnerabilityData, outcome.vulnerabilityData...)
 	}
+	result.Metadata.VulnerabilityData = uniqueVulnerabilityData(result.Metadata.VulnerabilityData)
 	sortFindings(result.Findings)
 
 	fingerprint.Ensure(result.Findings)
 
-	if e.config.Scanners.Dependencies.RiskEnrichment && !e.config.Scanners.Dependencies.Offline {
-		if err := enrichRisk(ctx, result.Findings); err != nil && len(result.ScannerRuns) > 0 {
-			run := depsRun(result)
-			msg := redact.Line("EPSS/KEV enrichment incomplete: " + err.Error())
-			if e.config.FailOn.KEV && run.Error == "" {
-				// The KEV gate cannot be evaluated; fail closed instead of passing silently.
-				run.Error = msg
-				run.Status = api.ScanStatusFailed
-			} else {
-				run.Warnings = append(run.Warnings, msg)
-				if run.Status == api.ScanStatusComplete {
-					run.Status = api.ScanStatusPartial
-				}
+	riskRequired := e.config.FailOn.KEV
+	riskEnabled := riskLookupNeeded(e.config, result.Findings)
+	if riskEnabled {
+		var riskErr error
+		if e.config.Scanners.Dependencies.Offline {
+			if riskRequired && hasCVEFinding(result.Findings) {
+				riskErr = &vulndb.RiskLookupError{KEV: errors.New("KEV policy requires online risk enrichment; offline mode disables it")}
 			}
+		} else {
+			riskErr = enrichRisk(ctx, result.Findings)
+		}
+		if riskErr != nil {
+			applyRiskLookupError(result, riskErr, riskRequired)
 		}
 	}
 
@@ -366,6 +370,36 @@ func (e *Engine) Scan(ctx context.Context, targetPath string) (*api.ScanResult, 
 	}
 
 	return result, nil
+}
+
+func uniqueVulnerabilityData(in []api.VulnerabilityDataSource) []api.VulnerabilityDataSource {
+	seen := make(map[string]bool, len(in))
+	out := make([]api.VulnerabilityDataSource, 0, len(in))
+	for _, entry := range in {
+		key := entry.Source + "\x00" + entry.Mode + "\x00" + entry.Ecosystem + "\x00" + entry.SnapshotID + "\x00" + entry.Status
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		out = append(out, entry)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		a, b := out[i], out[j]
+		if a.Ecosystem != b.Ecosystem {
+			return a.Ecosystem < b.Ecosystem
+		}
+		if a.Source != b.Source {
+			return a.Source < b.Source
+		}
+		if a.Mode != b.Mode {
+			return a.Mode < b.Mode
+		}
+		if a.SnapshotID != b.SnapshotID {
+			return a.SnapshotID < b.SnapshotID
+		}
+		return a.Status < b.Status
+	})
+	return out
 }
 
 func appendSuppressed(result *api.ScanResult, findings []api.Finding, source, reason, authority string) {
@@ -589,4 +623,48 @@ func depsRun(result *api.ScanResult) *api.ScannerRun {
 		}
 	}
 	return &result.ScannerRuns[0]
+}
+
+func riskRun(result *api.ScanResult) *api.ScannerRun {
+	if len(result.ScannerRuns) == 0 {
+		result.ScannerRuns = append(result.ScannerRuns, api.ScannerRun{Scanner: "risk-enrichment", Status: api.ScanStatusComplete})
+		return &result.ScannerRuns[0]
+	}
+	return depsRun(result)
+}
+
+func applyRiskLookupError(result *api.ScanResult, err error, requiredKEV bool) {
+	run := riskRun(result)
+	msg := redact.Line("EPSS/KEV enrichment incomplete: " + err.Error())
+	kevUnavailable := true
+	var lookupErr *vulndb.RiskLookupError
+	if errors.As(err, &lookupErr) {
+		kevUnavailable = lookupErr.KEV != nil
+	}
+	if requiredKEV && kevUnavailable {
+		// The KEV gate cannot be evaluated; fail closed instead of passing silently.
+		if run.Error != "" {
+			run.Error += "; "
+		}
+		run.Error += msg
+		run.Status = api.ScanStatusFailed
+		return
+	}
+	run.Warnings = append(run.Warnings, msg)
+	if run.Status == api.ScanStatusComplete {
+		run.Status = api.ScanStatusPartial
+	}
+}
+
+func hasCVEFinding(findings []api.Finding) bool {
+	for _, finding := range findings {
+		if finding.CVE != "" {
+			return true
+		}
+	}
+	return false
+}
+
+func riskLookupNeeded(cfg *config.Config, findings []api.Finding) bool {
+	return cfg.Scanners.Dependencies.RiskEnrichment || cfg.FailOn.KEV && hasCVEFinding(findings)
 }

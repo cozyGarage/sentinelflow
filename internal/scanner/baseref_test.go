@@ -179,6 +179,42 @@ func TestSC054_BaselineRefCleanupFailureIsVisible(t *testing.T) {
 	}
 }
 
+func TestSC054_WorktreeAddFailureCleansPartialRegistration(t *testing.T) {
+	root := initBaselineRepo(t)
+	engine := NewEngine(config.Default())
+	engine.BaselineRef = "HEAD"
+	var worktree string
+	engine.gitRunner = func(ctx context.Context, dir string, args ...string) (string, error) {
+		if len(args) >= 3 && args[0] == "worktree" && args[1] == "add" {
+			worktree = args[len(args)-2]
+			if _, err := runGit(ctx, dir, args...); err != nil {
+				return "", err
+			}
+			// Simulate a timeout/error reported after Git has registered the
+			// worktree, which is the state the early-error cleanup must handle.
+			return "", context.DeadlineExceeded
+		}
+		return runGit(ctx, dir, args...)
+	}
+	_, err := engine.scanAtRef(context.Background(), root, "HEAD")
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("want injected worktree-add failure, got %v", err)
+	}
+	if worktree == "" {
+		t.Fatal("test did not observe temporary worktree path")
+	}
+	worktrees, gitErr := runGit(context.Background(), root, "worktree", "list")
+	if gitErr != nil {
+		t.Fatal(gitErr)
+	}
+	if lines := strings.Split(strings.TrimSpace(worktrees), "\n"); len(lines) != 1 {
+		t.Fatalf("partial worktree registration was not removed:\n%s", worktrees)
+	}
+	if _, statErr := os.Stat(filepath.Dir(worktree)); !errors.Is(statErr, os.ErrNotExist) {
+		t.Fatalf("temporary worktree directory remains: %v", statErr)
+	}
+}
+
 func initBaselineRepo(t *testing.T) string {
 	t.Helper()
 	root := t.TempDir()
@@ -332,17 +368,29 @@ func TestBaselineRefReportsOnlyNewFindings(t *testing.T) {
 func TestSC054_TimeoutCleansTemporaryWorktree(t *testing.T) {
 	root := initBaselineRepo(t)
 	engine := NewEngine(config.Default())
-	engine.scanners = []Scanner{&blockingBaseScanner{}}
+	started := make(chan struct{})
+	engine.scanners = []Scanner{&blockingBaseScanner{started: started}}
 	engine.scannerFactory = nil
 	engine.BaselineRef = "HEAD"
-	ctx, cancel := context.WithTimeout(context.Background(), 25*time.Millisecond)
+	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	started := time.Now()
-	_, err := engine.Scan(ctx, root)
+	startedAt := time.Now()
+	result := make(chan error, 1)
+	go func() {
+		_, err := engine.Scan(ctx, root)
+		result <- err
+	}()
+	select {
+	case <-engine.scanners[0].(*blockingBaseScanner).started:
+		cancel()
+	case <-time.After(5 * time.Second):
+		t.Fatal("base scanner did not start")
+	}
+	err := <-result
 	if err == nil {
 		t.Fatal("expired comparison must return an incomplete-comparison error")
 	}
-	if elapsed := time.Since(started); elapsed > 2*time.Second {
+	if elapsed := time.Since(startedAt); elapsed > 2*time.Second {
 		t.Fatalf("cancelled comparison took %s; cleanup must remain bounded", elapsed)
 	}
 	out, gitErr := runGit(context.Background(), root, "worktree", "list")
@@ -392,12 +440,13 @@ func TestSC054_WorktreeAddFailurePreservesCallerCheckout(t *testing.T) {
 	}
 }
 
-type blockingBaseScanner struct{}
+type blockingBaseScanner struct{ started chan struct{} }
 
 func (*blockingBaseScanner) Name() string         { return "test-scanner" }
 func (*blockingBaseScanner) Supports(string) bool { return true }
-func (*blockingBaseScanner) Scan(ctx context.Context, path string, _ interface{}) (*types.ScannerResult, error) {
+func (s *blockingBaseScanner) Scan(ctx context.Context, path string, _ interface{}) (*types.ScannerResult, error) {
 	if strings.Contains(path, "sentinelflow-baseref-") {
+		close(s.started)
 		<-ctx.Done()
 		return nil, ctx.Err()
 	}

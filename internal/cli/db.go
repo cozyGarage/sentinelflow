@@ -51,18 +51,21 @@ var dbUpdateCmd = &cobra.Command{
 
 var dbStatusCmd = &cobra.Command{
 	Use:   "status",
-	Short: "Show when each ecosystem was last updated",
+	Short: "Show snapshot provenance for each offline ecosystem index",
 	Args:  cobra.NoArgs,
 	Run: func(cmd *cobra.Command, args []string) {
 		dir := vulndb.OfflineDir()
 		fmt.Println(dir)
-		status := vulndb.OfflineStatus(dir)
-		for _, eco := range vulndb.OfflineEcosystems {
-			if t := status[eco]; t.IsZero() {
-				fmt.Printf("  %-9s %s\n", eco, color.YellowString("missing"))
-			} else {
-				fmt.Printf("  %-9s %s\n", eco, t.Local().Format("2006-01-02 15:04"))
+		for _, snapshot := range vulndb.OfflineSnapshots(dir) {
+			if snapshot.Status != "available" {
+				fmt.Printf("  %-9s %s\n", snapshot.Ecosystem, color.YellowString(snapshot.Status))
+				continue
 			}
+			acquired := "unknown acquisition time"
+			if snapshot.AcquiredAt != nil {
+				acquired = snapshot.AcquiredAt.Local().Format("2006-01-02 15:04 MST")
+			}
+			fmt.Printf("  %-9s %s  %s  %s\n", snapshot.Ecosystem, acquired, snapshot.SnapshotID, snapshot.Source)
 		}
 	},
 }

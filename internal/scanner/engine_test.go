@@ -3,6 +3,7 @@ package scanner
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -16,8 +17,54 @@ import (
 	"github.com/cozygarage/sentinelflow/internal/scanner/dependencies"
 	"github.com/cozygarage/sentinelflow/internal/scanner/fingerprint"
 	"github.com/cozygarage/sentinelflow/internal/scanner/types"
+	"github.com/cozygarage/sentinelflow/internal/vulndb"
 	"github.com/cozygarage/sentinelflow/pkg/api"
 )
+
+func TestSC089_RequiredKEVOnlyFailsWhenKEVIsUnknown(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		err        error
+		required   bool
+		wantFailed bool
+	}{
+		{"required KEV unavailable", &vulndb.RiskLookupError{KEV: errors.New("catalog down")}, true, true},
+		{"KEV available but optional EPSS missing", &vulndb.RiskLookupError{EPSS: errors.New("score missing")}, true, false},
+		{"optional enrichment unavailable", errors.New("risk source down"), false, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			result := &api.ScanResult{ScannerRuns: []api.ScannerRun{{Scanner: "dependencies", Status: api.ScanStatusComplete}}}
+			applyRiskLookupError(result, tc.err, tc.required)
+			run := result.ScannerRuns[0]
+			if (run.Status == api.ScanStatusFailed) != tc.wantFailed {
+				t.Fatalf("status=%s error=%q warnings=%v", run.Status, run.Error, run.Warnings)
+			}
+			if tc.wantFailed && run.Error == "" || !tc.wantFailed && len(run.Warnings) == 0 {
+				t.Fatalf("risk status was not retained: %+v", run)
+			}
+		})
+	}
+}
+
+func TestSC089_KEVLookupIsNeededOnlyForCVEFindings(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		cfg      *config.Config
+		findings []api.Finding
+		want     bool
+	}{
+		{"required policy with CVE", &config.Config{FailOn: config.FailOnConfig{KEV: true}}, []api.Finding{{CVE: "CVE-1"}}, true},
+		{"required policy without CVE", &config.Config{FailOn: config.FailOnConfig{KEV: true}}, []api.Finding{{ID: "secret-finding"}}, false},
+		{"optional policy disabled", &config.Config{}, []api.Finding{{CVE: "CVE-1"}}, false},
+		{"optional enrichment enabled", &config.Config{Scanners: config.ScannersConfig{Dependencies: config.DependenciesConfig{RiskEnrichment: true}}}, nil, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := riskLookupNeeded(tc.cfg, tc.findings); got != tc.want {
+				t.Fatalf("riskLookupNeeded = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
 
 func TestEngineInitialization(t *testing.T) {
 	cfg := &config.Config{
@@ -529,6 +576,31 @@ func TestSC077_StrictIgnoreFailureRetainsFinding(t *testing.T) {
 	if result.Status != api.ScanStatusFailed {
 		t.Fatalf("status=%q, want failed", result.Status)
 	}
+}
+
+func TestSC081_ScanMetadataRetainsAdvisorySnapshotEvidence(t *testing.T) {
+	root := t.TempDir()
+	acquired := time.Date(2025, 1, 2, 3, 4, 5, 0, time.UTC)
+	e := NewEngine(&config.Config{})
+	e.scanners = []Scanner{&provenanceStubScanner{data: []api.VulnerabilityDataSource{{
+		Source: "https://example.test/osv/go/all.zip", Mode: "offline", Ecosystem: "go",
+		SnapshotID: "sha256:abc", AcquiredAt: &acquired, Supported: true, Status: "available",
+	}}}}
+	result, err := e.Scan(context.Background(), root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Metadata.VulnerabilityData) != 1 || result.Metadata.VulnerabilityData[0].SnapshotID != "sha256:abc" || result.Metadata.VulnerabilityData[0].AcquiredAt == nil {
+		t.Fatalf("scan metadata lost advisory snapshot evidence: %+v", result.Metadata.VulnerabilityData)
+	}
+}
+
+type provenanceStubScanner struct{ data []api.VulnerabilityDataSource }
+
+func (*provenanceStubScanner) Name() string         { return "dependencies" }
+func (*provenanceStubScanner) Supports(string) bool { return true }
+func (s *provenanceStubScanner) Scan(context.Context, string, interface{}) (*types.ScannerResult, error) {
+	return &types.ScannerResult{Findings: []api.Finding{}, Status: api.ScanStatusComplete, VulnerabilityData: s.data}, nil
 }
 
 func TestEngineBaselineMissingFileStillSummarizes(t *testing.T) {

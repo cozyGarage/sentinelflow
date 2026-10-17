@@ -632,3 +632,14 @@ func TestSC044_RequiredReachabilityErrorIsNotSoftened(t *testing.T) {
 		t.Fatal("required reachability failure must remain an operational error when dependency transport errors are soft")
 	}
 }
+
+func TestSC082_RequiredOfflineFreshnessErrorIsNotSoftened(t *testing.T) {
+	softDependencyErrors := false
+	cfg := &config.Config{}
+	cfg.Scanners.Dependencies.FailOnError = &softDependencyErrors
+	cfg.Scanners.Dependencies.OfflineRequireFresh = true
+	result := &api.ScanResult{ScannerRuns: []api.ScannerRun{{Scanner: "dependencies", Error: "offline OSV snapshot is stale"}}}
+	if err := scannerErrors(result, cfg); err == nil {
+		t.Fatal("required offline freshness failure must remain operational when dependency transport errors are soft")
+	}
+}

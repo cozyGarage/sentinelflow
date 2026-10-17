@@ -437,6 +437,17 @@ func TestSC074_OSVAliasesSurviveDependencyFindingConstruction(t *testing.T) {
 	}
 }
 
+func TestSC081_FindingIdentifiesAdvisorySource(t *testing.T) {
+	s := &Scanner{config: config.Default()}
+	finding := s.createFinding(
+		Dependency{Name: "lodash", Version: "4.17.21", Ecosystem: "npm", FilePath: "/tmp/package-lock.json"},
+		Vulnerability{ID: "OSV-1", Source: "osv"}, "/tmp",
+	)
+	if got := finding.Metadata["vulnerability_source"]; got != "osv" {
+		t.Fatalf("finding should identify advisory source, got %#v", got)
+	}
+}
+
 func TestRubyGemsScannerGemfileLock(t *testing.T) {
 	root := t.TempDir()
 	lock := `GEM

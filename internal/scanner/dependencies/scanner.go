@@ -11,6 +11,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/cozygarage/sentinelflow/internal/config"
 	"github.com/cozygarage/sentinelflow/internal/scanner/fingerprint"
@@ -47,11 +48,22 @@ type Dependency struct {
 	Inventory string
 	// InstallPath distinguishes multiple installed instances of the same package.
 	InstallPath string
+	// AdditionalAdvisoryCoordinates retain replacement coordinates so advisories
+	// can be checked against both the declared module and versioned replacement.
+	AdditionalAdvisoryCoordinates []PackageCoordinate
+}
+
+// PackageCoordinate is an additional package identity for advisory lookup.
+type PackageCoordinate struct {
+	Name      string
+	Version   string
+	Ecosystem string
 }
 
 // Vulnerability represents a known vulnerability
 type Vulnerability struct {
 	ID          string
+	Source      string
 	Aliases     []string
 	CVE         string
 	Severity    api.Severity
@@ -71,14 +83,24 @@ func NewScanner(cfg *config.Config) *Scanner {
 		ecosystems: make(map[string]EcosystemScanner),
 	}
 
-	client, err := vulndb.NewClient(vulndb.OfflineOptions(cfg.Scanners.Dependencies.Offline)...)
+	var offlineMaxAge []time.Duration
+	if cfg.Scanners.Dependencies.OfflineRequireFresh {
+		if age, err := cfg.OfflineMaxAgeDuration(); err == nil {
+			offlineMaxAge = append(offlineMaxAge, age)
+		}
+	}
+	useOffline := cfg.Scanners.Dependencies.Offline || cfg.Scanners.Dependencies.OfflineRequireFresh
+	client, err := vulndb.NewClient(vulndb.OfflineOptions(useOffline, offlineMaxAge...)...)
 	if err != nil {
 		s.client = nil
 	} else {
 		s.client = client
 	}
 
-	s.ecosystems["go"] = &GoModScanner{}
+	s.ecosystems["go"] = &GoModScanner{
+		ResolveGraph: cfg.Scanners.Dependencies.GoModuleGraph,
+		AllowNetwork: cfg.Scanners.Dependencies.GoModuleGraphAllowNetwork && !cfg.Scanners.Dependencies.Offline && !cfg.Scanners.Dependencies.OfflineRequireFresh,
+	}
 	s.ecosystems["npm"] = &NpmScanner{}
 	s.ecosystems["pip"] = &PipScanner{}
 	s.ecosystems["maven"] = &MavenScanner{}
@@ -136,9 +158,33 @@ func (s *Scanner) Scan(ctx context.Context, path string, opts interface{}) (*Sca
 	var scanErrs []string
 	var deps []Dependency
 	var scanWarnings []string
+	resolvedWorkspaces := map[string]bool{}
 
 	for _, dir := range s.manifestDirs(files) {
 		for name, ecosys := range s.detectEcosystems(dir) {
+			if goScanner, ok := ecosys.(*GoModScanner); ok && goScanner.ResolveGraph {
+				workspacePath, found, workspaceErr := findGoWorkspace(dir)
+				if workspaceErr != nil {
+					scanErrs = append(scanErrs, fmt.Sprintf("go (%s): discover Go workspace: %v", filepath.ToSlash(dir), workspaceErr))
+					continue
+				}
+				if found {
+					member, err := goWorkspaceIncludes(workspacePath, dir)
+					if err != nil {
+						scanErrs = append(scanErrs, fmt.Sprintf("go (%s): parse Go workspace membership: %v", filepath.ToSlash(dir), err))
+						continue
+					}
+					if member && resolvedWorkspaces[workspacePath] {
+						continue
+					}
+					if member {
+						resolvedWorkspaces[workspacePath] = true
+					}
+					workspaceScanner := *goScanner
+					workspaceScanner.WorkspacePath = workspacePath
+					ecosys = &workspaceScanner
+				}
+			}
 			result.FilesCount++
 			wg.Add(1)
 			go func(ecoName, dir string, eco EcosystemScanner) {
@@ -153,7 +199,15 @@ func (s *Scanner) Scan(ctx context.Context, path string, opts interface{}) (*Sca
 				}
 				if ecoName == "go" {
 					rel, _ := filepath.Rel(path, dir)
-					scanWarnings = append(scanWarnings, fmt.Sprintf("%s: Go inventory is read from go.mod requirements; go.sum, workspace selection, and replacements are not used to establish a resolved package graph", filepath.ToSlash(filepath.Join(rel, "go.mod"))))
+					message := "Go inventory is read from go.mod requirements; go.sum, workspace selection, and replacements are not used to establish a resolved package graph"
+					if goScanner, ok := eco.(*GoModScanner); ok && goScanner.ResolveGraph {
+						if goScanner.WorkspacePath != "" {
+							message = "Go inventory is resolved once for the selected `go.work` workspace; workspace module requirements retain their source locations, and transitive modules are workspace-level metadata, not proof of build or artifact contents"
+						} else {
+							message = "Go inventory is resolved with `go list -m all` for this module with workspace mode disabled; this is module metadata, not proof of build, platform, or artifact contents"
+						}
+					}
+					scanWarnings = append(scanWarnings, fmt.Sprintf("%s: %s", filepath.ToSlash(filepath.Join(rel, "go.mod")), message))
 				}
 				for _, dep := range found {
 					if s.config.Scanners.Dependencies.IgnoreDev && dep.Dev {
@@ -201,7 +255,13 @@ func (s *Scanner) Scan(ctx context.Context, path string, opts interface{}) (*Sca
 	}
 
 	if len(scanErrs) > 0 {
+		if s.client != nil {
+			result.VulnerabilityData = s.client.VulnerabilityData()
+		}
 		return result, fmt.Errorf("dependency scan errors: %s", strings.Join(scanErrs, "; "))
+	}
+	if s.client != nil {
+		result.VulnerabilityData = s.client.VulnerabilityData()
 	}
 	return result, nil
 }
@@ -280,6 +340,9 @@ func (s *Scanner) detectEcosystems(path string) map[string]EcosystemScanner {
 func (s *Scanner) checkVulnerabilities(ctx context.Context, dep Dependency) ([]Vulnerability, error) {
 	all, err := s.checkAll(ctx, []Dependency{dep})
 	if err != nil {
+		if len(all) > 0 {
+			return all[0], err
+		}
 		return nil, err
 	}
 	return all[0], nil
@@ -294,20 +357,40 @@ func (s *Scanner) checkAll(ctx context.Context, deps []Dependency) ([][]Vulnerab
 		return nil, fmt.Errorf("vulnerability database unavailable")
 	}
 
-	qs := make([]vulndb.PackageQuery, len(deps))
+	qs := make([]vulndb.PackageQuery, 0, len(deps))
+	owners := make([]int, 0, len(deps))
 	for i, dep := range deps {
-		qs[i] = vulndb.PackageQuery{Ecosystem: dep.Ecosystem, Name: dep.Name, Version: normalizeVersion(dep.Version)}
+		coordinates := append([]PackageCoordinate{{Name: dep.Name, Version: dep.Version, Ecosystem: dep.Ecosystem}}, dep.AdditionalAdvisoryCoordinates...)
+		seen := make(map[PackageCoordinate]bool, len(coordinates))
+		for _, coordinate := range coordinates {
+			if coordinate.Name == "" || coordinate.Version == "" || coordinate.Ecosystem == "" || seen[coordinate] {
+				continue
+			}
+			seen[coordinate] = true
+			qs = append(qs, vulndb.PackageQuery{Ecosystem: coordinate.Ecosystem, Name: coordinate.Name, Version: normalizeVersion(coordinate.Version)})
+			owners = append(owners, i)
+		}
 	}
 	found, err := s.client.QueryMany(ctx, qs)
-	if err != nil {
-		return nil, err
-	}
 
 	out := make([][]Vulnerability, len(deps))
+	seenVulnerabilities := make([]map[string]bool, len(deps))
 	for i, vulns := range found {
+		if i >= len(owners) {
+			break
+		}
+		owner := owners[i]
+		if seenVulnerabilities[owner] == nil {
+			seenVulnerabilities[owner] = make(map[string]bool)
+		}
 		for _, v := range vulns {
-			out[i] = append(out[i], Vulnerability{
+			if seenVulnerabilities[owner][v.ID] {
+				continue
+			}
+			seenVulnerabilities[owner][v.ID] = true
+			out[owner] = append(out[owner], Vulnerability{
 				ID:          v.ID,
+				Source:      v.Source,
 				Aliases:     append([]string(nil), v.Aliases...),
 				CVE:         v.CVE,
 				Severity:    severityFromVulnDB(v.Severity, v.CVSS),
@@ -318,7 +401,7 @@ func (s *Scanner) checkAll(ctx context.Context, deps []Dependency) ([][]Vulnerab
 			})
 		}
 	}
-	return out, nil
+	return out, err
 }
 
 func normalizeVersion(version string) string {
@@ -371,6 +454,9 @@ func firstFixedVersion(fixed []string, affected []vulndb.Range) string {
 func (s *Scanner) createFinding(dep Dependency, vuln Vulnerability, basePath string) api.Finding {
 	relPath, _ := filepath.Rel(basePath, dep.FilePath)
 	metadata := map[string]any{"package": dep.Name, "version": dep.Version, "ecosystem": dep.Ecosystem}
+	if vuln.Source != "" {
+		metadata["vulnerability_source"] = vuln.Source
+	}
 	if len(vuln.Aliases) > 0 {
 		metadata["vulnerability_aliases"] = append([]string(nil), vuln.Aliases...)
 	}
@@ -379,6 +465,13 @@ func (s *Scanner) createFinding(dep Dependency, vuln Vulnerability, basePath str
 	}
 	if dep.InstallPath != "" {
 		metadata["install_path"] = dep.InstallPath
+	}
+	if len(dep.AdditionalAdvisoryCoordinates) > 0 {
+		coordinates := make([]map[string]string, 0, len(dep.AdditionalAdvisoryCoordinates))
+		for _, coordinate := range dep.AdditionalAdvisoryCoordinates {
+			coordinates = append(coordinates, map[string]string{"package": coordinate.Name, "version": coordinate.Version, "ecosystem": coordinate.Ecosystem})
+		}
+		metadata["additional_advisory_coordinates"] = coordinates
 	}
 
 	return api.Finding{
@@ -411,8 +504,12 @@ func formatFixedIn(fixed string) string {
 	return " (fixed in " + fixed + ")"
 }
 
-// GoModScanner scans Go modules
-type GoModScanner struct{}
+// GoModScanner scans declared Go requirements or an explicitly selected module graph.
+type GoModScanner struct {
+	ResolveGraph  bool
+	AllowNetwork  bool
+	WorkspacePath string
+}
 
 func (g *GoModScanner) Name() string { return "go" }
 
@@ -432,6 +529,19 @@ func (g *GoModScanner) Scan(ctx context.Context, path string) ([]Dependency, err
 	if err != nil {
 		return nil, fmt.Errorf("parse go.mod: %w", err)
 	}
+	if g.ResolveGraph && (parsed.Module == nil || parsed.Module.Mod.Path == "") {
+		return nil, fmt.Errorf("resolve Go module graph: go.mod is missing a module path")
+	}
+	if g.ResolveGraph && g.WorkspacePath != "" {
+		return g.scanWorkspace(ctx, goModPath)
+	}
+	if g.ResolveGraph {
+		for _, replace := range parsed.Replace {
+			if replace.New.Path == "" || replace.New.Version == "" {
+				return nil, fmt.Errorf("resolve Go module graph: replacement for %s has no versioned module identity; local replacements are not yet supported (SC-017)", replace.Old.Path)
+			}
+		}
+	}
 	deps := make([]Dependency, 0, len(parsed.Require))
 	for _, req := range parsed.Require {
 		line := 0
@@ -443,6 +553,9 @@ func (g *GoModScanner) Scan(ctx context.Context, path string) ([]Dependency, err
 			FilePath: goModPath, Line: line, Dev: req.Indirect,
 			Inventory: "go.mod_require",
 		})
+	}
+	if g.ResolveGraph {
+		return g.resolveGraph(ctx, goModPath, deps, "", []string{parsed.Module.Mod.Path})
 	}
 	return deps, nil
 }

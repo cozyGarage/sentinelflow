@@ -111,8 +111,21 @@ func (e *Engine) scanAtRef(ctx context.Context, targetPath, ref string) (finding
 	}
 	wt := filepath.Join(tmp, "wt")
 	if _, err := e.runGit(ctx, top, "worktree", "add", "--detach", "--quiet", wt, ref); err != nil {
+		// CommandContext can stop `worktree add` after Git has written its
+		// administrative registration. Clean both the path and registration
+		// with a fresh context, even though add returned an error.
+		cleanupCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		_, cleanupErr := e.runGit(cleanupCtx, top, "worktree", "remove", "--force", wt)
+		if cleanupErr != nil {
+			_, pruneErr := e.runGit(cleanupCtx, top, "worktree", "prune", "--expire", "now")
+			cleanupErr = errors.Join(cleanupErr, pruneErr)
+		}
+		cancel()
 		if removeErr := os.RemoveAll(tmp); removeErr != nil {
-			return nil, errors.Join(err, fmt.Errorf("remove temporary directory %s: %w", tmp, removeErr))
+			cleanupErr = errors.Join(cleanupErr, fmt.Errorf("remove temporary directory %s: %w", tmp, removeErr))
+		}
+		if cleanupErr != nil {
+			return nil, errors.Join(err, fmt.Errorf("clean up incomplete temporary worktree %s: %w", wt, cleanupErr))
 		}
 		return nil, err
 	}

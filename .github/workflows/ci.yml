@@ -45,6 +45,123 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          - id: SC-081
+            package: ./internal/vulndb
+            test: TestSC081_ProvenanceDistinguishesLiveAndCachedLookups
+          - id: SC-081
+            package: ./internal/vulndb
+            test: TestOfflineUpdateAndQuery
+          - id: SC-081
+            package: ./internal/scanner
+            test: TestSC081_ScanMetadataRetainsAdvisorySnapshotEvidence
+          - id: SC-081
+            package: ./internal/scanner/dependencies
+            test: TestSC081_FindingIdentifiesAdvisorySource
+          - id: SC-082
+            package: ./internal/vulndb
+            test: TestSC082_OfflineFreshnessPolicyUsesSnapshotTimeAndReportsState
+          - id: SC-082
+            package: ./internal/vulndb
+            test: TestSC082_OfflineCacheHitRechecksFreshness
+          - id: SC-082
+            package: ./internal/config
+            test: TestSC082_OfflineFreshnessConfigDefaultsAndValidation
+          - id: SC-082
+            package: ./internal/cli
+            test: TestSC082_RequiredOfflineFreshnessErrorIsNotSoftened
+          - id: SC-083
+            package: ./internal/vulndb
+            test: TestSC083_EcosystemComparatorCapabilityMatrix
+          - id: SC-083
+            package: ./internal/vulndb
+            test: TestSC083_UnsupportedOrderingCannotBecomeCleanOfflineResult
+          - id: SC-084
+            package: ./internal/vulndb
+            test: TestSC084_GitRangesRemainUnassessedButExactVersionsMatch
+          - id: SC-085
+            package: ./internal/vulndb
+            test: TestSC085_OSVRangeBoundariesAndLimit
+          - id: SC-085
+            package: ./internal/vulndb
+            test: TestSC085_WithdrawnTimestampIsEffectiveAtItsRFC3339Instant
+          - id: SC-085
+            package: ./internal/vulndb
+            test: TestSC085_LimitSurvivesOSVDecodeAndOfflineEvaluation
+          - id: SC-086
+            package: ./internal/vulndb
+            test: TestSC086_OnlineOfflineParityAgainstSameAdvisoryFixture
+          - id: SC-087
+            package: ./internal/vulndb
+            test: TestSC087_CopyLimitedEnforcesInclusiveByteCeiling
+          - id: SC-087
+            package: ./internal/vulndb
+            test: TestSC087_IndexReaderEnforcesDecompressedSize
+          - id: SC-087
+            package: ./internal/vulndb
+            test: TestSC087_FailedRefreshPreservesSnapshotAndCleansTemps
+          - id: SC-087
+            package: ./internal/vulndb
+            test: TestSC087_ConcurrentRefreshesAndReadersSeeCompleteSnapshots
+          - id: SC-088
+            package: ./internal/vulndb
+            test: TestSC088_QueryManyPreservesSuccessfulDetailsButDoesNotCachePartialResults
+          - id: SC-088
+            package: ./internal/vulndb
+            test: TestSC088_QueryRetainsPartialPositiveAndDoesNotCache
+          - id: SC-088
+            package: ./internal/vulndb
+            test: TestSC088_QueryBatchRetainsCompletedAlignedChunksOnCancellation
+          - id: SC-088
+            package: ./internal/scanner/dependencies
+            test: TestSC088_CheckAllRetainsFindingsWithBatchLookupError
+          - id: SC-089
+            package: ./internal/vulndb
+            test: TestSC089_FetchRiskReportsMissingEPSSWhileRetainingKnownSignals
+          - id: SC-089
+            package: ./internal/vulndb
+            test: TestSC089_FetchRiskRejectsInvalidEPSSScores
+          - id: SC-089
+            package: ./internal/scanner
+            test: TestSC089_RequiredKEVOnlyFailsWhenKEVIsUnknown
+          - id: SC-089
+            package: ./internal/scanner
+            test: TestSC089_KEVLookupIsNeededOnlyForCVEFindings
+          - id: SC-090
+            package: ./internal/vulndb
+            test: TestSC090_CacheIsolatedByConfiguredSourceIdentity
+          - id: SC-090
+            package: ./internal/vulndb
+            test: TestSC090_OfflineCacheIsolatedBySnapshotIdentity
+          - id: SC-090
+            package: ./internal/vulndb
+            test: TestSC090_CorruptCacheEntryIsReplacedAfterSuccessfulLookup
+          - id: SC-090
+            package: ./internal/vulndb
+            test: TestSC090_DiskCacheConcurrentReadersObserveCompleteEntries
+          - id: SC-015
+            package: ./internal/scanner/dependencies
+            test: TestSC015_OptInGoModuleGraphUsesSelectedVersionsAndPreservesDirectAttribution
+          - id: SC-015
+            package: ./internal/scanner/dependencies
+            test: TestSC015_GoModuleGraphFailsClosedForErrorTimeoutAndMissingTool
+          - id: SC-015
+            package: ./internal/scanner/dependencies
+            test: TestSC015_GoModuleGraphRejectsReplacementsBeforeRunningTool
+          - id: SC-015
+            package: ./internal/config
+            test: TestSC015_GoModuleGraphOptionsAreExplicitAndOfflineSafe
+          - id: SC-016
+            package: ./internal/scanner/dependencies
+            test: TestSC016_VersionedReplacementQueriesBothCoordinatesAndRetainsDeclaration
+          - id: SC-017
+            package: ./internal/scanner/dependencies
+            test: TestSC017_LocalAndUnversionedReplacementsFailWithoutRegistryIdentity
+          - id: SC-018
+            package: ./internal/scanner/dependencies
+            test: TestSC018_WorkspaceUsesSelectedGraphOnceAndKeepsMemberAttribution
+          - id: SC-018
+            package: ./internal/scanner/dependencies
+            test: TestSC018_LocalWorkspaceReplacementFailsBeforeGraphCommand
           - id: SC-076
             package: ./internal/scanner
             test: TestSC076_SuppressedObservationsRetainSafeProvenance
@@ -197,7 +314,7 @@ jobs:
             test: TestSC053_(BaselineRefUsesFreshComparableScannerInstances|RejectsScannerSetMismatch)
           - id: SC-054
             package: ./internal/scanner
-            test: TestSC054_(BaselineRefCleanupFailureIsVisible|TimeoutCleansTemporaryWorktree|WorktreeAddFailurePreservesCallerCheckout)|TestBaselineRefReportsOnlyNewFindings
+            test: TestSC054_(BaselineRefCleanupFailureIsVisible|TimeoutCleansTemporaryWorktree|WorktreeAddFailurePreservesCallerCheckout|WorktreeAddFailureCleansPartialRegistration)|TestBaselineRefReportsOnlyNewFindings
           - id: SC-091
             package: ./internal/cli
             test: TestSC091_BuiltCLIExitAndPartialReport

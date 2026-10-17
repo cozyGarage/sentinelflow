@@ -76,7 +76,20 @@ func (c *diskCache) Set(key string, vulns []Vulnerability, ttl time.Duration) er
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(c.pathFor(key), data, 0644)
+	tmp, err := os.CreateTemp(c.dir, ".vuln-cache-*.tmp")
+	if err != nil {
+		return err
+	}
+	tmpPath := tmp.Name()
+	defer os.Remove(tmpPath)
+	if _, err := tmp.Write(data); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	return os.Rename(tmpPath, c.pathFor(key))
 }
 
 func (c *diskCache) Clear() error {

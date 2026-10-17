@@ -19,35 +19,37 @@ import (
 )
 
 var (
-	scanSecrets      bool
-	scanIaC          bool
-	scanDependencies bool
-	scanAI           bool
-	scanSAST         bool
-	scanContainer    bool
-	scanLicense      bool
-	scanAll          bool
-	noSecrets        bool
-	noIaC            bool
-	noDependencies   bool
-	noSAST           bool
-	scanPath         string
-	outputFile       string
-	failOnSeverity   string
-	containerImage   string
-	useBaseline      bool
-	scanTimeoutFlag  string
-	scanArtifacts    bool
-	scanStaged       bool
-	diffBase         string
-	baselineRef      string
-	failOnKEV        bool
-	vexFiles         []string
-	offline          bool
-	markdownOut      string
-	scanSBOM         string
-	verifySecrets    bool
-	emitAnnotations  bool
+	scanSecrets           bool
+	scanIaC               bool
+	scanDependencies      bool
+	scanAI                bool
+	scanSAST              bool
+	scanContainer         bool
+	scanLicense           bool
+	scanAll               bool
+	noSecrets             bool
+	noIaC                 bool
+	noDependencies        bool
+	noSAST                bool
+	scanPath              string
+	outputFile            string
+	failOnSeverity        string
+	containerImage        string
+	useBaseline           bool
+	scanTimeoutFlag       string
+	scanArtifacts         bool
+	scanStaged            bool
+	diffBase              string
+	baselineRef           string
+	failOnKEV             bool
+	vexFiles              []string
+	offline               bool
+	requireFreshOfflineDB bool
+	offlineDBMaxAge       string
+	markdownOut           string
+	scanSBOM              string
+	verifySecrets         bool
+	emitAnnotations       bool
 )
 
 var scanCmd = &cobra.Command{
@@ -104,6 +106,8 @@ func init() {
 	scanCmd.Flags().BoolVar(&failOnKEV, "fail-on-kev", false, "fail if any finding is in the CISA Known Exploited Vulnerabilities catalog")
 	scanCmd.Flags().StringSliceVar(&vexFiles, "vex", nil, "OpenVEX document(s); not_affected/fixed statements suppress matching findings")
 	scanCmd.Flags().BoolVar(&offline, "offline", false, "use the local OSV database from 'sentinelflow db update' (no network for vulnerability lookups)")
+	scanCmd.Flags().BoolVar(&requireFreshOfflineDB, "require-fresh-offline-db", false, "fail dependency lookups when the offline OSV snapshot is missing, corrupt, unknown-age, or stale")
+	scanCmd.Flags().StringVar(&offlineDBMaxAge, "offline-max-age", "", "maximum offline OSV snapshot age when --require-fresh-offline-db is set (Go duration, default 720h)")
 	scanCmd.Flags().StringVar(&diffBase, "diff-base", "", "limit findings to files/lines changed since this git ref")
 	scanCmd.Flags().StringVar(&scanSBOM, "sbom", "", "scan a CycloneDX JSON SBOM for vulnerable components")
 	scanCmd.Flags().BoolVar(&verifySecrets, "verify-secrets", false, "opt-in live verification of detected secrets (network)")
@@ -336,6 +340,13 @@ func applyScanFlags(cfg *config.Config) error {
 	if offline {
 		cfg.Scanners.Dependencies.Offline = true
 	}
+	if requireFreshOfflineDB {
+		cfg.Scanners.Dependencies.OfflineRequireFresh = true
+		cfg.Scanners.Dependencies.Offline = true
+		if offlineDBMaxAge != "" {
+			cfg.Scanners.Dependencies.OfflineMaxAge = offlineDBMaxAge
+		}
+	}
 	if emitAnnotations {
 		cfg.Reporting.EmitAnnotations = true
 	}
@@ -356,6 +367,9 @@ func applyGateFlags(cfg *config.Config) error {
 		if _, err := cfg.ScanTimeoutDuration(); err != nil {
 			return fmt.Errorf("invalid --timeout %q (use a positive Go duration, e.g. 10m, 90s)", scanTimeoutFlag)
 		}
+	}
+	if cfg.Scanners.Dependencies.GoModuleGraphAllowNetwork && (cfg.Scanners.Dependencies.Offline || cfg.Scanners.Dependencies.OfflineRequireFresh) {
+		return fmt.Errorf("scanners.dependencies.go_module_graph_allow_network cannot be enabled with --offline or --require-fresh-offline-db")
 	}
 	return nil
 }
@@ -391,7 +405,8 @@ func scannerErrors(result *api.ScanResult, cfg *config.Config) error {
 			continue
 		}
 		requiredReachability := cfg != nil && config.ExternalMode(cfg.Scanners.Dependencies.Reachability) == "required" && strings.Contains(run.Error, "reachability:")
-		if run.Scanner == "dependencies" && cfg != nil && !cfg.DependenciesFailOnError() && !requiredReachability {
+		requiredFreshness := cfg != nil && cfg.Scanners.Dependencies.OfflineRequireFresh
+		if run.Scanner == "dependencies" && cfg != nil && !cfg.DependenciesFailOnError() && !requiredReachability && !requiredFreshness {
 			fmt.Printf("%s dependencies scanner error (non-fatal): %s\n", color.YellowString("⚠"), run.Error)
 			continue
 		}

@@ -99,16 +99,16 @@ func (s *OSVSource) QueryBatch(ctx context.Context, queries []OSVRequest) ([][]O
 		part := queries[i:end]
 		payload, err := json.Marshal(map[string]any{"queries": part})
 		if err != nil {
-			return nil, err
+			return all, err
 		}
 		var resp struct {
 			Results []OSVResponse `json:"results"`
 		}
 		if err := s.doJSON(ctx, http.MethodPost, s.baseURL+"/v1/querybatch", payload, &resp); err != nil {
-			return nil, err
+			return all, err
 		}
 		if len(resp.Results) != len(part) {
-			return nil, fmt.Errorf("OSV querybatch returned %d results for %d queries", len(resp.Results), len(part))
+			return all, fmt.Errorf("OSV querybatch returned %d results for %d queries", len(resp.Results), len(part))
 		}
 		// ponytail: ignores per-query next_page_token (>1000 vulns for one package); page if OSV ever returns one.
 		for _, r := range resp.Results {

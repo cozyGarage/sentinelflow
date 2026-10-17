@@ -58,14 +58,18 @@ Run `sentinelflow init` to generate a starter configuration.
 | `severity` | string | `medium` | Minimum severity to report |
 | `ignore_dev` | bool | `false` | Skip dev dependencies |
 | `ignore_cves` | []string | — | CVE, GHSA, GO-, or OSV IDs to ignore |
+| `go_module_graph` | bool | `false` | Opt in to selected Go module metadata from `go list -m -json -mod=readonly all`; workspaces resolve once per scan, versioned replacements query both identities, and local replacements fail visibly |
+| `go_module_graph_allow_network` | bool | `false` | Allow configured Go module proxies during graph resolution. Requires `go_module_graph` and is rejected in offline mode |
 | `risk_enrichment` | bool | `true` | Add EPSS scores and CISA KEV flags to findings that have a CVE. Fetches the KEV catalog (cached 24h) and the FIRST.org EPSS API; lookup failures are warnings unless `fail_on.kev` is set |
 | `reachability` | string | `off` | `auto` / `required` / `off`. Runs [`govulncheck`](https://go.dev/doc/security/vuln/) in each Go module with findings and marks each Go finding `reachable: true/false` (is the vulnerable function actually called). `auto` skips with a warning when govulncheck is not on PATH; `required` errors |
 | `fail_on_error` | bool | `true` | Fail the CLI when the dependencies scanner errors (e.g. OSV network blips). Set `false` to keep any findings and print a warning instead of failing solely for transport errors |
 | `offline` | bool | `false` | Answer lookups from the local OSV database built by `sentinelflow db update` (no network); skips EPSS/KEV. CLI: `--offline` |
+| `offline_require_fresh` | bool | `false` | Require offline snapshots to have a known acquisition time and be no older than `offline_max_age`; missing, corrupt, unknown-age or stale evidence fails even when dependency transport errors are soft |
+| `offline_max_age` | duration | `720h` | Maximum snapshot age used when `offline_require_fresh` is enabled; accepts Go durations such as `24h` or `720h` |
 
 Default stays strict for security. Soft-fail is for flaky CI networks only — findings that were collected still go through `fail_on`.
 
-Go modules include **transitive** entries from `go.sum` (fixed versions). OSV queries use `/v1/querybatch` with retry/backoff and an on-disk cache.
+By default, Go inventory comes from declared `go.mod` requirements; `go.sum` is checksum evidence and is not treated as a selected transitive graph. The optional `go_module_graph` mode resolves selected modules with the Go tool. It is offline by default, and network access requires the explicit `go_module_graph_allow_network` option. This remains module metadata, not build- or artifact-specific inventory. OSV queries use `/v1/querybatch` with retry/backoff and a source/snapshot-namespaced cache.
 
 When lockfiles are present (`package-lock.json`, `npm-shrinkwrap.json`, `go.sum`, `poetry.lock`, `Pipfile.lock`, `Cargo.lock`, …), the scanner prefers them. Range-only manifests without a lockfile are best-effort / may query approximate versions.
 
@@ -225,7 +229,11 @@ scanners:
     ecosystems:
       - auto
     severity: medium
+    # go_module_graph: true  # opt in to selected module versions from `go list -m all`
+    # go_module_graph_allow_network: false  # graph mode is offline by default
     # fail_on_error: false  # optional: soft-skip OSV/network errors (default true)
+    # offline_require_fresh: true  # strict offline CI gate; implies offline mode
+    # offline_max_age: 720h       # 30 days; requires a scheduled db update
 
 policies:
   enabled: true

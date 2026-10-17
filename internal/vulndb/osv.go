@@ -2,11 +2,16 @@ package vulndb
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
+
+	"github.com/cozygarage/sentinelflow/pkg/api"
 )
 
 // OSVSource implements the OSV (Open Source Vulnerabilities) API
@@ -30,6 +35,24 @@ func NewOSVSource(client *http.Client) *OSVSource {
 
 func (s *OSVSource) Name() string {
 	return "osv"
+}
+
+// CacheIdentity isolates query results by the OSV endpoint and response contract.
+func (s *OSVSource) CacheIdentity(ctx context.Context, _ string) (string, error) {
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
+	endpointHash := sha256.Sum256([]byte(s.baseURL))
+	return "osv-query-v1:" + safeSourceURL(s.baseURL) + ":" + hex.EncodeToString(endpointHash[:]), nil
+}
+
+// ProvenanceFor identifies the live advisory service. OSV does not provide an
+// immutable database snapshot ID for these query responses.
+func (s *OSVSource) ProvenanceFor(ecosystem, status string) api.VulnerabilityDataSource {
+	return api.VulnerabilityDataSource{
+		Source: safeSourceURL(s.baseURL), Mode: "online", Ecosystem: ecosystem,
+		Supported: ecosystemSupported(ecosystem), Status: status,
+	}
 }
 
 // SetBaseURL overrides the OSV API base URL (for tests).
@@ -69,6 +92,7 @@ type OSVVulnerability struct {
 				Introduced   string `json:"introduced,omitempty"`
 				Fixed        string `json:"fixed,omitempty"`
 				LastAffected string `json:"last_affected,omitempty"`
+				Limit        string `json:"limit,omitempty"`
 			} `json:"events"`
 		} `json:"ranges"`
 		Versions []string `json:"versions,omitempty"`
@@ -86,6 +110,19 @@ type OSVVulnerability struct {
 	} `json:"references,omitempty"`
 	Aliases   []string `json:"aliases,omitempty"`
 	Withdrawn string   `json:"withdrawn,omitempty"`
+}
+
+// withdrawnAt reports whether an OSV advisory is withdrawn at the supplied
+// instant. OSV timestamps are RFC3339 and withdrawal is effective at that time.
+func withdrawnAt(raw string, now time.Time) (bool, error) {
+	if raw == "" {
+		return false, nil
+	}
+	withdrawn, err := time.Parse(time.RFC3339, raw)
+	if err != nil {
+		return false, err
+	}
+	return !now.Before(withdrawn), nil
 }
 
 // Query queries the OSV API for vulnerabilities
@@ -112,6 +149,13 @@ func (s *OSVSource) Query(ctx context.Context, ecosystem, pkg, version string) (
 
 	vulns := make([]Vulnerability, 0, len(osvResp.Vulns))
 	for _, osv := range osvResp.Vulns {
+		withdrawn, err := withdrawnAt(osv.Withdrawn, time.Now())
+		if err != nil {
+			return nil, fmt.Errorf("OSV advisory %s has invalid withdrawn timestamp: %w", osv.ID, err)
+		}
+		if withdrawn {
+			continue
+		}
 		vulns = append(vulns, osv.toVulnerability(pkg, ecosystem))
 	}
 

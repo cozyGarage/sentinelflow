@@ -107,9 +107,19 @@ type DependenciesConfig struct {
 	Severity   string   `yaml:"severity" mapstructure:"severity"`
 	IgnoreDev  bool     `yaml:"ignore_dev" mapstructure:"ignore_dev"`
 	IgnoreCVEs []string `yaml:"ignore_cves" mapstructure:"ignore_cves"`
+	// GoModuleGraph opts into the selected module graph from `go list -m all`.
+	GoModuleGraph bool `yaml:"go_module_graph" mapstructure:"go_module_graph"`
+	// GoModuleGraphAllowNetwork permits go list to use configured module proxies.
+	GoModuleGraphAllowNetwork bool `yaml:"go_module_graph_allow_network" mapstructure:"go_module_graph_allow_network"`
 	// Offline answers vulnerability lookups from the local OSV database built by
 	// `sentinelflow db update` and skips EPSS/KEV enrichment (no network).
 	Offline bool `yaml:"offline" mapstructure:"offline"`
+	// OfflineRequireFresh fails dependency lookups when the required local OSV
+	// snapshot is missing, corrupt, has unknown age, or exceeds OfflineMaxAge.
+	OfflineRequireFresh bool `yaml:"offline_require_fresh" mapstructure:"offline_require_fresh"`
+	// OfflineMaxAge is a Go duration (default 720h / 30 days) used when fresh
+	// offline evidence is required.
+	OfflineMaxAge string `yaml:"offline_max_age" mapstructure:"offline_max_age"`
 	// FailOnError fails the scan CLI when the dependencies scanner returns an
 	// error (e.g. OSV network blips). Default true. Set false to keep findings
 	// and report ScannerRun.Error without failing CI solely for transport errors.
@@ -307,6 +317,7 @@ func Default() *Config {
 				Severity:       "medium",
 				IgnoreDev:      false,
 				RiskEnrichment: true,
+				OfflineMaxAge:  "720h",
 			},
 			SAST: SASTConfig{
 				Enabled:     false,
@@ -390,6 +401,12 @@ func (c *Config) Validate() error {
 	c.Scanners.SAST.Severity = strings.ToLower(strings.TrimSpace(c.Scanners.SAST.Severity))
 	c.Scanners.Container.Severity = strings.ToLower(strings.TrimSpace(c.Scanners.Container.Severity))
 	c.Reporting.Format = strings.ToLower(strings.TrimSpace(c.Reporting.Format))
+	if c.Scanners.Dependencies.GoModuleGraphAllowNetwork && !c.Scanners.Dependencies.GoModuleGraph {
+		return fmt.Errorf("scanners.dependencies.go_module_graph_allow_network requires go_module_graph")
+	}
+	if (c.Scanners.Dependencies.Offline || c.Scanners.Dependencies.OfflineRequireFresh) && c.Scanners.Dependencies.GoModuleGraphAllowNetwork {
+		return fmt.Errorf("scanners.dependencies.go_module_graph_allow_network cannot be enabled in offline mode")
+	}
 
 	if !validSeverities[c.FailOn.Severity] {
 		return fmt.Errorf("invalid fail_on.severity %q (expected critical, high, medium, low, or info)", c.FailOn.Severity)
@@ -411,6 +428,9 @@ func (c *Config) Validate() error {
 	}
 	if c.Scanners.MaxFileSize < 0 {
 		return fmt.Errorf("scanners.max_file_size must be >= 0")
+	}
+	if _, err := c.OfflineMaxAgeDuration(); err != nil {
+		return err
 	}
 	for _, tool := range []struct {
 		name string
@@ -465,6 +485,24 @@ func (c *Config) Validate() error {
 	}
 
 	return nil
+}
+
+// OfflineMaxAgeDuration parses scanners.dependencies.offline_max_age. The
+// duration is validated even when strict freshness is disabled, so dormant
+// configuration cannot surprise a later CI policy change.
+func (c *Config) OfflineMaxAgeDuration() (time.Duration, error) {
+	raw := strings.TrimSpace(c.Scanners.Dependencies.OfflineMaxAge)
+	if raw == "" {
+		raw = "720h"
+	}
+	d, err := time.ParseDuration(raw)
+	if err != nil {
+		return 0, fmt.Errorf("invalid scanners.dependencies.offline_max_age %q (use Go duration, e.g. 720h, 24h)", raw)
+	}
+	if d <= 0 {
+		return 0, fmt.Errorf("scanners.dependencies.offline_max_age must be > 0")
+	}
+	return d, nil
 }
 
 // ScanTimeoutDuration parses scan_timeout (default 10m).
