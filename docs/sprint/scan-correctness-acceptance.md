@@ -1,6 +1,6 @@
 # Scan-correctness acceptance report
 
-**Status: INCOMPLETE — local implementation plus CI-coverage follow-up.** This branch includes dedicated SC-001 and SC-100 Actions checks and a core-evidence reconciler; these additions pass local checks. Hosted Actions and some real-tool evidence remain outstanding.
+**Status: INCOMPLETE — hosted and real-tool acceptance remains.** This branch includes dedicated SC-001 and SC-100 Actions checks and a core-evidence reconciler. Draft [PR #56](https://github.com/cozyGarage/sentinelflow/pull/56) is open. Hosted CI passed on superseded head `d42799dafc8aff753c11ee7e60f69caf5cd5753a`; the security workflow failed because the self-scan detected the long synthetic API-key marker in the regression source and the quoted marker in this report. The source marker is now shortened; this report is being corrected, and final hosted evidence must come from the resulting exact head.
 
 Prepared 2026-10-17. Repository: `/home/trung/Projects/sentinelflow`. Checked-out branch: `codex/scan-correctness-sprint`. Base HEAD: `cdd7cd7c390c65809fcd08e10dd0492360579565`. Previously validated implementation source: `3e128766b4e497136984bb0f9fbcafe9d91e7693`. The branch includes follow-up documentation and Actions coverage changes; no PR exists and GitHub Actions has not run on the branch.
 
@@ -10,7 +10,7 @@ Prepared 2026-10-17. Repository: `/home/trung/Projects/sentinelflow`. Checked-ou
 
 | ID | Status | Current evidence / remaining work |
 | --- | --- | --- |
-| SC-001 | Local baseline and named Actions check | Clean checkout check passed at `347dbeee6c3c3574e38933918e257056545aec03`; the job recorded that revision and Go 1.27.2. Hosted exact-checkout evidence remains pending. |
+| SC-001 | Local baseline and named Actions check | Clean checkout check passed at `347dbeee6c3c3574e38933918e257056545aec03`; hosted run [39046742855](https://github.com/cozyGarage/sentinelflow/actions/runs/39046742855) passed on superseded head `d42799dafc8aff753c11ee7e60f69caf5cd5753a` and recorded Go 1.27.2. Exact-final-head evidence remains pending. |
 | SC-002 | Local evidence | Fake tools cover findings then failure, truncation, clean completion, cancellation, args, baseline failures and cleanup; hosted selection pending. |
 | SC-003 | Local evidence | Inventory, identity, unknown, comparison and exit decisions are written in the plan/compatibility notes; hosted regression pending. |
 | SC-011 | Local evidence | Stale checksum version and captured OSV query tuple regressions pass. |
@@ -36,12 +36,12 @@ Prepared 2026-10-17. Repository: `/home/trung/Projects/sentinelflow`. Checked-ou
 | SC-091 | Local evidence | Built CLI checks clean `0`, finding `1`, operational `2`, deadline `3`, report and partial-result behavior. |
 | SC-092 | Local evidence | Built CLI times out after parseable tool output, writes partial report and returns `3`. |
 | SC-093 | Local evidence | Threshold plus incomplete baseline exits `2`; unknown reachability plus failed base scan retains risk. |
-| SC-094 | Configured; all local selectors and integration passed | `actionlint` passes; all 37 selector rows parsed from the current workflow matrix ran and matched tests through the zero-match guard; a deliberately nonexistent selector fails; tagged suite passed locally. Hosted CI pending. |
-| SC-095 | Partial real-tool qualification | Pinned govulncheck v1.9.0 passes local reachable/imported-only/absent and missing-module operational cases against synthetic inputs. Local PATH inventory found Semgrep, Gitleaks, Grype, Syft, Trivy and YARA missing; these remain unqualified. Hosted SC-095 pending. |
+| SC-094 | Configured; all local selectors and integration passed | `actionlint` passes; all 37 selector rows parsed from the current workflow matrix ran and matched tests through the zero-match guard; a deliberately nonexistent selector fails; tagged suite passed locally. Hosted run [39046742855](https://github.com/cozyGarage/sentinelflow/actions/runs/39046742855) passed on superseded head `d42799dafc8aff753c11ee7e60f69caf5cd5753a`; rerun on final head remains required. |
+| SC-095 | Partial real-tool qualification | Pinned govulncheck v1.9.0 passes local reachable/imported-only/absent and missing-module operational cases against synthetic inputs. Local PATH inventory found Semgrep, Gitleaks, Grype, Syft, Trivy and YARA missing; these remain unqualified. Hosted inventory on prior heads ran, but the overall security scan failed on the long synthetic API-key marker; final-head rerun pending. |
 | SC-097 | Local documentation | Go/npm, baseline/fingerprint, adapter, reachability and exit compatibility notes written; final code review and hosted checks pending. |
 | SC-098 | Local evidence | Failing-first tests showed diagnostic leakage in engine and text/JSON/SARIF output, including a pre-result VEX load error leaking a marker from the target path through CLI stderr. Engine, reporter, and top-level CLI scan errors now redact it; built-CLI marker checks pass. |
-| SC-099 | In progress | Local implementation revision and integrated gate results are recorded; hosted exact-commit Actions, PR link, and final acceptance remain absent. |
-| SC-100 | Draft and tested reconciliation check added | [Proposed next assignment](next-assignment.md) orders follow-up risks. `scripts/check-scan-sprint-docs.py` verifies all 32 core IDs have backlog rows, acceptance rows and named Actions coverage; four Python regressions cover valid docs, missing acceptance, missing job, and duplicate acceptance. The reconciliation suite passed on branch head `347dbeee6c3c3574e38933918e257056545aec03`. Hosted evidence and final reconciliation remain. |
+| SC-099 | In progress | Draft [PR #56](https://github.com/cozyGarage/sentinelflow/pull/56) is open. CI run [39046742855](https://github.com/cozyGarage/sentinelflow/actions/runs/39046742855) passed on superseded head `d42799dafc8aff753c11ee7e60f69caf5cd5753a`; final-head CI and security results remain required. |
+| SC-100 | Draft and tested reconciliation check added | [Proposed next assignment](next-assignment.md) orders follow-up risks. `scripts/check-scan-sprint-docs.py` verifies all 32 core IDs have backlog rows, acceptance rows and named Actions coverage; four Python regressions cover valid docs, missing acceptance, missing job, and duplicate acceptance. The reconciliation suite passed on branch head `347dbeee6c3c3574e38933918e257056545aec03`. Hosted reconciliation passed in run [39046742855](https://github.com/cozyGarage/sentinelflow/actions/runs/39046742855) on the superseded head; final-head evidence and reconciliation remain. |
 
 ## Commands observed locally
 
@@ -65,14 +65,14 @@ Commands below were rerun against implementation commit `3e128766b4e497136984bb0
 | Current `.github/workflows/ci.yml` `scan-correctness` matrix via `scripts/run-go-test-selector.sh` | Pass, 37 of 37 configured selector rows executed at least one passing test on the current source. The final rerun used `/home/trung/.cache/tmp` and loopback-enabled execution because `/tmp` quota and the default sandbox blocked temp writes and `httptest` listeners. This local selection audit does not replace hosted Actions. |
 | `python3 scripts/test_scan_sprint_docs.py`; `python3 scripts/check-scan-sprint-docs.py` | Pass: all four SC-100 positive/negative tests and the 32-ID positive audit pass locally. |
 | SC-001 clean-checkout baseline step | Pass at `347dbeee6c3c3574e38933918e257056545aec03`: worktree clean, revision recorded, and `go version` reported Go 1.27.2 linux/amd64. |
-| Built CLI `TestSC091_BuiltCLIExitAndPartialReport/pre-result_engine_error_redacts_sensitive_target_path` | Failing-first: missing VEX file exposed `api_key=SENTINELFLOW_SECRET_MARKER` on stderr. After redacting top-level engine errors, the CLI returns exit `2`, omits the marker, and retains a useful redacted `load VEX` reason. |
+| Built CLI `TestSC091_BuiltCLIExitAndPartialReport/pre-result_engine_error_redacts_sensitive_target_path` | Failing-first: a missing VEX file exposed a synthetic API-key marker on stderr. After redacting top-level engine errors, the CLI returns exit `2`, omits the short marker, and retains a useful redacted `load VEX` reason. The short marker avoids triggering the repository's own secret scan. |
 | `test -z "$(gofmt -l .)"` | Pass after formatting the Go fixture modules. |
 
 The Go race suite, vet, tagged integration suite, pinned govulncheck fixture and all 37 test selectors passed against implementation source commit `3e128766b4e497136984bb0f9fbcafe9d91e7693`. Follow-up changes add named SC-001 and SC-100 jobs and the documentation reconciler; the SC-100 four-case test suite, 32-ID audit, actionlint, and SC-001 clean-checkout/toolchain step also pass locally. No Go source changed after the cited implementation commit. No claim is made about hosted Actions.
 
 ## Hosted and upstream-tool evidence
 
-- Hosted Actions: **not run**. The local commit has not been pushed. No PR exists. Do not infer a hosted result from local checks.
+- Hosted Actions: initial CI passed at superseded head `d42799dafc8aff753c11ee7e60f69caf5cd5753a` in [run 39046742855](https://github.com/cozyGarage/sentinelflow/actions/runs/39046742855). The security workflow failed at that head and again at `f213e71655aa0318a5db1c14276cc26ae5967669` because the self-scan found the long synthetic API-key marker in the test source and then its quoted value here. Both source and report markers are now corrected; the final-head rerun is pending.
 - Real tools: **partially qualified**. Pinned govulncheck v1.9.0 passed the synthetic local fixture qualification; Semgrep, Gitleaks, Grype, Syft, Trivy and YARA remain unqualified. See [real-tool-qualification.md](real-tool-qualification.md). Fake executable tests validate SentinelFlow behavior only.
 - Integration tests: one local tagged run passed; it does not replace the final exact-head run or hosted job.
 

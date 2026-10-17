@@ -1,6 +1,6 @@
 # Scan correctness work package
 
-**Status: in progress.** The 32-item scan-correctness core has implementation and local regression evidence on branch `codex/scan-correctness-sprint`. SC-001's exact-checkout baseline and SC-100's 32-ID reconciliation checks are configured and passed locally. No PR is open and no hosted Action result exists yet; this package is not an acceptance or release claim.
+**Status: in progress.** The 32-item scan-correctness core has implementation and local regression evidence on branch `codex/scan-correctness-sprint`. Draft [PR #56](https://github.com/cozyGarage/sentinelflow/pull/56) is open. CI passed on the initial PR head; later security scans found the long synthetic API-key marker quoted in the test and acceptance report. The test marker is corrected, and the acceptance-report correction is queued for the next hosted run. This package is not an acceptance or release claim.
 
 This package develops the readiness review into one developer's **14-working-day plan** and a **100-item assignment backlog**. The core is 32 dependency-ordered items; the other 68 are follow-up work, not extra scope for the same timebox.
 
@@ -21,6 +21,6 @@ Locally, the full race suite, `go vet`, tagged integration tests, actionlint, al
 
 `SC-095` is partial: pinned govulncheck behavior is qualified locally; Semgrep, Gitleaks, Grype, Syft, Trivy and YARA were unavailable locally and remain unqualified. The hosted inventory job reports what is available but does not install or qualify those scanners. Keep unavailable-tool evidence explicit.
 
-The CI workflow runs on pull requests targeting `main` or `develop`, pushes to `main`, and manual dispatch. The sprint branch has not been pushed and no PR exists. To obtain hosted evidence for the final branch, push it and open a PR; do not mark core items complete based on local checks alone. SC-099 and SC-100 remain open until exact-revision hosted results and the final reconciliation are recorded.
+The CI workflow runs on pull requests targeting `main` or `develop`, pushes to `main`, and manual dispatch. Hosted evidence is recorded per exact head in the acceptance report; runs on superseded heads do not close SC-099 or SC-100. The PR remains a draft while hosted checks and remaining real-tool acceptance are resolved.
 
 For assignment, retain the backlog dependencies and attach the reproducer, positive control, failing-first result, named local/hosted evidence, compatibility impact, and unresolved boundaries. The backlog is the acceptance source of truth; this README is the compact status index.
