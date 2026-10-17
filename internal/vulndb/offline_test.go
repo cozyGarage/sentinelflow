@@ -278,6 +278,50 @@ func TestSC082_OfflineCacheHitRechecksFreshness(t *testing.T) {
 	}
 }
 
+func TestSC090_OfflineCacheIsolatedBySnapshotIdentity(t *testing.T) {
+	cache := NewMemoryCache()
+	writeIndex := func(dir, snapshot, id string) {
+		t.Helper()
+		if err := os.MkdirAll(dir, 0700); err != nil {
+			t.Fatal(err)
+		}
+		idx := offlineIndex{
+			SchemaVersion: 1, SnapshotID: snapshot, AcquiredAt: time.Now().UTC(),
+			Packages: map[string]json.RawMessage{"example.com/lib": json.RawMessage(`[{"id":"` + id + `","affected":[{"versions":["1.0.0"]}]}]`)},
+		}
+		f, err := os.Create(filepath.Join(dir, "go.json.gz"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		gz := gzip.NewWriter(f)
+		if err := json.NewEncoder(gz).Encode(idx); err != nil {
+			t.Fatal(err)
+		}
+		if err := gz.Close(); err != nil {
+			t.Fatal(err)
+		}
+		if err := f.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	firstDir, secondDir := t.TempDir(), t.TempDir()
+	writeIndex(firstDir, "sha256:snapshot-a", "OSV-A")
+	writeIndex(secondDir, "sha256:snapshot-b", "OSV-B")
+	for _, tc := range []struct {
+		dir  string
+		want string
+	}{{firstDir, "OSV-A"}, {secondDir, "OSV-B"}} {
+		client, err := NewClient(WithSources(NewOfflineSource(tc.dir)), WithCache(cache))
+		if err != nil {
+			t.Fatal(err)
+		}
+		vulns, err := client.Query(context.Background(), "go", "example.com/lib", "1.0.0")
+		if err != nil || len(vulns) != 1 || vulns[0].ID != tc.want {
+			t.Fatalf("snapshot query got %+v, %v; want %s", vulns, err, tc.want)
+		}
+	}
+}
+
 func TestAffects(t *testing.T) {
 	// Two windows: [1.0, 1.2) and [2.0, 2.1], plus a last_affected bound.
 	events := []rangeEvent{{Introduced: "2.0"}, {Fixed: "1.2"}, {Introduced: "1.0"}, {LastAffected: "2.1"}}

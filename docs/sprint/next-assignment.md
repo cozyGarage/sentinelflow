@@ -14,7 +14,7 @@ SC-071–SC-075 are merged in [PR #58](https://github.com/cozyGarage/sentinelflo
 
 ## Active follow-up: vulnerability data quality (SC-081–SC-090)
 
-The current branch implements SC-081 provenance, SC-082 freshness, SC-083 comparator capability, SC-084 GIT range uncertainty, SC-085 OSV interval/withdrawal semantics, SC-086 online/offline fixture parity, SC-087 bounded atomic offline database updates, SC-088 aligned batch-query partial results, and SC-089 KEV/EPSS completeness behavior. Local full/race/vet/workflow/docs gates pass for these nine slices; PR and hosted checks remain pending. The next dependency-ready item is SC-090: isolate lookup cache identity and ensure failures or partial answers never become clean cached results. Online sources without immutable snapshot IDs and cross-run cache entries without stored origin remain explicit provenance limits.
+The current branch implements and locally validates SC-081 through SC-090: vulnerability-data provenance, offline freshness, comparator support, unsupported GIT uncertainty, OSV boundaries/withdrawals, online/offline parity, bounded atomic updates, aligned partial batch results, KEV/EPSS completeness, and cache isolation. Full local gates pass for all ten slices; PR and hosted checks remain pending. The next batch is inventory depth and coverage (SC-015–SC-018, SC-025–SC-030, SC-065–SC-070), starting with measured Go workspace/module inventory and explicit coverage accounting. Preserve the existing caveat that current Go inventory does not establish a resolved transitive package graph.
 
 ## Subsequent batches
 

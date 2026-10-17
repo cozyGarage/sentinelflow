@@ -1,0 +1,5 @@
+# Lookup cache isolation
+
+SC-090 namespaces query cache entries with a versioned hash of the complete lookup tuple and configured source identities. The tuple includes ecosystem, package, and exact version. OSV endpoint identity includes its sanitized base URL plus a hash of the full configured URL (so query credentials are not exposed); offline identity includes index schema and snapshot ID, with a content hash fallback for legacy indexes lacking a snapshot ID. Custom sources can implement `CacheIdentity(context.Context, ecosystem)` when configuration changes their answer set.
+
+Offline cache identity loads and validates the index before attempting a cache hit. A refreshed snapshot therefore uses a distinct key, while an already loaded `OfflineSource` instance retains its current in-memory snapshot. Corrupt cache files behave as misses and are replaced only after a successful complete lookup. Disk cache replacement uses a same-directory temporary file and atomic rename so concurrent readers see complete entries. Partial results and failed lookups remain uncached under SC-088.

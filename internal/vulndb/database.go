@@ -3,6 +3,9 @@ package vulndb
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -151,7 +154,13 @@ func ecosystemSupported(ecosystem string) bool {
 // Query searches for vulnerabilities across all sources
 func (c *Client) Query(ctx context.Context, ecosystem, pkg, version string) ([]Vulnerability, error) {
 	// Check cache first
-	cacheKey := cacheKey(ecosystem, pkg, version)
+	cacheKey, err := c.cacheKey(ctx, ecosystem, pkg, version)
+	if err != nil {
+		for _, source := range c.sources {
+			c.recordSource(source, ecosystem, "error")
+		}
+		return nil, fmt.Errorf("prepare vulnerability lookup: %w", err)
+	}
 	if vulns, err := c.cache.Get(cacheKey); err == nil {
 		if err := c.checkSourceFreshness(ecosystem); err != nil {
 			c.recordOfflineFreshnessFailure(ecosystem)
@@ -202,8 +211,32 @@ func (c *Client) Query(ctx context.Context, ecosystem, pkg, version string) ([]V
 	return allVulns, nil
 }
 
-func cacheKey(ecosystem, pkg, version string) string {
-	return fmt.Sprintf("%s:%s:%s", ecosystem, pkg, version)
+type cacheIdentitySource interface {
+	CacheIdentity(context.Context, string) (string, error)
+}
+
+func (c *Client) cacheKey(ctx context.Context, ecosystem, pkg, version string) (string, error) {
+	identities := make([]string, 0, len(c.sources))
+	for _, source := range c.sources {
+		identity := fmt.Sprintf("%T:%s", source, source.Name())
+		if provider, ok := source.(cacheIdentitySource); ok {
+			customIdentity, err := provider.CacheIdentity(ctx, ecosystem)
+			if err != nil {
+				return "", err
+			}
+			identity += ":" + customIdentity
+		}
+		identities = append(identities, identity)
+	}
+	sort.Strings(identities)
+	parts := append([]string{"sentinelflow-vulnerability-cache-v2"}, identities...)
+	parts = append(parts, ecosystem, pkg, version)
+	encoded, err := json.Marshal(parts)
+	if err != nil {
+		return "", err
+	}
+	sum := sha256.Sum256(encoded)
+	return "v2-" + hex.EncodeToString(sum[:]), nil
 }
 
 // PackageQuery identifies one package version to look up.
@@ -223,9 +256,17 @@ type batchSource interface {
 // go through one batched lookup when the only source supports batching.
 func (c *Client) QueryMany(ctx context.Context, qs []PackageQuery) ([][]Vulnerability, error) {
 	out := make([][]Vulnerability, len(qs))
+	keys := make([]string, len(qs))
+	for i, q := range qs {
+		key, err := c.cacheKey(ctx, q.Ecosystem, q.Name, q.Version)
+		if err != nil {
+			return out, fmt.Errorf("prepare vulnerability lookup for %s/%s@%s: %w", q.Ecosystem, q.Name, q.Version, err)
+		}
+		keys[i] = key
+	}
 	var miss []int
 	for i, q := range qs {
-		if vulns, err := c.cache.Get(cacheKey(q.Ecosystem, q.Name, q.Version)); err == nil {
+		if vulns, err := c.cache.Get(keys[i]); err == nil {
 			if err := c.checkSourceFreshness(q.Ecosystem); err != nil {
 				c.recordOfflineFreshnessFailure(q.Ecosystem)
 				return nil, err
@@ -270,7 +311,7 @@ func (c *Client) QueryMany(ctx context.Context, qs []PackageQuery) ([][]Vulnerab
 		// QueryBatch only returns a prefix of complete, aligned chunks on error.
 		if len(hits) <= len(miss) {
 			details, detailErr := fetchVulns(ctx, bs, hits)
-			out = attachBatchResults(out, miss, hits, details, qs, c.cache, detailErr == nil)
+			out = attachBatchResults(out, miss, hits, details, qs, keys, c.cache, detailErr == nil)
 			if detailErr != nil {
 				err = errors.Join(err, detailErr)
 			}
@@ -290,17 +331,17 @@ func (c *Client) QueryMany(ctx context.Context, qs []PackageQuery) ([][]Vulnerab
 		for _, i := range miss {
 			c.recordSource(c.sources[0], qs[i].Ecosystem, "partial")
 		}
-		out = attachBatchResults(out, miss, hits, details, qs, c.cache, false)
+		out = attachBatchResults(out, miss, hits, details, qs, keys, c.cache, false)
 		return out, err
 	}
 	for _, i := range miss {
 		c.recordSource(c.sources[0], qs[i].Ecosystem, "available")
 	}
-	out = attachBatchResults(out, miss, hits, details, qs, c.cache, true)
+	out = attachBatchResults(out, miss, hits, details, qs, keys, c.cache, true)
 	return out, nil
 }
 
-func attachBatchResults(out [][]Vulnerability, miss []int, hits [][]OSVVulnerability, details map[string]OSVVulnerability, qs []PackageQuery, cache Cache, cacheComplete bool) [][]Vulnerability {
+func attachBatchResults(out [][]Vulnerability, miss []int, hits [][]OSVVulnerability, details map[string]OSVVulnerability, qs []PackageQuery, keys []string, cache Cache, cacheComplete bool) [][]Vulnerability {
 	for j, i := range miss {
 		if j >= len(hits) {
 			break
@@ -318,7 +359,7 @@ func attachBatchResults(out [][]Vulnerability, miss []int, hits [][]OSVVulnerabi
 		}
 		out[i] = vulns
 		if cacheComplete && complete {
-			_ = cache.Set(cacheKey(q.Ecosystem, q.Name, q.Version), vulns, 24*time.Hour)
+			_ = cache.Set(keys[i], vulns, 24*time.Hour)
 		}
 	}
 	return out

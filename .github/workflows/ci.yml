@@ -126,6 +126,18 @@ jobs:
           - id: SC-089
             package: ./internal/scanner
             test: TestSC089_KEVLookupIsNeededOnlyForCVEFindings
+          - id: SC-090
+            package: ./internal/vulndb
+            test: TestSC090_CacheIsolatedByConfiguredSourceIdentity
+          - id: SC-090
+            package: ./internal/vulndb
+            test: TestSC090_OfflineCacheIsolatedBySnapshotIdentity
+          - id: SC-090
+            package: ./internal/vulndb
+            test: TestSC090_CorruptCacheEntryIsReplacedAfterSuccessfulLookup
+          - id: SC-090
+            package: ./internal/vulndb
+            test: TestSC090_DiskCacheConcurrentReadersObserveCompleteEntries
           - id: SC-076
             package: ./internal/scanner
             test: TestSC076_SuppressedObservationsRetainSafeProvenance

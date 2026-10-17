@@ -335,6 +335,7 @@ type OfflineSource struct {
 	dir       string
 	mu        sync.Mutex
 	index     map[string]map[string]json.RawMessage
+	cacheIDs  map[string]string
 	snapshots map[string]api.VulnerabilityDataSource
 	maxAge    time.Duration
 	now       func() time.Time
@@ -345,10 +346,24 @@ func NewOfflineSource(dir string) *OfflineSource {
 	if dir == "" {
 		dir = OfflineDir()
 	}
-	return &OfflineSource{dir: dir, index: map[string]map[string]json.RawMessage{}, snapshots: map[string]api.VulnerabilityDataSource{}, now: time.Now}
+	return &OfflineSource{dir: dir, index: map[string]map[string]json.RawMessage{}, cacheIDs: map[string]string{}, snapshots: map[string]api.VulnerabilityDataSource{}, now: time.Now}
 }
 
 func (s *OfflineSource) Name() string { return "osv-offline" }
+
+// CacheIdentity loads snapshot metadata so cached answers cannot cross an
+// offline database refresh or schema change.
+func (s *OfflineSource) CacheIdentity(ctx context.Context, ecosystem string) (string, error) {
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
+	if _, err := s.load(ecosystem); err != nil {
+		return "", err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.cacheIDs[ecosystem], nil
+}
 
 func (s *OfflineSource) load(eco string) (map[string]json.RawMessage, error) {
 	s.mu.Lock()
@@ -380,6 +395,7 @@ func (s *OfflineSource) load(eco string) (map[string]json.RawMessage, error) {
 		return nil, fmt.Errorf("offline database for %s is corrupt: %w", eco, err)
 	}
 	s.index[eco] = idx.Packages
+	s.cacheIDs[eco] = fmt.Sprintf("offline-schema-%d:%s", idx.SchemaVersion, offlineIndexIdentity(idx))
 	acquiredAt := indexAcquiredAt(idx)
 	var acquired *time.Time
 	if !acquiredAt.IsZero() {
@@ -400,6 +416,25 @@ func (s *OfflineSource) load(eco string) (map[string]json.RawMessage, error) {
 		return nil, err
 	}
 	return idx.Packages, nil
+}
+
+func offlineIndexIdentity(idx offlineIndex) string {
+	if idx.SnapshotID != "" {
+		return idx.SnapshotID
+	}
+	keys := make([]string, 0, len(idx.Packages))
+	for key := range idx.Packages {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	h := sha256.New()
+	for _, key := range keys {
+		_, _ = io.WriteString(h, key)
+		_, _ = h.Write([]byte{0})
+		_, _ = h.Write(idx.Packages[key])
+		_, _ = h.Write([]byte{0})
+	}
+	return "sha256:" + hex.EncodeToString(h.Sum(nil))
 }
 
 func (s *OfflineSource) validateFreshness(eco string) error {

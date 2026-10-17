@@ -2,6 +2,8 @@ package vulndb
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -33,6 +35,15 @@ func NewOSVSource(client *http.Client) *OSVSource {
 
 func (s *OSVSource) Name() string {
 	return "osv"
+}
+
+// CacheIdentity isolates query results by the OSV endpoint and response contract.
+func (s *OSVSource) CacheIdentity(ctx context.Context, _ string) (string, error) {
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
+	endpointHash := sha256.Sum256([]byte(s.baseURL))
+	return "osv-query-v1:" + safeSourceURL(s.baseURL) + ":" + hex.EncodeToString(endpointHash[:]), nil
 }
 
 // ProvenanceFor identifies the live advisory service. OSV does not provide an
