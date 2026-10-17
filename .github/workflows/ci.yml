@@ -87,6 +87,9 @@ jobs:
           - id: SC-085
             package: ./internal/vulndb
             test: TestSC085_LimitSurvivesOSVDecodeAndOfflineEvaluation
+          - id: SC-086
+            package: ./internal/vulndb
+            test: TestSC086_OnlineOfflineParityAgainstSameAdvisoryFixture
           - id: SC-076
             package: ./internal/scanner
             test: TestSC076_SuppressedObservationsRetainSafeProvenance
