@@ -1,6 +1,6 @@
 # Proposed follow-up assignment
 
-Status: **draft for post-sprint assignment**. This does not close SC-100 or imply organizational rollout readiness. Refresh it after the scan-correctness acceptance report is complete.
+Status: **SC-100 handoff prepared**. This orders the next work after the scan-correctness core. It does not imply organizational rollout readiness; confirm pilot scope and assign an owner when starting the follow-up.
 
 ## First follow-up: explicit scan outcome and coverage (SC-004–SC-006)
 

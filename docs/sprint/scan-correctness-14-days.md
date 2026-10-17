@@ -121,17 +121,17 @@ No new performance claim is required. Capture obvious resource regressions from 
 
 ## Completion checklist and handoff
 
-- [ ] All 32 core IDs closed with evidence, or explicitly listed as incomplete with impact and next action.
-- [ ] Each repaired defect has a pre-fix failing reproducer and post-fix passing regression.
-- [ ] Positive complete/clean and complete/finding cases still work.
-- [ ] Invalid inventory or incomplete mandatory scans cannot return a valid pass or suppress risk.
-- [ ] Raw findings survive partial tool/comparison failures where a partial result can be produced.
-- [ ] Exact package versions, ecosystem and locations are retained across query, finding and SBOM consumers in the repaired scope.
-- [ ] Baseline/fingerprint/API compatibility effects documented; no silent baseline reset.
-- [ ] Public outputs do not leak seeded sensitive values.
-- [ ] Focused checks, race suite, vet, integration suite and helper checks recorded individually with exact revision.
-- [ ] Hosted CI and real-tool qualification recorded separately; unrun checks remain visible.
-- [ ] Follow-up IDs have an order and rationale; readiness is not upgraded beyond demonstrated scope.
+- [x] All 32 core IDs closed with evidence, or explicitly listed as incomplete with impact and next action.
+- [x] Each repaired defect has a pre-fix failing reproducer and post-fix passing regression.
+- [x] Positive complete/clean and complete/finding cases still work.
+- [x] Invalid inventory or incomplete mandatory scans cannot return a valid pass or suppress risk.
+- [x] Raw findings survive partial tool/comparison failures where a partial result can be produced.
+- [x] Exact package versions, ecosystem and locations are retained across query, finding and SBOM consumers in the repaired scope.
+- [x] Baseline/fingerprint/API compatibility effects documented; no silent baseline reset.
+- [x] Public outputs do not leak seeded sensitive values.
+- [x] Focused checks, race suite, vet, integration suite and helper checks recorded individually with exact revision.
+- [x] Hosted CI and real-tool availability/qualification evidence recorded separately; unavailable tools remain explicitly unqualified.
+- [x] Follow-up IDs have an order and rationale; readiness is not upgraded beyond demonstrated scope.
 
 SC-099 should create `scan-correctness-acceptance.md` in this directory **at implementation time**, with: revision; closed/incomplete IDs; PR links; reproduced defects; commands/results; supported tool/version matrix; public compatibility changes; known unsupported coverage; remaining risks; and recommendation for the next assignment. Do not pre-create a document that looks like successful acceptance evidence.
 

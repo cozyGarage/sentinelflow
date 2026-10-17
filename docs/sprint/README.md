@@ -1,6 +1,6 @@
 # Scan correctness work package
 
-**Status: in progress.** The 32-item scan-correctness core has implementation and local regression evidence on branch `codex/scan-correctness-sprint`. Draft [PR #56](https://github.com/cozyGarage/sentinelflow/pull/56) is open. CI and the security workflow passed on head `04edb9ea63808902422804c7c5f9a328e85d54bc`; the security scan exposed a long synthetic API-key marker in the new test and acceptance report, which has been shortened. This report update will trigger another PR run; use the PR checks page for the current exact-head result. SC-095 and overall sprint acceptance remain open.
+**Status: acceptance reconciliation in progress.** The 32-item core implementation and exact-head CI/security gates pass on `43edb9ea63808902422804c7c5f9a328e85d54bc`: [CI](https://github.com/cozyGarage/sentinelflow/actions/runs/39047307186) and [security](https://github.com/cozyGarage/sentinelflow/actions/runs/39047307188). Draft [PR #56](https://github.com/cozyGarage/sentinelflow/pull/56) is open. SC-095 is resolved within its stated acceptance boundary: pinned govulncheck fixtures passed; six optional tools are absent on both local and hosted inventories and remain explicitly unqualified. This is not a claim of organization-wide scanner readiness. The current PR checks page is authoritative after acceptance docs change.
 
 This package develops the readiness review into one developer's **14-working-day plan** and a **100-item assignment backlog**. The core is 32 dependency-ordered items; the other 68 are follow-up work, not extra scope for the same timebox.
 
@@ -19,8 +19,8 @@ The workflow has a named regression row for every core ID. `SC-001` records the 
 
 Locally, the full race suite, `go vet`, tagged integration tests, actionlint, all 37 selector rows, pinned govulncheck synthetic fixtures, and helper tests passed. The Go cache is under `/home/trung/.cache`; temporary files must remain outside the repository so Git metadata tests do not discover the checkout as their temp directory. See the acceptance report for exact commands, revisions and evidence qualifications.
 
-`SC-095` is partial: pinned govulncheck behavior is qualified locally; Semgrep, Gitleaks, Grype, Syft, Trivy and YARA were unavailable locally and remain unqualified. The hosted inventory job reports what is available but does not install or qualify those scanners. Keep unavailable-tool evidence explicit.
+`SC-095` is resolved under its documented boundary: pinned govulncheck behavior is qualified against synthetic fixtures, and Semgrep, Gitleaks, Grype, Syft, Trivy and YARA are explicitly marked unavailable and unqualified in local and hosted inventories. This does not qualify those integrations or support an organization-wide readiness claim.
 
-The CI workflow runs on pull requests targeting `main` or `develop`, pushes to `main`, and manual dispatch. Hosted evidence is recorded per exact head in the acceptance report; runs on superseded heads do not close SC-099 or SC-100. The PR remains a draft while hosted checks and remaining real-tool acceptance are resolved.
+The CI workflow runs on pull requests targeting `main` or `develop`, pushes to `main`, and manual dispatch. Hosted evidence is recorded per exact head in the acceptance report; runs on superseded heads do not close SC-099 or SC-100. The PR remains a draft until the final acceptance-report change is verified and reviewed.
 
 For assignment, retain the backlog dependencies and attach the reproducer, positive control, failing-first result, named local/hosted evidence, compatibility impact, and unresolved boundaries. The backlog is the acceptance source of truth; this README is the compact status index.
