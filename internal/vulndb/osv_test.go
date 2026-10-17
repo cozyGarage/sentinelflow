@@ -39,3 +39,15 @@ func TestNormalizeOSVSeverity(t *testing.T) {
 		t.Fatalf("got %s", got)
 	}
 }
+
+func TestSC074_OSVAliasesSurviveNormalization(t *testing.T) {
+	osv := OSVVulnerability{ID: "OSV-1", Aliases: []string{"GHSA-aaaa", "CVE-2024-0001"}}
+	got := osv.toVulnerability("lodash", "npm")
+	if len(got.Aliases) != 2 || got.Aliases[0] != "GHSA-aaaa" || got.Aliases[1] != "CVE-2024-0001" {
+		t.Fatalf("aliases lost during OSV normalization: %+v", got)
+	}
+	got.Aliases[0] = "mutated"
+	if osv.Aliases[0] != "GHSA-aaaa" {
+		t.Fatal("normalized aliases must not mutate the source record")
+	}
+}

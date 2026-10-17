@@ -27,7 +27,8 @@ type Config struct {
 	DiffBase    string         `yaml:"diff_base" mapstructure:"diff_base"`
 	// VEX lists OpenVEX documents (relative to the scan root) whose
 	// not_affected/fixed statements suppress matching findings.
-	VEX []string `yaml:"vex" mapstructure:"vex"`
+	VEX           []string `yaml:"vex" mapstructure:"vex"`
+	VEXAllowBroad bool     `yaml:"vex_allow_broad" mapstructure:"vex_allow_broad"`
 }
 
 // ScannersConfig contains settings for all scanners

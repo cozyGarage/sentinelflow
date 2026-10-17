@@ -34,6 +34,25 @@ func TestValidateAcceptsDefaults(t *testing.T) {
 	}
 }
 
+func TestVEXBroadScopeRequiresExplicitConfig(t *testing.T) {
+	cfg := Default()
+	if cfg.VEXAllowBroad {
+		t.Fatal("broad VEX scope must be opt-in")
+	}
+	dir := t.TempDir()
+	path := filepath.Join(dir, ".sentinelflow.yaml")
+	if err := os.WriteFile(path, []byte("vex_allow_broad: true\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := LoadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !loaded.VEXAllowBroad {
+		t.Fatal("explicit vex_allow_broad must load")
+	}
+}
+
 func TestValidateNormalizesFailOnSeverity(t *testing.T) {
 	cfg := Default()
 	cfg.FailOn.Severity = "HIGH"

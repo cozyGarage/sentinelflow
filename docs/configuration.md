@@ -169,11 +169,12 @@ CLI overrides: `--fail-on high`, `--fail-on-kev`
 
 ## VEX (`vex`)
 
-A list of [OpenVEX](https://github.com/openvex/spec) documents, relative to the scan root. Statements with status `not_affected` or `fixed` suppress findings whose CVE or OSV/GHSA ID matches. If a statement lists `products` (purls such as `pkg:golang/github.com/foo/bar@v1.2.3`), it only applies to dependency findings for that package (and version, when given). Suppressed counts appear in the report summary.
+A list of [OpenVEX](https://github.com/openvex/spec) documents, relative to the scan root. Statements with status `not_affected` or `fixed` suppress findings only when both vulnerability identity and supported package identity match. PURL ecosystem/type is part of identity. Supported PURL types currently map `golang`, `npm`, `maven`, `pypi`, `cargo`, `nuget`, `gem`, and `composer` to SentinelFlow dependency ecosystems. PURLs with qualifiers or subpaths are rejected until finding metadata can prove those attributes; unsupported or malformed products fail the scan instead of widening scope. Product-free statements and versionless products are rejected by default. Set `vex_allow_broad: true` only to explicitly authorize global or any-version suppressions; this setting is repository configuration and is not independent approval. OSV aliases are retained for matching CVE/GHSA/OSV identifiers, always within the matched package scope. Suppressed counts appear in the report summary.
 
 ```yaml
 vex:
   - .sentinelflow/vex.openvex.json
+vex_allow_broad: false
 ```
 
 CLI: `--vex file.json` (repeatable).

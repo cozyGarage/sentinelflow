@@ -262,7 +262,7 @@ func (e *Engine) Scan(ctx context.Context, targetPath string) (*api.ScanResult, 
 			}
 			paths[i] = p
 		}
-		rules, err := vex.Load(paths)
+		rules, err := vex.LoadWithOptions(paths, vex.LoadOptions{AllowBroad: e.config.VEXAllowBroad})
 		if err != nil {
 			markPostProcessFailure(result, startTime, "vex", err)
 			return result, fmt.Errorf("load VEX: %w", err)

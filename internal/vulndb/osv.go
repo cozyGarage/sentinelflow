@@ -122,6 +122,7 @@ func (s *OSVSource) Query(ctx context.Context, ecosystem, pkg, version string) (
 func (osv OSVVulnerability) toVulnerability(pkg, ecosystem string) Vulnerability {
 	v := Vulnerability{
 		ID:        osv.ID,
+		Aliases:   append([]string(nil), osv.Aliases...),
 		Package:   pkg,
 		Ecosystem: ecosystem,
 		Summary:   osv.Summary,
