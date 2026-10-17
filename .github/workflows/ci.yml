@@ -153,6 +153,9 @@ jobs:
           - id: SC-016
             package: ./internal/scanner/dependencies
             test: TestSC016_VersionedReplacementQueriesBothCoordinatesAndRetainsDeclaration
+          - id: SC-017
+            package: ./internal/scanner/dependencies
+            test: TestSC017_LocalAndUnversionedReplacementsFailWithoutRegistryIdentity
           - id: SC-076
             package: ./internal/scanner
             test: TestSC076_SuppressedObservationsRetainSafeProvenance

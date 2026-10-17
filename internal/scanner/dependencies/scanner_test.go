@@ -278,6 +278,37 @@ printf '%s\n' '{"Path":"example.com/root","Main":true}' '{"Path":"example.com/li
 	}
 }
 
+func TestSC017_LocalAndUnversionedReplacementsFailWithoutRegistryIdentity(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		replace   string
+		wantError string
+	}{
+		{name: "nested local", replace: "replace example.com/lib => ./vendor/lib", wantError: "local replacements are not yet supported"},
+		{name: "outside root", replace: "replace example.com/lib => ../shared/lib", wantError: "local replacements are not yet supported"},
+		{name: "unversioned module path", replace: "replace example.com/lib => example.com/fork/lib", wantError: "replacement module without version must be directory path"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			root := t.TempDir()
+			content := "module example.com/root\n\ngo 1.22\n\nrequire example.com/lib v1.2.0\n" + tc.replace + "\n"
+			if err := os.WriteFile(filepath.Join(root, "go.mod"), []byte(content), 0600); err != nil {
+				t.Fatal(err)
+			}
+			fake := filepath.Join(root, "fake-go")
+			if err := os.WriteFile(fake, []byte("#!/bin/sh\nexit 99\n"), 0700); err != nil {
+				t.Fatal(err)
+			}
+			deps, err := (&GoModScanner{ResolveGraph: true, goCommand: fake}).Scan(context.Background(), root)
+			if err == nil || !strings.Contains(err.Error(), tc.wantError) {
+				t.Fatalf("replacement should fail with explicit unresolved coverage, deps=%+v err=%v", deps, err)
+			}
+			if len(deps) != 0 || strings.Contains(err.Error(), "exit status 99") {
+				t.Fatalf("must not invent a registry identity or execute graph resolution: deps=%+v err=%v", deps, err)
+			}
+		})
+	}
+}
+
 func TestSC011_GoInventoryUsesSelectedGoModRequirement(t *testing.T) {
 	tmp := t.TempDir()
 	if err := os.WriteFile(filepath.Join(tmp, "go.mod"), []byte("module example.com/demo\n\ngo 1.22\n\nrequire (\n\tgithub.com/acme/lib v1.2.0 // indirect\n)\n"), 0644); err != nil {
