@@ -14,6 +14,7 @@ import (
 	"github.com/cozygarage/sentinelflow/internal/config"
 	"github.com/cozygarage/sentinelflow/internal/reporter"
 	"github.com/cozygarage/sentinelflow/internal/scanner"
+	"github.com/cozygarage/sentinelflow/internal/scanner/redact"
 	"github.com/cozygarage/sentinelflow/pkg/api"
 )
 
@@ -181,12 +182,15 @@ func runScan(cmd *cobra.Command, args []string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
-	result, err := engine.Scan(ctx, absPath)
-	if err != nil {
+	result, scanErr := engine.Scan(ctx, absPath)
+	if result == nil && scanErr != nil {
 		if ctx.Err() == context.DeadlineExceeded {
-			return api.ErrTimeout(fmt.Sprintf("scan timed out after %s: %v", timeout, err))
+			return api.ErrTimeout(fmt.Sprintf("scan timed out after %s: %s", timeout, redact.Line(scanErr.Error())))
 		}
-		return api.ErrTool(fmt.Sprintf("scan failed: %v", err))
+		return api.ErrTool(fmt.Sprintf("scan failed: %s", redact.Line(scanErr.Error())))
+	}
+	if result == nil {
+		return api.ErrTool("scan failed: engine returned no result")
 	}
 
 	result.Metadata.SentinelFlowVersion = GetVersion()
@@ -233,6 +237,14 @@ func runScan(cmd *cobra.Command, args []string) error {
 
 	// Print summary
 	printScanSummary(result)
+	// A partial engine result is still valuable evidence, but its operational
+	// failure must retain precedence over finding gates after the report is emitted.
+	if ctx.Err() == context.DeadlineExceeded {
+		return api.ErrTimeout(fmt.Sprintf("scan timed out after %s", timeout))
+	}
+	if scanErr != nil {
+		return api.ErrTool(fmt.Sprintf("scan failed: %s", redact.Line(scanErr.Error())))
+	}
 
 	if err := scannerErrors(result, cfg); err != nil {
 		return api.ErrTool(err.Error())
@@ -375,7 +387,8 @@ func scannerErrors(result *api.ScanResult, cfg *config.Config) error {
 		if run.Error == "" {
 			continue
 		}
-		if run.Scanner == "dependencies" && cfg != nil && !cfg.DependenciesFailOnError() {
+		requiredReachability := cfg != nil && config.ExternalMode(cfg.Scanners.Dependencies.Reachability) == "required" && strings.Contains(run.Error, "reachability:")
+		if run.Scanner == "dependencies" && cfg != nil && !cfg.DependenciesFailOnError() && !requiredReachability {
 			fmt.Printf("%s dependencies scanner error (non-fatal): %s\n", color.YellowString("⚠"), run.Error)
 			continue
 		}

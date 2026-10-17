@@ -1,5 +1,7 @@
 # SentinelFlow Roadmap
 
+For the next organizational CI/CD phase, start with the [2026-10-17 readiness review](organizational-readiness.md), [target design](devsecops-design.md), and [six-sprint plan](devsecops-sprints.md). The R0–R6 sections below preserve delivery history; shipped features do not establish that every organizational acceptance gate has been validated.
+
 R0 (`v1.1.0` binaries) and R1 (productize the gate) shipped in v1.1.x. **R2–R6 shipped in v1.2.0**: a trustworthy CI gate, CI/CD integration, deeper code scanning, artifact scanning, and quality proofs. Next up: [v1.3.0 candidates](#v130-candidates). Native Go handles core checks; optional adapters wrap Semgrep, Syft/Grype, Trivy `fs`, gitleaks, and YARA when they are installed.
 
 ```mermaid

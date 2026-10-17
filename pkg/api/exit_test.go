@@ -5,7 +5,10 @@ import (
 	"testing"
 )
 
-func TestExitErrorCodes(t *testing.T) {
+func TestSC003_ExitCodeContract(t *testing.T) {
+	if ExitOK != 0 || ExitFindings != 1 || ExitTool != 2 || ExitTimeout != 3 {
+		t.Fatalf("CI exit contract changed: ok=%d findings=%d tool=%d timeout=%d", ExitOK, ExitFindings, ExitTool, ExitTimeout)
+	}
 	cases := []struct {
 		err  error
 		code int

@@ -54,6 +54,20 @@ func redactResult(result *api.ScanResult) *api.ScanResult {
 		return nil
 	}
 	out := *result
+	if len(result.ScannerRuns) > 0 {
+		out.ScannerRuns = make([]api.ScannerRun, len(result.ScannerRuns))
+		copy(out.ScannerRuns, result.ScannerRuns)
+		for i := range out.ScannerRuns {
+			run := &out.ScannerRuns[i]
+			run.Error = redact.Line(run.Error)
+			if len(run.Warnings) > 0 {
+				run.Warnings = append([]string(nil), run.Warnings...)
+				for j := range run.Warnings {
+					run.Warnings[j] = redact.Line(run.Warnings[j])
+				}
+			}
+		}
+	}
 	if len(result.Findings) == 0 {
 		return &out
 	}

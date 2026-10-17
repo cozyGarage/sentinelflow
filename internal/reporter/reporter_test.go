@@ -525,3 +525,25 @@ func TestEmptyResults(t *testing.T) {
 		}
 	}
 }
+
+func TestSC098_PublicReportsRedactScannerDiagnostics(t *testing.T) {
+	marker := "SENTINELFLOW_SECRET_MARKER"
+	result := &api.ScanResult{
+		Findings:    []api.Finding{},
+		ScannerRuns: []api.ScannerRun{{Scanner: "fake-tool", Error: "failed api_key=" + marker, Warnings: []string{"token=" + marker}}},
+	}
+	for _, format := range []string{"json", "text", "sarif"} {
+		t.Run(format, func(t *testing.T) {
+			out, err := New(nil).Generate(result, format)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if strings.Contains(out, marker) {
+				t.Fatalf("%s report leaked scanner diagnostic marker: %s", format, out)
+			}
+			if !strings.Contains(out, "REDACTED") {
+				t.Fatalf("%s report lost useful redacted diagnostic: %s", format, out)
+			}
+		})
+	}
+}

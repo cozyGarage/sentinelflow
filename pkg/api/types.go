@@ -110,8 +110,9 @@ type Finding struct {
 	EPSS float64 `json:"epss,omitempty"`
 	// KEV is true when the CVE is in the CISA Known Exploited Vulnerabilities catalog.
 	KEV bool `json:"kev,omitempty"`
-	// Reachable is set by reachability analysis (govulncheck for Go): true when
-	// the vulnerable function is called, false when it is not. Nil = not analysed.
+	// Reachable is set by qualified reachability analysis (govulncheck for Go):
+	// true for an observed call path, false only when a completed supported scan
+	// establishes non-reachability, and nil when analysis is missing or unknown.
 	Reachable *bool    `json:"reachable,omitempty"`
 	CWE       []string `json:"cwe,omitempty"`
 	OWASP     []string `json:"owasp,omitempty"`
