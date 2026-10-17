@@ -219,12 +219,25 @@ const (
 
 // ScanMetadata contains information about the scan environment
 type ScanMetadata struct {
-	TargetPath          string    `json:"target_path"`
-	StartTime           time.Time `json:"start_time"`
-	EndTime             time.Time `json:"end_time"`
-	SentinelFlowVersion string    `json:"sentinelflow_version"`
-	GitCommit           string    `json:"git_commit,omitempty"`
-	GitBranch           string    `json:"git_branch,omitempty"`
+	TargetPath          string                    `json:"target_path"`
+	StartTime           time.Time                 `json:"start_time"`
+	EndTime             time.Time                 `json:"end_time"`
+	SentinelFlowVersion string                    `json:"sentinelflow_version"`
+	GitCommit           string                    `json:"git_commit,omitempty"`
+	GitBranch           string                    `json:"git_branch,omitempty"`
+	VulnerabilityData   []VulnerabilityDataSource `json:"vulnerability_data,omitempty"`
+}
+
+// VulnerabilityDataSource identifies the advisory evidence used by a scan.
+// SnapshotID and AcquiredAt are empty for live sources that expose no snapshot.
+type VulnerabilityDataSource struct {
+	Source     string     `json:"source"`
+	Mode       string     `json:"mode"`
+	Ecosystem  string     `json:"ecosystem"`
+	SnapshotID string     `json:"snapshot_id,omitempty"`
+	AcquiredAt *time.Time `json:"acquired_at,omitempty"`
+	Supported  bool       `json:"supported"`
+	Status     string     `json:"status"`
 }
 
 // CountBySeverity returns a map of severity to count

@@ -45,6 +45,18 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          - id: SC-081
+            package: ./internal/vulndb
+            test: TestSC081_ProvenanceDistinguishesLiveAndCachedLookups
+          - id: SC-081
+            package: ./internal/vulndb
+            test: TestOfflineUpdateAndQuery
+          - id: SC-081
+            package: ./internal/scanner
+            test: TestSC081_ScanMetadataRetainsAdvisorySnapshotEvidence
+          - id: SC-081
+            package: ./internal/scanner/dependencies
+            test: TestSC081_FindingIdentifiesAdvisorySource
           - id: SC-076
             package: ./internal/scanner
             test: TestSC076_SuppressedObservationsRetainSafeProvenance
@@ -197,7 +209,7 @@ jobs:
             test: TestSC053_(BaselineRefUsesFreshComparableScannerInstances|RejectsScannerSetMismatch)
           - id: SC-054
             package: ./internal/scanner
-            test: TestSC054_(BaselineRefCleanupFailureIsVisible|TimeoutCleansTemporaryWorktree|WorktreeAddFailurePreservesCallerCheckout)|TestBaselineRefReportsOnlyNewFindings
+            test: TestSC054_(BaselineRefCleanupFailureIsVisible|TimeoutCleansTemporaryWorktree|WorktreeAddFailurePreservesCallerCheckout|WorktreeAddFailureCleansPartialRegistration)|TestBaselineRefReportsOnlyNewFindings
           - id: SC-091
             package: ./internal/cli
             test: TestSC091_BuiltCLIExitAndPartialReport

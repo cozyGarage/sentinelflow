@@ -21,10 +21,11 @@ type ScanOptions struct {
 
 // ScannerResult is the standard result type returned by scanners.
 type ScannerResult struct {
-	Findings   []api.Finding
-	FilesCount int
-	Warnings   []string
-	Status     api.ScanStatus
+	Findings          []api.Finding
+	FilesCount        int
+	Warnings          []string
+	Status            api.ScanStatus
+	VulnerabilityData []api.VulnerabilityDataSource
 }
 
 // AsScanOptions extracts ScanOptions from the opaque opts value.

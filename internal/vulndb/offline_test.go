@@ -6,8 +6,11 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestCompareVersions(t *testing.T) {
@@ -91,6 +94,31 @@ func TestOfflineUpdateAndQuery(t *testing.T) {
 	if counts["go"] != 1 || counts["pip"] != 1 {
 		t.Fatalf("withdrawn advisories must be dropped: %v", counts)
 	}
+	status := OfflineStatus(dir)
+	goSnapshot := status["go"]
+	if goSnapshot.IsZero() {
+		t.Fatal("offline index should expose its acquisition time")
+	}
+	indexPath := filepath.Join(dir, "go.json.gz")
+	future := time.Now().Add(365 * 24 * time.Hour)
+	if err := os.Chtimes(indexPath, future, future); err != nil {
+		t.Fatal(err)
+	}
+	if got := OfflineStatus(dir)["go"]; !got.Equal(goSnapshot) {
+		t.Fatalf("touching the index must not refresh snapshot time: got %s want %s", got, goSnapshot)
+	}
+	var goData, missingData bool
+	for _, data := range OfflineSnapshots(dir) {
+		if data.Ecosystem == "go" {
+			goData = data.Status == "available" && data.Supported && strings.HasPrefix(data.SnapshotID, "sha256:")
+		}
+		if data.Ecosystem == "npm" {
+			missingData = data.Status == "missing" && data.Supported
+		}
+	}
+	if !goData || !missingData {
+		t.Fatal("offline status must expose supported ecosystem and missing/available snapshot state")
+	}
 
 	src := NewOfflineSource(dir)
 	for _, c := range []struct {
@@ -115,6 +143,10 @@ func TestOfflineUpdateAndQuery(t *testing.T) {
 		if strings.Join(ids, ",") != strings.Join(c.want, ",") {
 			t.Errorf("%s %s@%s: got %v want %v", c.eco, c.pkg, c.version, ids, c.want)
 		}
+	}
+	prov := src.ProvenanceFor("go", "available")
+	if prov.Mode != "offline" || prov.Source != srv.URL+"/Go/all.zip" || !strings.HasPrefix(prov.SnapshotID, "sha256:") || prov.AcquiredAt == nil {
+		t.Fatalf("offline snapshot provenance missing or invalid: %+v", prov)
 	}
 	if vulns, _ := src.Query(context.Background(), "go", "golang.org/x/net", "0.37.0"); vulns[0].CVE != "CVE-1" {
 		t.Errorf("alias lost in index: %+v", vulns[0])

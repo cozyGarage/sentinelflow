@@ -531,6 +531,31 @@ func TestSC077_StrictIgnoreFailureRetainsFinding(t *testing.T) {
 	}
 }
 
+func TestSC081_ScanMetadataRetainsAdvisorySnapshotEvidence(t *testing.T) {
+	root := t.TempDir()
+	acquired := time.Date(2025, 1, 2, 3, 4, 5, 0, time.UTC)
+	e := NewEngine(&config.Config{})
+	e.scanners = []Scanner{&provenanceStubScanner{data: []api.VulnerabilityDataSource{{
+		Source: "https://example.test/osv/go/all.zip", Mode: "offline", Ecosystem: "go",
+		SnapshotID: "sha256:abc", AcquiredAt: &acquired, Supported: true, Status: "available",
+	}}}}
+	result, err := e.Scan(context.Background(), root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Metadata.VulnerabilityData) != 1 || result.Metadata.VulnerabilityData[0].SnapshotID != "sha256:abc" || result.Metadata.VulnerabilityData[0].AcquiredAt == nil {
+		t.Fatalf("scan metadata lost advisory snapshot evidence: %+v", result.Metadata.VulnerabilityData)
+	}
+}
+
+type provenanceStubScanner struct{ data []api.VulnerabilityDataSource }
+
+func (*provenanceStubScanner) Name() string         { return "dependencies" }
+func (*provenanceStubScanner) Supports(string) bool { return true }
+func (s *provenanceStubScanner) Scan(context.Context, string, interface{}) (*types.ScannerResult, error) {
+	return &types.ScannerResult{Findings: []api.Finding{}, Status: api.ScanStatusComplete, VulnerabilityData: s.data}, nil
+}
+
 func TestEngineBaselineMissingFileStillSummarizes(t *testing.T) {
 	tmpDir := t.TempDir()
 	finding := api.Finding{

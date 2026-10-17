@@ -4,16 +4,21 @@ import (
 	"archive/zip"
 	"compress/gzip"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/cozygarage/sentinelflow/pkg/api"
 )
 
 // OfflineBaseURL serves OSV's per-ecosystem exports (<base>/<Ecosystem>/all.zip).
@@ -29,8 +34,13 @@ func OfflineDir() string { return filepath.Join(DefaultCacheDir(), "offline") }
 // trimmed to that package's affected entries. Values stay raw JSON so a scan
 // decodes only the packages it asks about (npm alone has ~230k advisories).
 type offlineIndex struct {
-	Updated  time.Time                  `json:"updated"`
-	Packages map[string]json.RawMessage `json:"packages"`
+	SchemaVersion int                        `json:"schema_version,omitempty"`
+	Source        string                     `json:"source,omitempty"`
+	Ecosystem     string                     `json:"ecosystem,omitempty"`
+	SnapshotID    string                     `json:"snapshot_id,omitempty"`
+	AcquiredAt    time.Time                  `json:"acquired_at,omitempty"`
+	Updated       time.Time                  `json:"updated,omitempty"` // legacy alias for AcquiredAt
+	Packages      map[string]json.RawMessage `json:"packages"`
 }
 
 // UpdateOffline downloads the OSV export for each ecosystem and writes
@@ -73,7 +83,8 @@ func updateEcosystem(ctx context.Context, client *http.Client, dir, eco string) 
 	if resp.StatusCode != http.StatusOK {
 		return 0, fmt.Errorf("download returned status %d", resp.StatusCode)
 	}
-	size, err := io.Copy(tmp, resp.Body)
+	snapshotHash := sha256.New()
+	size, err := io.Copy(io.MultiWriter(tmp, snapshotHash), resp.Body)
 	if err != nil {
 		return 0, err
 	}
@@ -116,7 +127,13 @@ func updateEcosystem(ctx context.Context, client *http.Client, dir, eco string) 
 		}
 	}
 
-	idx := offlineIndex{Updated: time.Now().UTC(), Packages: make(map[string]json.RawMessage, len(byPkg))}
+	acquiredAt := time.Now().UTC()
+	idx := offlineIndex{
+		SchemaVersion: 1, Source: safeSourceURL(req.URL.String()), Ecosystem: eco,
+		SnapshotID: "sha256:" + hex.EncodeToString(snapshotHash.Sum(nil)),
+		AcquiredAt: acquiredAt, Updated: acquiredAt,
+		Packages: make(map[string]json.RawMessage, len(byPkg)),
+	}
 	for name, vulns := range byPkg {
 		raw, err := json.Marshal(vulns)
 		if err != nil {
@@ -146,17 +163,83 @@ func updateEcosystem(ctx context.Context, client *http.Client, dir, eco string) 
 	return count, os.Rename(part, out) // atomic: a failed update keeps the old index
 }
 
-// OfflineStatus reports when each ecosystem index was last updated (zero time = missing).
+func safeSourceURL(raw string) string {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return raw
+	}
+	u.User = nil
+	u.RawQuery = ""
+	u.Fragment = ""
+	return u.String()
+}
+
+// OfflineStatus reports snapshot acquisition times from index metadata, never
+// filesystem modification times (zero time means missing, corrupt, or unknown).
 func OfflineStatus(dir string) map[string]time.Time {
 	out := map[string]time.Time{}
 	for _, eco := range OfflineEcosystems {
-		if info, err := os.Stat(filepath.Join(dir, eco+".json.gz")); err == nil {
-			out[eco] = info.ModTime()
-		} else {
-			out[eco] = time.Time{}
+		idx, err := readOfflineIndex(filepath.Join(dir, eco+".json.gz"))
+		out[eco] = time.Time{}
+		if err == nil {
+			out[eco] = indexAcquiredAt(idx)
 		}
 	}
 	return out
+}
+
+// OfflineSnapshots reports index source, digest, acquisition time and
+// availability for every supported ecosystem. It never infers freshness from
+// the index file's modification time.
+func OfflineSnapshots(dir string) []api.VulnerabilityDataSource {
+	out := make([]api.VulnerabilityDataSource, 0, len(OfflineEcosystems))
+	for _, eco := range OfflineEcosystems {
+		idx, err := readOfflineIndex(filepath.Join(dir, eco+".json.gz"))
+		entry := api.VulnerabilityDataSource{
+			Source: safeSourceURL(OfflineBaseURL + "/" + mapEcosystem(eco) + "/all.zip"),
+			Mode:   "offline", Ecosystem: eco, Supported: true,
+		}
+		if os.IsNotExist(err) {
+			entry.Status = "missing"
+		} else if err != nil {
+			entry.Status = "corrupt"
+		} else {
+			entry.Status = "available"
+			entry.SnapshotID = idx.SnapshotID
+			if idx.Source != "" {
+				entry.Source = safeSourceURL(idx.Source)
+			}
+			at := indexAcquiredAt(idx)
+			if !at.IsZero() {
+				entry.AcquiredAt = &at
+			}
+		}
+		out = append(out, entry)
+	}
+	return out
+}
+
+func readOfflineIndex(path string) (offlineIndex, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return offlineIndex{}, err
+	}
+	defer f.Close()
+	gz, err := gzip.NewReader(f)
+	if err != nil {
+		return offlineIndex{}, err
+	}
+	defer gz.Close()
+	var idx offlineIndex
+	err = json.NewDecoder(gz).Decode(&idx)
+	return idx, err
+}
+
+func indexAcquiredAt(idx offlineIndex) time.Time {
+	if !idx.AcquiredAt.IsZero() {
+		return idx.AcquiredAt.UTC()
+	}
+	return idx.Updated.UTC()
 }
 
 // OfflineSource answers queries from indexes built by UpdateOffline. It loads
@@ -164,9 +247,10 @@ func OfflineStatus(dir string) map[string]time.Time {
 // ponytail: the raw index for each used ecosystem stays in memory (npm is
 // ~120 MB raw); switch to an on-disk keyed store if memory becomes a problem.
 type OfflineSource struct {
-	dir   string
-	mu    sync.Mutex
-	index map[string]map[string]json.RawMessage
+	dir       string
+	mu        sync.Mutex
+	index     map[string]map[string]json.RawMessage
+	snapshots map[string]api.VulnerabilityDataSource
 }
 
 // NewOfflineSource reads indexes from dir (OfflineDir() when empty).
@@ -174,7 +258,7 @@ func NewOfflineSource(dir string) *OfflineSource {
 	if dir == "" {
 		dir = OfflineDir()
 	}
-	return &OfflineSource{dir: dir, index: map[string]map[string]json.RawMessage{}}
+	return &OfflineSource{dir: dir, index: map[string]map[string]json.RawMessage{}, snapshots: map[string]api.VulnerabilityDataSource{}}
 }
 
 func (s *OfflineSource) Name() string { return "osv-offline" }
@@ -185,7 +269,8 @@ func (s *OfflineSource) load(eco string) (map[string]json.RawMessage, error) {
 	if idx, ok := s.index[eco]; ok {
 		return idx, nil
 	}
-	f, err := os.Open(filepath.Join(s.dir, eco+".json.gz"))
+	path := filepath.Join(s.dir, eco+".json.gz")
+	f, err := os.Open(path)
 	if os.IsNotExist(err) {
 		return nil, fmt.Errorf("no offline database for %s; run `sentinelflow db update`", eco)
 	}
@@ -202,7 +287,38 @@ func (s *OfflineSource) load(eco string) (map[string]json.RawMessage, error) {
 		return nil, fmt.Errorf("offline database for %s is corrupt: %w", eco, err)
 	}
 	s.index[eco] = idx.Packages
+	acquiredAt := indexAcquiredAt(idx)
+	var acquired *time.Time
+	if !acquiredAt.IsZero() {
+		acquired = &acquiredAt
+	}
+	source := idx.Source
+	if source != "" {
+		source = safeSourceURL(source)
+	}
+	if source == "" {
+		source = safeSourceURL(OfflineBaseURL + "/" + mapEcosystem(eco) + "/all.zip")
+	}
+	s.snapshots[eco] = api.VulnerabilityDataSource{
+		Source: source, Mode: "offline", Ecosystem: eco,
+		SnapshotID: idx.SnapshotID, AcquiredAt: acquired, Supported: ecosystemSupported(eco), Status: "available",
+	}
 	return idx.Packages, nil
+}
+
+// ProvenanceFor reports metadata from the loaded index. Missing and corrupt
+// snapshots remain visible as errors rather than borrowing file modification time.
+func (s *OfflineSource) ProvenanceFor(ecosystem, status string) api.VulnerabilityDataSource {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if snapshot, ok := s.snapshots[ecosystem]; ok {
+		snapshot.Status = status
+		return snapshot
+	}
+	return api.VulnerabilityDataSource{
+		Source: safeSourceURL(OfflineBaseURL + "/" + mapEcosystem(ecosystem) + "/all.zip"),
+		Mode:   "offline", Ecosystem: ecosystem, Supported: ecosystemSupported(ecosystem), Status: status,
+	}
 }
 
 // Query returns advisories whose affected ranges or version lists include version.

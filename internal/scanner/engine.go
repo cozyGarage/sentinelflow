@@ -137,8 +137,9 @@ func (e *Engine) Scan(ctx context.Context, targetPath string) (*api.ScanResult, 
 	}
 
 	type scanOutcome struct {
-		run      api.ScannerRun
-		findings []api.Finding
+		run               api.ScannerRun
+		findings          []api.Finding
+		vulnerabilityData []api.VulnerabilityDataSource
 	}
 	outcomes := make([]scanOutcome, len(e.scanners))
 	var wg sync.WaitGroup
@@ -170,6 +171,7 @@ func (e *Engine) Scan(ctx context.Context, targetPath string) (*api.ScanResult, 
 					run.Warnings[i] = redact.Line(warning)
 				}
 				outcomes[i].findings = scanResult.Findings
+				outcomes[i].vulnerabilityData = scanResult.VulnerabilityData
 				run.Status = scanResult.Status
 			}
 			if errors.Is(err, context.DeadlineExceeded) {
@@ -203,7 +205,9 @@ func (e *Engine) Scan(ctx context.Context, targetPath string) (*api.ScanResult, 
 	for _, outcome := range outcomes {
 		result.ScannerRuns = append(result.ScannerRuns, outcome.run)
 		result.Findings = append(result.Findings, outcome.findings...)
+		result.Metadata.VulnerabilityData = append(result.Metadata.VulnerabilityData, outcome.vulnerabilityData...)
 	}
+	result.Metadata.VulnerabilityData = uniqueVulnerabilityData(result.Metadata.VulnerabilityData)
 	sortFindings(result.Findings)
 
 	fingerprint.Ensure(result.Findings)
@@ -366,6 +370,33 @@ func (e *Engine) Scan(ctx context.Context, targetPath string) (*api.ScanResult, 
 	}
 
 	return result, nil
+}
+
+func uniqueVulnerabilityData(in []api.VulnerabilityDataSource) []api.VulnerabilityDataSource {
+	seen := make(map[string]bool, len(in))
+	out := make([]api.VulnerabilityDataSource, 0, len(in))
+	for _, entry := range in {
+		key := entry.Source + "\x00" + entry.Mode + "\x00" + entry.Ecosystem + "\x00" + entry.SnapshotID + "\x00" + entry.Status
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		out = append(out, entry)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		a, b := out[i], out[j]
+		if a.Ecosystem != b.Ecosystem {
+			return a.Ecosystem < b.Ecosystem
+		}
+		if a.Source != b.Source {
+			return a.Source < b.Source
+		}
+		if a.Mode != b.Mode {
+			return a.Mode < b.Mode
+		}
+		return a.SnapshotID < b.SnapshotID
+	})
+	return out
 }
 
 func appendSuppressed(result *api.ScanResult, findings []api.Finding, source, reason, authority string) {

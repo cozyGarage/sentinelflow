@@ -5,9 +5,12 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"sort"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/cozygarage/sentinelflow/pkg/api"
 )
 
 // Vulnerability represents a security vulnerability
@@ -38,9 +41,11 @@ type Range struct {
 
 // Client is the main vulnerability database client
 type Client struct {
-	sources []Source
-	cache   Cache
-	client  *http.Client
+	sources      []Source
+	cache        Cache
+	client       *http.Client
+	provenanceMu sync.Mutex
+	provenance   map[string]api.VulnerabilityDataSource
 }
 
 // Source represents a vulnerability data source
@@ -83,8 +88,60 @@ func NewClient(opts ...Option) (*Client, error) {
 			client.cache = NewMemoryCache()
 		}
 	}
+	client.provenance = make(map[string]api.VulnerabilityDataSource)
 
 	return client, nil
+}
+
+// VulnerabilityData returns a stable snapshot of data-source evidence observed
+// by this client, including cache hits and offline database snapshots.
+func (c *Client) VulnerabilityData() []api.VulnerabilityDataSource {
+	c.provenanceMu.Lock()
+	defer c.provenanceMu.Unlock()
+	out := make([]api.VulnerabilityDataSource, 0, len(c.provenance))
+	for _, source := range c.provenance {
+		out = append(out, source)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		a, b := out[i], out[j]
+		if a.Ecosystem != b.Ecosystem {
+			return a.Ecosystem < b.Ecosystem
+		}
+		if a.Source != b.Source {
+			return a.Source < b.Source
+		}
+		if a.Mode != b.Mode {
+			return a.Mode < b.Mode
+		}
+		return a.SnapshotID < b.SnapshotID
+	})
+	return out
+}
+
+func (c *Client) recordDataSource(entry api.VulnerabilityDataSource) {
+	key := entry.Source + "\x00" + entry.Mode + "\x00" + entry.Ecosystem + "\x00" + entry.SnapshotID + "\x00" + entry.Status
+	c.provenanceMu.Lock()
+	c.provenance[key] = entry
+	c.provenanceMu.Unlock()
+}
+
+func (c *Client) recordSource(source Source, ecosystem, status string) {
+	entry := api.VulnerabilityDataSource{Source: source.Name(), Mode: "online", Ecosystem: ecosystem, Supported: ecosystemSupported(ecosystem), Status: status}
+	if provider, ok := source.(interface {
+		ProvenanceFor(string, string) api.VulnerabilityDataSource
+	}); ok {
+		entry = provider.ProvenanceFor(ecosystem, status)
+	}
+	c.recordDataSource(entry)
+}
+
+func ecosystemSupported(ecosystem string) bool {
+	for _, supported := range OfflineEcosystems {
+		if ecosystem == supported {
+			return true
+		}
+	}
+	return false
 }
 
 // Query searches for vulnerabilities across all sources
@@ -92,6 +149,7 @@ func (c *Client) Query(ctx context.Context, ecosystem, pkg, version string) ([]V
 	// Check cache first
 	cacheKey := cacheKey(ecosystem, pkg, version)
 	if vulns, err := c.cache.Get(cacheKey); err == nil {
+		c.recordDataSource(api.VulnerabilityDataSource{Source: "query-cache", Mode: "cache", Ecosystem: ecosystem, Supported: ecosystemSupported(ecosystem), Status: "hit"})
 		return vulns, nil
 	}
 
@@ -104,10 +162,17 @@ func (c *Client) Query(ctx context.Context, ecosystem, pkg, version string) ([]V
 	for _, source := range c.sources {
 		queried++
 		vulns, err := source.Query(ctx, ecosystem, pkg, version)
+		status := "available"
 		if err != nil {
+			status = "error"
+			if len(vulns) > 0 {
+				status = "partial"
+			}
 			sourceErrs = append(sourceErrs, fmt.Sprintf("%s: %v", source.Name(), err))
+			c.recordSource(source, ecosystem, status)
 			continue
 		}
+		c.recordSource(source, ecosystem, status)
 
 		// Deduplicate by ID
 		for _, v := range vulns {
@@ -154,6 +219,7 @@ func (c *Client) QueryMany(ctx context.Context, qs []PackageQuery) ([][]Vulnerab
 	for i, q := range qs {
 		if vulns, err := c.cache.Get(cacheKey(q.Ecosystem, q.Name, q.Version)); err == nil {
 			out[i] = vulns
+			c.recordDataSource(api.VulnerabilityDataSource{Source: "query-cache", Mode: "cache", Ecosystem: q.Ecosystem, Supported: ecosystemSupported(q.Ecosystem), Status: "hit"})
 		} else {
 			miss = append(miss, i)
 		}
@@ -182,16 +248,28 @@ func (c *Client) QueryMany(ctx context.Context, qs []PackageQuery) ([][]Vulnerab
 	}
 	hits, err := bs.QueryBatch(ctx, reqs)
 	if err != nil {
+		for _, i := range miss {
+			c.recordSource(c.sources[0], qs[i].Ecosystem, "error")
+		}
 		return nil, fmt.Errorf("vulnerability batch lookup failed: %w", err)
 	}
 	if len(hits) != len(miss) {
+		for _, i := range miss {
+			c.recordSource(c.sources[0], qs[i].Ecosystem, "error")
+		}
 		return nil, fmt.Errorf("vulnerability batch lookup returned %d results for %d queries", len(hits), len(miss))
 	}
 
 	// querybatch returns only IDs; fetch each distinct vulnerability once.
 	details, err := fetchVulns(ctx, bs, hits)
 	if err != nil {
+		for _, i := range miss {
+			c.recordSource(c.sources[0], qs[i].Ecosystem, "partial")
+		}
 		return nil, err
+	}
+	for _, i := range miss {
+		c.recordSource(c.sources[0], qs[i].Ecosystem, "available")
 	}
 	for j, i := range miss {
 		q := qs[i]

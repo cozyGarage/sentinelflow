@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+
+	"github.com/cozygarage/sentinelflow/pkg/api"
 )
 
 // OSVSource implements the OSV (Open Source Vulnerabilities) API
@@ -30,6 +32,15 @@ func NewOSVSource(client *http.Client) *OSVSource {
 
 func (s *OSVSource) Name() string {
 	return "osv"
+}
+
+// ProvenanceFor identifies the live advisory service. OSV does not provide an
+// immutable database snapshot ID for these query responses.
+func (s *OSVSource) ProvenanceFor(ecosystem, status string) api.VulnerabilityDataSource {
+	return api.VulnerabilityDataSource{
+		Source: safeSourceURL(s.baseURL), Mode: "online", Ecosystem: ecosystem,
+		Supported: ecosystemSupported(ecosystem), Status: status,
+	}
 }
 
 // SetBaseURL overrides the OSV API base URL (for tests).

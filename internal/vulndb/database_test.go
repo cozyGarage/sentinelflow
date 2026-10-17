@@ -9,6 +9,14 @@ import (
 
 type failingSource struct{}
 
+type countingSource struct{ calls int }
+
+func (s *countingSource) Name() string { return "test-osv" }
+func (s *countingSource) Query(ctx context.Context, ecosystem, pkg, version string) ([]Vulnerability, error) {
+	s.calls++
+	return []Vulnerability{}, nil
+}
+
 func (f failingSource) Name() string { return "failing" }
 func (f failingSource) Query(ctx context.Context, ecosystem, pkg, version string) ([]Vulnerability, error) {
 	return nil, fmt.Errorf("upstream down")
@@ -48,5 +56,32 @@ func TestMemoryCacheCopiesSlices(t *testing.T) {
 	}
 	if again[0].ID != "V1" {
 		t.Fatalf("cache exposed mutable slice, got %s", again[0].ID)
+	}
+}
+
+func TestSC081_ProvenanceDistinguishesLiveAndCachedLookups(t *testing.T) {
+	source := &countingSource{}
+	client, err := NewClient(WithSources(source), WithCache(NewMemoryCache()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 2; i++ {
+		if _, err := client.Query(context.Background(), "npm", "widget", "1.0.0"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if source.calls != 1 {
+		t.Fatalf("cache did not avoid second source call: %d", source.calls)
+	}
+	var live, cached bool
+	for _, data := range client.VulnerabilityData() {
+		if data.Ecosystem != "npm" || !data.Supported {
+			t.Fatalf("ecosystem capability missing: %+v", data)
+		}
+		live = live || data.Source == "test-osv" && data.Mode == "online" && data.Status == "available"
+		cached = cached || data.Source == "query-cache" && data.Mode == "cache" && data.Status == "hit"
+	}
+	if !live || !cached {
+		t.Fatalf("expected live and cache-hit provenance, got %+v", client.VulnerabilityData())
 	}
 }

@@ -1,6 +1,6 @@
 # Scan correctness work package
 
-**Status: core merged; follow-up suppression slices are in progress.** The 32-item core is merged, SC-004–SC-006 was merged in [PR #57](https://github.com/cozyGarage/sentinelflow/pull/57), and SC-071–SC-075 was merged in [PR #58](https://github.com/cozyGarage/sentinelflow/pull/58). Current work is SC-076–SC-080 on branch `codex/suppression-audit-identity`. SC-095 remains bounded to pinned govulncheck fixtures; six external tools remain unqualified. No organization-wide scanner-readiness claim is made.
+**Status: core and three follow-up slices merged; vulnerability data work is active.** The 32-item core is merged; SC-004–SC-006 is in [PR #57](https://github.com/cozyGarage/sentinelflow/pull/57), SC-071–SC-075 in [PR #58](https://github.com/cozyGarage/sentinelflow/pull/58), and SC-076–SC-080 in [PR #59](https://github.com/cozyGarage/sentinelflow/pull/59). Current work starts SC-081 on branch `codex/vulnerability-data-quality`. SC-095 remains bounded to pinned govulncheck fixtures; six external tools remain unqualified. No organization-wide scanner-readiness claim is made.
 
 This package develops the readiness review into one developer's **14-working-day plan** and a **100-item assignment backlog**. The core is 32 dependency-ordered items; the other 68 are follow-up work, not extra scope for the same timebox.
 
@@ -16,14 +16,16 @@ This package develops the readiness review into one developer's **14-working-day
 - [VEX suppression acceptance](vex-suppression-acceptance.md): behavior changes, compatibility migration and local/hosted evidence for SC-071–SC-075.
 - [Suppression audit and identity](suppression-audit-identity.md): retained redacted observations, strict inline-ignore policy, collision-resistant fingerprints and path boundaries for SC-076–SC-080.
 - [Suppression audit acceptance](suppression-audit-acceptance.md): implementation evidence and exact-head hosted status for SC-076–SC-080.
+- [Vulnerability data provenance](vulnerability-data-provenance.md): OSV snapshot identity, acquisition time, live/cache/offline source modes and report boundaries for SC-081.
+- [Vulnerability data acceptance](vulnerability-data-acceptance.md): local and hosted evidence for SC-081.
 
 The core acceptance report records its exact historical revision and hosted evidence. Follow-up slices have their own acceptance files and exact-head run links. Current repository state is authoritative; use `git status --short --branch` and `git rev-parse HEAD` before assigning or accepting work.
 
 ## Evidence and current limits
 
-The workflow has a named regression row for every core ID and the merged follow-up selectors SC-004–SC-006 and SC-071–SC-075. SC-076–SC-080 selectors are being added on the active branch. `SC-001` records the exact checkout and Go toolchain. Separate named jobs cover `SC-094` integration, `SC-095` govulncheck/tool inventory, `SC-099` exact-head gates, and `SC-100` backlog/acceptance/handoff reconciliation. Selector rows fail if no test executes. `scripts/check-scan-sprint-docs.py` checks all core IDs across backlog, acceptance and named Actions; its CI test suite includes missing-row and missing-job negative controls.
+The workflow has a named regression row for every core ID and merged follow-up selectors SC-004–SC-006, SC-071–SC-075, and SC-076–SC-080. SC-081 selectors are being added on the active branch. `SC-001` records the exact checkout and Go toolchain. Separate named jobs cover `SC-094` integration, `SC-095` govulncheck/tool inventory, `SC-099` exact-head gates, and `SC-100` backlog/acceptance/handoff reconciliation. Selector rows fail if no test executes. `scripts/check-scan-sprint-docs.py` checks all core IDs across backlog, acceptance and named Actions; its CI test suite includes missing-row and missing-job negative controls.
 
-The completed core and merged follow-up slices have local and hosted evidence in their acceptance records. SC-076–SC-080 local full Go tests, race suite, vet, actionlint, documentation tests and eleven named selector rows have passed; its hosted exact-head gates remain pending. See [suppression audit acceptance](suppression-audit-acceptance.md) for scope and limitations.
+The completed core and merged follow-up slices have local and hosted evidence in their acceptance records. SC-076–SC-080 passed full Go tests, race suite, vet, actionlint, documentation tests and eleven named selector rows; see its acceptance record for hosted exact-head evidence. SC-081 full local Go/race/vet/workflow/docs gates and named selectors pass; hosted checks remain pending.
 
 `SC-095` is resolved under its documented boundary: pinned govulncheck behavior is qualified against synthetic fixtures, and Semgrep, Gitleaks, Grype, Syft, Trivy and YARA are explicitly marked unavailable and unqualified in local and hosted inventories. This does not qualify those integrations or support an organization-wide readiness claim.
 

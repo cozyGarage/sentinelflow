@@ -216,11 +216,11 @@ For air-gapped or rate-limited CI, download OSV's advisories once and scan witho
 ```bash
 sentinelflow db update                         # all ecosystems (~18 MB on disk, under a minute)
 sentinelflow db update --ecosystems go,pip     # or just the ones you use
-sentinelflow db status                         # last update per ecosystem
+sentinelflow db status                         # source, acquisition time and snapshot digest
 sentinelflow scan --deps --offline             # or scanners.dependencies.offline: true
 ```
 
-The database lives in `$SENTINELFLOW_CACHE_DIR/offline` (default `~/.cache/sentinelflow/vulndb/offline`). In CI, restore that directory from a cache and refresh it on a schedule. Offline mode also applies to `scan --sbom` and `scan --artifacts`, and it skips EPSS/KEV enrichment. Version ranges are evaluated locally: real semver for `SEMVER` ranges, and segment-wise numeric ordering for ecosystem ranges (Maven/PyPI/RubyGems/NuGet/Packagist). Exotic qualifiers such as `1.0.post1` or `-sp1` may order differently from the online API.
+The database lives in `$SENTINELFLOW_CACHE_DIR/offline` (default `~/.cache/sentinelflow/vulndb/offline`). Each index records its OSV export source, SHA-256 snapshot ID, ecosystem, schema and acquisition timestamp; `db status` reads these fields from the index, so touching a file cannot make old data look fresh. Scan JSON records the queried live/offline/cache mode and any known snapshot identity. In CI, restore that directory from a cache and refresh it on a schedule. Offline mode also applies to `scan --sbom` and `scan --artifacts`, and it skips EPSS/KEV enrichment. Version ranges are evaluated locally: real semver for `SEMVER` ranges, and segment-wise numeric ordering for ecosystem ranges (Maven/PyPI/RubyGems/NuGet/Packagist). Exotic qualifiers such as `1.0.post1` or `-sp1` may order differently from the online API.
 
 ## Git History Secret Scanning
 
