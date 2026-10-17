@@ -15,4 +15,4 @@ A local Go 1.27.2 two-module fixture with `toolchain go1.27.2` confirmed the exa
 
 ## Hosted evidence
 
-Pending push, PR creation, and exact-head GitHub Actions / Security Scan results. Do not describe this slice as hosted-green until those checks run on the pushed commit.
+Merged in [PR #61](https://github.com/cozyGarage/sentinelflow/pull/61). Exact PR head `f17b65c3798161b7c445228af05acda3d1cf699e` passed all 111 GitHub checks, including the named SC-019 selector, Unit Tests, integration-tag suite, exact-head gates, Security Scan, Supply Chain, and Policy Validation. CI run: [39064518710](https://github.com/cozyGarage/sentinelflow/actions/runs/39064518710); security run: [39064518671](https://github.com/cozyGarage/sentinelflow/actions/runs/39064518671). Squash merge: `0cab7547825c06cd3d7e445d0a9abb5fe8a98c8b`.
