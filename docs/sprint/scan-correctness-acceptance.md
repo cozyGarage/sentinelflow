@@ -10,7 +10,7 @@ Prepared 2026-10-17. Repository: `/home/trung/Projects/sentinelflow`. Checked-ou
 
 | ID | Status | Current evidence / remaining work |
 | --- | --- | --- |
-| SC-001 | Local baseline and named Actions check | Clean checkout check passed at `9e9c8a30d868214f6affa87bab19a705be11777a`; the job recorded the revision and Go 1.27.2. Hosted exact-checkout evidence remains pending. |
+| SC-001 | Local baseline and named Actions check | Clean checkout check passed at `347dbeee6c3c3574e38933918e257056545aec03`; the job recorded that revision and Go 1.27.2. Hosted exact-checkout evidence remains pending. |
 | SC-002 | Local evidence | Fake tools cover findings then failure, truncation, clean completion, cancellation, args, baseline failures and cleanup; hosted selection pending. |
 | SC-003 | Local evidence | Inventory, identity, unknown, comparison and exit decisions are written in the plan/compatibility notes; hosted regression pending. |
 | SC-011 | Local evidence | Stale checksum version and captured OSV query tuple regressions pass. |
@@ -41,7 +41,7 @@ Prepared 2026-10-17. Repository: `/home/trung/Projects/sentinelflow`. Checked-ou
 | SC-097 | Local documentation | Go/npm, baseline/fingerprint, adapter, reachability and exit compatibility notes written; final code review and hosted checks pending. |
 | SC-098 | Local evidence | Failing-first tests showed diagnostic leakage in engine and text/JSON/SARIF output, including a pre-result VEX load error leaking a marker from the target path through CLI stderr. Engine, reporter, and top-level CLI scan errors now redact it; built-CLI marker checks pass. |
 | SC-099 | In progress | Local implementation revision and integrated gate results are recorded; hosted exact-commit Actions, PR link, and final acceptance remain absent. |
-| SC-100 | Draft and tested reconciliation check added | [Proposed next assignment](next-assignment.md) orders follow-up risks. `scripts/check-scan-sprint-docs.py` verifies all 32 core IDs have backlog rows, acceptance rows and named Actions coverage; four Python regressions cover valid docs, missing acceptance, missing job, and duplicate acceptance. Hosted evidence and final reconciliation remain. |
+| SC-100 | Draft and tested reconciliation check added | [Proposed next assignment](next-assignment.md) orders follow-up risks. `scripts/check-scan-sprint-docs.py` verifies all 32 core IDs have backlog rows, acceptance rows and named Actions coverage; four Python regressions cover valid docs, missing acceptance, missing job, and duplicate acceptance. The reconciliation suite passed on branch head `347dbeee6c3c3574e38933918e257056545aec03`. Hosted evidence and final reconciliation remain. |
 
 ## Commands observed locally
 
@@ -64,7 +64,7 @@ Commands below were rerun against implementation commit `3e128766b4e497136984bb0
 | `bash scripts/run-go-test-selector.sh ./internal/scanner/dependencies 'TestSC043_(GovulncheckNegativeRequiresQualifiedPackageObservation|NonSymbolScanCannotEstablishUnreachable)'` | Pass; both named tests were observed in JSON test events. A deliberately nonexistent selector failed with `no tests matched`, confirming green-with-no-tests is rejected. |
 | Current `.github/workflows/ci.yml` `scan-correctness` matrix via `scripts/run-go-test-selector.sh` | Pass, 37 of 37 configured selector rows executed at least one passing test on the current source. The final rerun used `/home/trung/.cache/tmp` and loopback-enabled execution because `/tmp` quota and the default sandbox blocked temp writes and `httptest` listeners. This local selection audit does not replace hosted Actions. |
 | `python3 scripts/test_scan_sprint_docs.py`; `python3 scripts/check-scan-sprint-docs.py` | Pass: all four SC-100 positive/negative tests and the 32-ID positive audit pass locally. |
-| SC-001 clean-checkout baseline step | Pass at `9e9c8a30d868214f6affa87bab19a705be11777a`: worktree clean, revision recorded, and `go version` reported Go 1.27.2 linux/amd64. |
+| SC-001 clean-checkout baseline step | Pass at `347dbeee6c3c3574e38933918e257056545aec03`: worktree clean, revision recorded, and `go version` reported Go 1.27.2 linux/amd64. |
 | Built CLI `TestSC091_BuiltCLIExitAndPartialReport/pre-result_engine_error_redacts_sensitive_target_path` | Failing-first: missing VEX file exposed `api_key=SENTINELFLOW_SECRET_MARKER` on stderr. After redacting top-level engine errors, the CLI returns exit `2`, omits the marker, and retains a useful redacted `load VEX` reason. |
 | `test -z "$(gofmt -l .)"` | Pass after formatting the Go fixture modules. |
 
