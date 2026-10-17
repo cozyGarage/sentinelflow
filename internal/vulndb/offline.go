@@ -389,7 +389,11 @@ func (s *OfflineSource) Query(ctx context.Context, ecosystem, pkg, version strin
 	}
 	var out []Vulnerability
 	for _, v := range entries {
-		if versionAffected(v, version) {
+		affected, err := versionAffected(v, ecosystem, version)
+		if err != nil {
+			return nil, fmt.Errorf("evaluate %s for %s/%s@%s: %w", v.ID, ecosystem, pkg, version, err)
+		}
+		if affected {
 			out = append(out, v.toVulnerability(pkg, ecosystem))
 		}
 	}
@@ -397,11 +401,11 @@ func (s *OfflineSource) Query(ctx context.Context, ecosystem, pkg, version strin
 	return out, nil
 }
 
-func versionAffected(v OSVVulnerability, version string) bool {
+func versionAffected(v OSVVulnerability, ecosystem, version string) (bool, error) {
 	for _, a := range v.Affected {
 		for _, listed := range a.Versions {
 			if strings.TrimPrefix(listed, "v") == strings.TrimPrefix(version, "v") {
-				return true
+				return true, nil
 			}
 		}
 		for _, r := range a.Ranges {
@@ -412,10 +416,14 @@ func versionAffected(v OSVVulnerability, version string) bool {
 			for _, e := range r.Events {
 				events = append(events, rangeEvent{Introduced: e.Introduced, Fixed: e.Fixed, LastAffected: e.LastAffected})
 			}
-			if affects(r.Type, events, version) {
-				return true
+			affected, err := affects(r.Type, ecosystem, events, version)
+			if err != nil {
+				return false, err
+			}
+			if affected {
+				return true, nil
 			}
 		}
 	}
-	return false
+	return false, nil
 }

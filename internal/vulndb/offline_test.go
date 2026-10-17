@@ -17,24 +17,66 @@ import (
 
 func TestCompareVersions(t *testing.T) {
 	cases := []struct {
-		typ, a, b string
-		want      int
+		typ, ecosystem, a, b string
+		want                 int
+		wantErr              bool
 	}{
-		{"SEMVER", "1.2.3", "1.10.0", -1},
-		{"SEMVER", "v1.0.0-rc.1", "1.0.0", -1},
-		{"SEMVER", "0.0.0-20230101-abcdef", "0.1.0", -1},
-		{"ECOSYSTEM", "2.31.0", "2.4.0", 1}, // numeric, not lexical
-		{"ECOSYSTEM", "1.0rc1", "1.0", -1},  // PyPI pre-release
-		{"ECOSYSTEM", "1.0", "1.0.0", 0},    // trailing zero
-		{"ECOSYSTEM", "1.0.1", "1.0", 1},
-		{"ECOSYSTEM", "2.14.1", "2.15.0", -1}, // Maven
-		{"ECOSYSTEM", "31.1-jre", "32.0.0-jre", -1},
-		{"ECOSYSTEM", "13.0.1", "13.0.1", 0},
+		{"SEMVER", "go", "1.2.3", "1.10.0", -1, false},
+		{"SEMVER", "npm", "v1.0.0-rc.1", "1.0.0", -1, false},
+		{"SEMVER", "cargo", "0.0.0-20230101-abcdef", "0.1.0", -1, false},
+		{"ECOSYSTEM", "pip", "2.31.0", "2.4.0", 1, false}, // numeric, not lexical
+		{"ECOSYSTEM", "pip", "1.0rc1", "1.0", 0, true},    // PEP 440 ordering is not approximated
+		{"ECOSYSTEM", "pip", "1.0.post1", "1.0", 0, true},
+		{"ECOSYSTEM", "maven", "1.0-sp1", "1.0", 0, true},
+		{"ECOSYSTEM", "npm", "1.0.0-rc.1", "1.0.0", 0, true},
+		{"ECOSYSTEM", "go", "1.0", "1.0.0", 0, false}, // trailing zero
+		{"ECOSYSTEM", "go", "1.0.1", "1.0", 1, false},
+		{"ECOSYSTEM", "maven", "2.14.1", "2.15.0", -1, false},
+		{"ECOSYSTEM", "nuget", "13.0.1", "13.0.1", 0, false},
+		{"ECOSYSTEM", "go", "999999999999999999999999999999", "1000000000000000000000000000000", -1, false},
+		{"ECOSYSTEM", "unknown", "1.0", "2.0", 0, true},
+		{"GIT", "go", "1.0", "2.0", 0, true},
 	}
 	for _, c := range cases {
-		if got := compareVersions(c.typ, c.a, c.b); got != c.want {
-			t.Errorf("%s %s vs %s = %d, want %d", c.typ, c.a, c.b, got, c.want)
+		got, err := compareVersions(c.typ, c.ecosystem, c.a, c.b)
+		if c.wantErr {
+			if err == nil {
+				t.Errorf("%s %s %s vs %s: expected unsupported-ordering error", c.typ, c.ecosystem, c.a, c.b)
+			}
+			continue
 		}
+		if err != nil || got != c.want {
+			t.Errorf("%s %s %s vs %s = %d, err=%v, want %d", c.typ, c.ecosystem, c.a, c.b, got, err, c.want)
+		}
+	}
+}
+
+func TestSC083_EcosystemComparatorCapabilityMatrix(t *testing.T) {
+	for _, ecosystem := range OfflineEcosystems {
+		t.Run(ecosystem, func(t *testing.T) {
+			if got, err := compareVersions("ECOSYSTEM", ecosystem, "1.0.9", "1.0.10"); err != nil || got >= 0 {
+				t.Fatalf("numeric release ordering got %d err=%v, want 1.0.9 < 1.0.10", got, err)
+			}
+			for _, qualifier := range []string{"1.0.0rc1", "1.0.post1", "1.0-sp1", "1.0.0-rc.1", "1.0+build.1"} {
+				if _, err := compareVersions("ECOSYSTEM", ecosystem, qualifier, "1.0.0"); err == nil {
+					t.Errorf("qualifier %q must remain uncertain for ECOSYSTEM ordering", qualifier)
+				}
+			}
+		})
+	}
+	if got, err := compareVersions("SEMVER", "npm", "1.0.0-rc.1", "1.0.0"); err != nil || got >= 0 {
+		t.Fatalf("qualified SEMVER prerelease ordering got %d err=%v, want prerelease < release", got, err)
+	}
+}
+
+func TestSC083_UnsupportedOrderingCannotBecomeCleanOfflineResult(t *testing.T) {
+	var index OSVVulnerability
+	if err := json.Unmarshal([]byte(`{"id":"OSV-QUALIFIER-1","affected":[{"package":{"name":"example","ecosystem":"PyPI"},"ranges":[{"type":"ECOSYSTEM","events":[{"introduced":"1.0"},{"fixed":"2.0"}]}]}]}`), &index); err != nil {
+		t.Fatal(err)
+	}
+	_, err := versionAffected(index, "pip", "1.5.post1")
+	if err == nil || !strings.Contains(err.Error(), "unsupported ECOSYSTEM ordering") {
+		t.Fatalf("unsupported post-release ordering must be explicit, got %v", err)
 	}
 }
 
@@ -159,12 +201,15 @@ func TestAffects(t *testing.T) {
 	// Two windows: [1.0, 1.2) and [2.0, 2.1], plus a last_affected bound.
 	events := []rangeEvent{{Introduced: "2.0"}, {Fixed: "1.2"}, {Introduced: "1.0"}, {LastAffected: "2.1"}}
 	for v, want := range map[string]bool{"0.9": false, "1.0": true, "1.1.5": true, "1.2": false, "1.9": false, "2.0": true, "2.1": true, "2.1.1": false} {
-		if got := affects("ECOSYSTEM", append([]rangeEvent(nil), events...), v); got != want {
+		got, err := affects("ECOSYSTEM", "pip", append([]rangeEvent(nil), events...), v)
+		if err != nil {
+			t.Errorf("%s: unexpected comparator error: %v", v, err)
+		} else if got != want {
 			t.Errorf("%s: got %v want %v", v, got, want)
 		}
 	}
-	if !affects("SEMVER", []rangeEvent{{Introduced: "0"}, {Fixed: "0.17.0"}}, "0.16.9") {
-		t.Error("introduced 0 must cover everything before fixed")
+	if got, err := affects("SEMVER", "go", []rangeEvent{{Introduced: "0"}, {Fixed: "0.17.0"}}, "0.16.9"); err != nil || !got {
+		t.Errorf("introduced 0 must cover everything before fixed: got=%v err=%v", got, err)
 	}
 }
 

@@ -1,33 +1,50 @@
 package vulndb
 
 import (
+	"fmt"
 	"sort"
-	"strconv"
 	"strings"
 	"unicode"
 
 	"golang.org/x/mod/semver"
 )
 
-// compareVersions orders two versions for OSV range evaluation.
-// SEMVER ranges use real semver (prerelease < release). ECOSYSTEM ranges use a
-// segment-wise comparison that is right for numeric dotted versions in every
-// supported ecosystem (Maven, PyPI, RubyGems, NuGet, Packagist).
-// ponytail: no full PEP 440 / Maven ComparableVersion qualifier ordering
-// (e.g. "1.0.post1", "1.0-sp1"); add per-ecosystem comparators if mismatches show up.
-func compareVersions(rangeType, a, b string) int {
+// compareVersions orders versions only where the selected range semantics are
+// qualified. SEMVER uses Go's semver implementation. ECOSYSTEM currently
+// supports numeric dotted releases for the explicitly supported ecosystems;
+// qualifier-bearing forms remain uncertain until their native ordering is
+// implemented, and therefore fail closed instead of producing a clean result.
+func compareVersions(rangeType, ecosystem, a, b string) (int, error) {
 	if rangeType == "SEMVER" {
 		va, vb := "v"+strings.TrimPrefix(a, "v"), "v"+strings.TrimPrefix(b, "v")
-		if semver.IsValid(va) && semver.IsValid(vb) {
-			return semver.Compare(va, vb)
+		if !semver.IsValid(va) || !semver.IsValid(vb) {
+			return 0, fmt.Errorf("unsupported SEMVER ordering for %s versions %q and %q", ecosystem, a, b)
 		}
+		return semver.Compare(va, vb), nil
 	}
-	return compareSegments(a, b)
+	if rangeType != "ECOSYSTEM" {
+		return 0, fmt.Errorf("unsupported OSV range type %q for %s", rangeType, ecosystem)
+	}
+	if !ecosystemSupported(ecosystem) || !numericDottedVersion(a) || !numericDottedVersion(b) {
+		return 0, fmt.Errorf("unsupported ECOSYSTEM ordering for %s versions %q and %q", ecosystem, a, b)
+	}
+	return compareSegments(a, b), nil
 }
 
-// compareSegments splits on non-alphanumerics and number/letter boundaries.
-// Numbers compare numerically; a letter segment (pre-release such as "rc",
-// "beta") sorts before the end of the version, so 1.0rc1 < 1.0 < 1.0.1.
+func numericDottedVersion(v string) bool {
+	v = strings.TrimPrefix(v, "v")
+	if v == "" {
+		return false
+	}
+	for _, r := range v {
+		if (r < '0' || r > '9') && r != '.' {
+			return false
+		}
+	}
+	return !strings.HasPrefix(v, ".") && !strings.HasSuffix(v, ".") && !strings.Contains(v, "..")
+}
+
+// compareSegments compares numeric dotted components without integer overflow.
 func compareSegments(a, b string) int {
 	sa, sb := segments(strings.TrimPrefix(a, "v")), segments(strings.TrimPrefix(b, "v"))
 	for i := 0; i < len(sa) || i < len(sb); i++ {
@@ -38,19 +55,16 @@ func compareSegments(a, b string) int {
 			return segmentSign(sa[i])
 		}
 		x, y := sa[i], sb[i]
-		nx, ex := strconv.ParseUint(x, 10, 64)
-		ny, ey := strconv.ParseUint(y, 10, 64)
+		nx, ex := decimalValue(x)
+		ny, ey := decimalValue(y)
 		switch {
-		case ex == nil && ey == nil:
-			if nx != ny {
-				if nx < ny {
-					return -1
-				}
-				return 1
+		case ex && ey:
+			if c := compareDecimal(nx, ny); c != 0 {
+				return c
 			}
-		case ex == nil: // number beats letters (release > pre-release)
+		case ex: // number beats letters (release > pre-release)
 			return 1
-		case ey == nil:
+		case ey:
 			return -1
 		default:
 			if c := strings.Compare(strings.ToLower(x), strings.ToLower(y)); c != 0 {
@@ -64,13 +78,35 @@ func compareSegments(a, b string) int {
 // segmentSign: an extra numeric segment makes a version newer (1.0.1 > 1.0),
 // an extra letter segment makes it older (1.0rc1 < 1.0), zeros are neutral.
 func segmentSign(seg string) int {
-	if n, err := strconv.ParseUint(seg, 10, 64); err == nil {
-		if n == 0 {
+	if n, ok := decimalValue(seg); ok {
+		if n == "" {
 			return 0
 		}
 		return 1
 	}
 	return -1
+}
+
+func decimalValue(s string) (string, bool) {
+	if s == "" {
+		return "", false
+	}
+	for _, r := range s {
+		if r < '0' || r > '9' {
+			return "", false
+		}
+	}
+	return strings.TrimLeft(s, "0"), true
+}
+
+func compareDecimal(a, b string) int {
+	if len(a) != len(b) {
+		if len(a) < len(b) {
+			return -1
+		}
+		return 1
+	}
+	return strings.Compare(a, b)
 }
 
 func segments(v string) []string {
@@ -99,28 +135,64 @@ func segments(v string) []string {
 }
 
 // affects reports whether version is affected by one OSV "affected" entry.
-func affects(rangeType string, events []rangeEvent, version string) bool {
+
+func affects(rangeType, ecosystem string, events []rangeEvent, version string) (bool, error) {
+	if _, err := compareVersions(rangeType, ecosystem, version, version); err != nil {
+		return false, err
+	}
+	var compareErr error
 	sort.SliceStable(events, func(i, j int) bool {
-		return compareVersions(rangeType, events[i].version(), events[j].version()) < 0
+		if compareErr != nil {
+			return false
+		}
+		left, right := events[i].version(), events[j].version()
+		if left == "" || right == "" {
+			return left == "" && right != ""
+		}
+		cmp, err := compareVersions(rangeType, ecosystem, left, right)
+		if err != nil {
+			compareErr = err
+			return false
+		}
+		return cmp < 0
 	})
+	if compareErr != nil {
+		return false, compareErr
+	}
 	affected := false
 	for _, e := range events {
 		switch {
 		case e.Introduced != "":
-			if e.Introduced == "0" || compareVersions(rangeType, version, e.Introduced) >= 0 {
+			cmp := 1
+			if e.Introduced != "0" {
+				var err error
+				cmp, err = compareVersions(rangeType, ecosystem, version, e.Introduced)
+				if err != nil {
+					return false, err
+				}
+			}
+			if e.Introduced == "0" || cmp >= 0 {
 				affected = true
 			}
 		case e.Fixed != "":
-			if compareVersions(rangeType, version, e.Fixed) >= 0 {
+			cmp, err := compareVersions(rangeType, ecosystem, version, e.Fixed)
+			if err != nil {
+				return false, err
+			}
+			if cmp >= 0 {
 				affected = false
 			}
 		case e.LastAffected != "":
-			if compareVersions(rangeType, version, e.LastAffected) > 0 {
+			cmp, err := compareVersions(rangeType, ecosystem, version, e.LastAffected)
+			if err != nil {
+				return false, err
+			}
+			if cmp > 0 {
 				affected = false
 			}
 		}
 	}
-	return affected
+	return affected, nil
 }
 
 type rangeEvent struct {
