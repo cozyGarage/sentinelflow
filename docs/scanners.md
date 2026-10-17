@@ -64,11 +64,11 @@ Queries the [OSV API](https://osv.dev/) (`/v1/querybatch`, retries, on-disk cach
 
 ### Supported files
 
-Dependencies **prefer lockfiles when present** (`package-lock.json`, `npm-shrinkwrap.json`, classic `yarn.lock`, `go.sum`, `poetry.lock`, `Pipfile.lock`, `Cargo.lock`, `Gemfile.lock`, etc.). Range-only manifests without a lockfile are **best-effort** and may query approximate versions against OSV.
+Dependencies use lockfiles where supported (`package-lock.json`, `npm-shrinkwrap.json`, classic `yarn.lock`, `poetry.lock`, `Pipfile.lock`, `Cargo.lock`, `Gemfile.lock`, etc.). Go defaults to declared `go.mod` requirements; `go.sum` is checksum evidence, and selected graph resolution is opt-in. Range-only manifests without a lockfile are **best-effort** and may query approximate versions against OSV.
 
 | Ecosystem | Manifests / lockfiles |
 | --- | --- |
-| Go | `go.mod` (+ `go.sum` when present) |
+| Go | Declared `go.mod` requirements by default; opt-in selected module graph with `scanners.dependencies.go_module_graph` |
 | npm | `package-lock.json` / `npm-shrinkwrap.json` / classic `yarn.lock` / `pnpm-lock.yaml` v5–v9 (preferred), `package.json` fallback |
 | Python (PyPI) | `poetry.lock` / `Pipfile.lock` (preferred), `requirements.txt`, `pyproject.toml` |
 | Maven | `pom.xml` (resolves basic `${property}` versions) |

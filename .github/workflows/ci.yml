@@ -138,6 +138,18 @@ jobs:
           - id: SC-090
             package: ./internal/vulndb
             test: TestSC090_DiskCacheConcurrentReadersObserveCompleteEntries
+          - id: SC-015
+            package: ./internal/scanner/dependencies
+            test: TestSC015_OptInGoModuleGraphUsesSelectedVersionsAndPreservesDirectAttribution
+          - id: SC-015
+            package: ./internal/scanner/dependencies
+            test: TestSC015_GoModuleGraphFailsClosedForErrorTimeoutAndMissingTool
+          - id: SC-015
+            package: ./internal/scanner/dependencies
+            test: TestSC015_GoModuleGraphRejectsReplacementsBeforeRunningTool
+          - id: SC-015
+            package: ./internal/config
+            test: TestSC015_GoModuleGraphOptionsAreExplicitAndOfflineSafe
           - id: SC-076
             package: ./internal/scanner
             test: TestSC076_SuppressedObservationsRetainSafeProvenance

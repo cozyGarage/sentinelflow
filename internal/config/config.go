@@ -107,6 +107,10 @@ type DependenciesConfig struct {
 	Severity   string   `yaml:"severity" mapstructure:"severity"`
 	IgnoreDev  bool     `yaml:"ignore_dev" mapstructure:"ignore_dev"`
 	IgnoreCVEs []string `yaml:"ignore_cves" mapstructure:"ignore_cves"`
+	// GoModuleGraph opts into the selected module graph from `go list -m all`.
+	GoModuleGraph bool `yaml:"go_module_graph" mapstructure:"go_module_graph"`
+	// GoModuleGraphAllowNetwork permits go list to use configured module proxies.
+	GoModuleGraphAllowNetwork bool `yaml:"go_module_graph_allow_network" mapstructure:"go_module_graph_allow_network"`
 	// Offline answers vulnerability lookups from the local OSV database built by
 	// `sentinelflow db update` and skips EPSS/KEV enrichment (no network).
 	Offline bool `yaml:"offline" mapstructure:"offline"`
@@ -397,6 +401,12 @@ func (c *Config) Validate() error {
 	c.Scanners.SAST.Severity = strings.ToLower(strings.TrimSpace(c.Scanners.SAST.Severity))
 	c.Scanners.Container.Severity = strings.ToLower(strings.TrimSpace(c.Scanners.Container.Severity))
 	c.Reporting.Format = strings.ToLower(strings.TrimSpace(c.Reporting.Format))
+	if c.Scanners.Dependencies.GoModuleGraphAllowNetwork && !c.Scanners.Dependencies.GoModuleGraph {
+		return fmt.Errorf("scanners.dependencies.go_module_graph_allow_network requires go_module_graph")
+	}
+	if (c.Scanners.Dependencies.Offline || c.Scanners.Dependencies.OfflineRequireFresh) && c.Scanners.Dependencies.GoModuleGraphAllowNetwork {
+		return fmt.Errorf("scanners.dependencies.go_module_graph_allow_network cannot be enabled in offline mode")
+	}
 
 	if !validSeverities[c.FailOn.Severity] {
 		return fmt.Errorf("invalid fail_on.severity %q (expected critical, high, medium, low, or info)", c.FailOn.Severity)

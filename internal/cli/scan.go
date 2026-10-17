@@ -368,6 +368,9 @@ func applyGateFlags(cfg *config.Config) error {
 			return fmt.Errorf("invalid --timeout %q (use a positive Go duration, e.g. 10m, 90s)", scanTimeoutFlag)
 		}
 	}
+	if cfg.Scanners.Dependencies.GoModuleGraphAllowNetwork && (cfg.Scanners.Dependencies.Offline || cfg.Scanners.Dependencies.OfflineRequireFresh) {
+		return fmt.Errorf("scanners.dependencies.go_module_graph_allow_network cannot be enabled with --offline or --require-fresh-offline-db")
+	}
 	return nil
 }
 

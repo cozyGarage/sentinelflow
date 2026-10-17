@@ -11,6 +11,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/cozygarage/sentinelflow/internal/config"
 	"github.com/cozygarage/sentinelflow/internal/scanner/types"
@@ -109,6 +110,100 @@ func TestGoModScannerParsesSingleLineRequire(t *testing.T) {
 	}
 	if deps[0].Name != "github.com/foo/bar" || deps[0].Version != "v1.2.3" {
 		t.Fatalf("unexpected dependency: %+v", deps[0])
+	}
+}
+
+func TestSC015_OptInGoModuleGraphUsesSelectedVersionsAndPreservesDirectAttribution(t *testing.T) {
+	root := t.TempDir()
+	goMod := "module example.com/root\n\ngo 1.22\n\nrequire (\n\texample.com/direct v1.0.0\n\texample.com/indirect v1.1.0 // indirect\n)\n"
+	if err := os.WriteFile(filepath.Join(root, "go.mod"), []byte(goMod), 0600); err != nil {
+		t.Fatal(err)
+	}
+	fake := filepath.Join(root, "fake-go")
+	script := `#!/bin/sh
+test "$GOWORK" = off || exit 20
+test "$GOPROXY" = off || exit 21
+test "$GOSUMDB" = off || exit 22
+test "$GOTOOLCHAIN" = local || exit 23
+test -z "$GOFLAGS" || exit 25
+test "$1 $2 $3 $4 $5" = "list -m -json -mod=readonly all" || exit 24
+printf '%s\n' '{"Path":"example.com/root","Main":true}' '{"Path":"example.com/direct","Version":"v1.4.0"}' '{"Path":"example.com/transitive","Version":"v2.3.1"}'
+`
+	if err := os.WriteFile(fake, []byte(script), 0700); err != nil {
+		t.Fatal(err)
+	}
+	deps, err := (&GoModScanner{ResolveGraph: true, goCommand: fake}).Scan(context.Background(), root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(deps) != 2 {
+		t.Fatalf("resolved graph should contain direct and transitive modules: %+v", deps)
+	}
+	byName := map[string]Dependency{}
+	for _, dep := range deps {
+		byName[dep.Name] = dep
+	}
+	direct := byName["example.com/direct"]
+	if direct.Version != "v1.4.0" || direct.Line == 0 || direct.Inventory != "go_list_module" || direct.Dev {
+		t.Fatalf("selected direct module should retain go.mod attribution: %+v", direct)
+	}
+	transitive := byName["example.com/transitive"]
+	if transitive.Version != "v2.3.1" || transitive.Line != 0 || transitive.Inventory != "go_list_module" {
+		t.Fatalf("transitive module should be marked as resolved graph evidence: %+v", transitive)
+	}
+}
+
+func TestSC015_GoModuleGraphFailsClosedForErrorTimeoutAndMissingTool(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "go.mod"), []byte("module example.com/root\n\ngo 1.22\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		name    string
+		script  string
+		command string
+		timeout time.Duration
+		want    string
+	}{
+		{name: "command error", script: "#!/bin/sh\necho synthetic module error >&2\nexit 2\n", want: "synthetic module error"},
+		{name: "timeout", script: "#!/bin/sh\nexec sleep 2\n", timeout: 25 * time.Millisecond, want: "deadline exceeded"},
+		{name: "missing tool", command: filepath.Join(root, "missing-go"), want: "unavailable"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			command := tc.command
+			if command == "" {
+				command = filepath.Join(root, "fake-"+strings.ReplaceAll(tc.name, " ", "-"))
+				if err := os.WriteFile(command, []byte(tc.script), 0700); err != nil {
+					t.Fatal(err)
+				}
+			}
+			ctx := context.Background()
+			cancel := func() {}
+			if tc.timeout > 0 {
+				ctx, cancel = context.WithTimeout(ctx, tc.timeout)
+			}
+			defer cancel()
+			_, err := (&GoModScanner{ResolveGraph: true, goCommand: command}).Scan(ctx, root)
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("graph resolution error=%v, want %q", err, tc.want)
+			}
+		})
+	}
+}
+
+func TestSC015_GoModuleGraphRejectsReplacementsBeforeRunningTool(t *testing.T) {
+	root := t.TempDir()
+	goMod := "module example.com/root\n\ngo 1.22\n\nreplace example.com/lib => ../lib\n"
+	if err := os.WriteFile(filepath.Join(root, "go.mod"), []byte(goMod), 0600); err != nil {
+		t.Fatal(err)
+	}
+	fake := filepath.Join(root, "fake-go")
+	if err := os.WriteFile(fake, []byte("#!/bin/sh\nexit 99\n"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	_, err := (&GoModScanner{ResolveGraph: true, goCommand: fake}).Scan(context.Background(), root)
+	if err == nil || !strings.Contains(err.Error(), "replacements in go.mod are not yet supported") {
+		t.Fatalf("replacement boundary should be explicit before graph command, got %v", err)
 	}
 }
 

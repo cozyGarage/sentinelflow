@@ -1,0 +1,7 @@
+# Opt-in Go module graph resolution
+
+SC-015 adds a deliberate alternative to the default declared-requirement inventory. Set `scanners.dependencies.go_module_graph: true` to run `go list -m -json -mod=readonly all` inside each detected Go module. The selected graph's module versions become the vulnerability query tuples; direct `go.mod` declarations keep their source line and indirect marker, while selected transitive modules are labeled `go_list_module` with no invented source line.
+
+By default, graph resolution is network-isolated: `GOPROXY=off`, `GOSUMDB=off`, `GOTOOLCHAIN=local`, `GOWORK=off`, and cleared `GOFLAGS`. A missing module in the local cache fails resolution visibly. Network use requires the second explicit opt-in, `go_module_graph_allow_network: true`; this is invalid in offline mode and does not authorize build, test, install, or source execution. `-mod=readonly` prevents module file updates, output is bounded, and the scan context controls cancellation.
+
+This mode resolves the current module only. Workspace selection and module replacements fail visibly pending SC-016–SC-018. A selected module graph is dependency metadata; it does not establish platform-specific build selection, compiled artifact contents, or deployed inventory. The default remains the deterministic `go.mod` declared-requirement fallback.

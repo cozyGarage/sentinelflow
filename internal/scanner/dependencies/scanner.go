@@ -87,7 +87,10 @@ func NewScanner(cfg *config.Config) *Scanner {
 		s.client = client
 	}
 
-	s.ecosystems["go"] = &GoModScanner{}
+	s.ecosystems["go"] = &GoModScanner{
+		ResolveGraph: cfg.Scanners.Dependencies.GoModuleGraph,
+		AllowNetwork: cfg.Scanners.Dependencies.GoModuleGraphAllowNetwork && !cfg.Scanners.Dependencies.Offline && !cfg.Scanners.Dependencies.OfflineRequireFresh,
+	}
 	s.ecosystems["npm"] = &NpmScanner{}
 	s.ecosystems["pip"] = &PipScanner{}
 	s.ecosystems["maven"] = &MavenScanner{}
@@ -162,7 +165,11 @@ func (s *Scanner) Scan(ctx context.Context, path string, opts interface{}) (*Sca
 				}
 				if ecoName == "go" {
 					rel, _ := filepath.Rel(path, dir)
-					scanWarnings = append(scanWarnings, fmt.Sprintf("%s: Go inventory is read from go.mod requirements; go.sum, workspace selection, and replacements are not used to establish a resolved package graph", filepath.ToSlash(filepath.Join(rel, "go.mod"))))
+					message := "Go inventory is read from go.mod requirements; go.sum, workspace selection, and replacements are not used to establish a resolved package graph"
+					if goScanner, ok := eco.(*GoModScanner); ok && goScanner.ResolveGraph {
+						message = "Go inventory is resolved with `go list -m all` for this module with workspace mode disabled; this is module metadata, not proof of build, platform, or artifact contents"
+					}
+					scanWarnings = append(scanWarnings, fmt.Sprintf("%s: %s", filepath.ToSlash(filepath.Join(rel, "go.mod")), message))
 				}
 				for _, dep := range found {
 					if s.config.Scanners.Dependencies.IgnoreDev && dep.Dev {
@@ -430,8 +437,12 @@ func formatFixedIn(fixed string) string {
 	return " (fixed in " + fixed + ")"
 }
 
-// GoModScanner scans Go modules
-type GoModScanner struct{}
+// GoModScanner scans declared Go requirements or an explicitly selected module graph.
+type GoModScanner struct {
+	ResolveGraph bool
+	AllowNetwork bool
+	goCommand    string
+}
 
 func (g *GoModScanner) Name() string { return "go" }
 
@@ -451,6 +462,9 @@ func (g *GoModScanner) Scan(ctx context.Context, path string) ([]Dependency, err
 	if err != nil {
 		return nil, fmt.Errorf("parse go.mod: %w", err)
 	}
+	if g.ResolveGraph && len(parsed.Replace) > 0 {
+		return nil, fmt.Errorf("resolve Go module graph: replacements in go.mod are not yet supported; use declared requirements until SC-016/SC-017 support is enabled")
+	}
 	deps := make([]Dependency, 0, len(parsed.Require))
 	for _, req := range parsed.Require {
 		line := 0
@@ -462,6 +476,9 @@ func (g *GoModScanner) Scan(ctx context.Context, path string) ([]Dependency, err
 			FilePath: goModPath, Line: line, Dev: req.Indirect,
 			Inventory: "go.mod_require",
 		})
+	}
+	if g.ResolveGraph {
+		return g.resolveGraph(ctx, goModPath, deps)
 	}
 	return deps, nil
 }
