@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 )
@@ -51,5 +52,30 @@ func TestDurationMSJSON(t *testing.T) {
 	}
 	if decoded.Duration.Std() != 1500*time.Millisecond {
 		t.Fatalf("round-trip duration = %v", decoded.Duration.Std())
+	}
+}
+
+func TestScanStatusJSONIsAdditiveAndDistinguishesCleanFromSkipped(t *testing.T) {
+	legacy := `{"findings":[],"scanner_runs":[{"scanner":"secrets","findings_count":0}]}`
+	var old ScanResult
+	if err := json.Unmarshal([]byte(legacy), &old); err != nil {
+		t.Fatal(err)
+	}
+	if old.Status != "" || old.ScannerRuns[0].Status != "" {
+		t.Fatalf("legacy documents must decode without invented execution claims: %+v", old)
+	}
+
+	clean := ScanResult{Status: ScanStatusComplete, ScannerRuns: []ScannerRun{{Scanner: "secrets", Status: ScanStatusComplete}}}
+	skipped := ScanResult{Status: ScanStatusSkipped}
+	cleanJSON, err := json.Marshal(clean)
+	if err != nil {
+		t.Fatal(err)
+	}
+	skippedJSON, err := json.Marshal(skipped)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(cleanJSON), `"status":"complete"`) || !strings.Contains(string(skippedJSON), `"status":"skipped"`) {
+		t.Fatalf("explicit outcomes missing: clean=%s skipped=%s", cleanJSON, skippedJSON)
 	}
 }

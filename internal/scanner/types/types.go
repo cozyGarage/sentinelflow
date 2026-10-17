@@ -24,6 +24,7 @@ type ScannerResult struct {
 	Findings   []api.Finding
 	FilesCount int
 	Warnings   []string
+	Status     api.ScanStatus
 }
 
 // AsScanOptions extracts ScanOptions from the opaque opts value.

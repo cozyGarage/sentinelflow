@@ -505,6 +505,13 @@ func TestScannerErrorsFailsCI(t *testing.T) {
 	}
 }
 
+func TestScannerErrorsFailsWhenNothingExecuted(t *testing.T) {
+	err := scannerErrors(&api.ScanResult{Status: api.ScanStatusSkipped}, config.Default())
+	if err == nil || !strings.Contains(err.Error(), "no scanners executed") {
+		t.Fatalf("a skipped scan must not pass CI: %v", err)
+	}
+}
+
 func TestScannerErrorsSoftDependencies(t *testing.T) {
 	off := false
 	cfg := config.Default()
@@ -528,11 +535,14 @@ func TestScannerErrorsSoftDependencies(t *testing.T) {
 
 	result = &api.ScanResult{
 		ScannerRuns: []api.ScannerRun{
-			{Scanner: "dependencies", Error: "osv unavailable"},
+			{Scanner: "dependencies", Status: api.ScanStatusFailed, Error: "osv unavailable"},
 		},
 	}
 	if err := scannerErrors(result, cfg); err != nil {
 		t.Fatalf("expected soft deps error to be non-fatal, got %v", err)
+	}
+	if result.ScannerRuns[0].Status != api.ScanStatusFailed {
+		t.Fatalf("soft dependency policy must not erase degraded outcome, got %q", result.ScannerRuns[0].Status)
 	}
 }
 

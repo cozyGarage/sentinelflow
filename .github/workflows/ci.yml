@@ -45,6 +45,24 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          - id: SC-004
+            package: ./pkg/api
+            test: TestScanStatusJSONIsAdditiveAndDistinguishesCleanFromSkipped
+          - id: SC-004
+            package: ./internal/scanner
+            test: TestEngineCleanZeroFindingsAndNoConfiguredScannersHaveDifferentOutcomes
+          - id: SC-004
+            package: ./internal/cli
+            test: TestScannerErrorsFailsWhenNothingExecuted
+          - id: SC-005
+            package: ./internal/scanner
+            test: TestEngineVEXFailureReturnsCollectedFindings
+          - id: SC-006
+            package: ./internal/adapter/external
+            test: TestRequiredAdapterMissingHasFailedOutcome
+          - id: SC-006
+            package: ./internal/cli
+            test: TestScannerErrorsSoftDependencies
           - id: SC-002
             package: ./internal/adapter/external
             test: TestSC032_AdapterDoesNotTreatFindingsAsProcessSuccess

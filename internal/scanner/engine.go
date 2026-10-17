@@ -170,6 +170,29 @@ func (e *Engine) Scan(ctx context.Context, targetPath string) (*api.ScanResult, 
 					run.Warnings[i] = redact.Line(warning)
 				}
 				outcomes[i].findings = scanResult.Findings
+				run.Status = scanResult.Status
+			}
+			if errors.Is(err, context.DeadlineExceeded) {
+				run.Status = api.ScanStatusTimedOut
+			} else if err != nil && (run.Status == "" || run.Status == api.ScanStatusComplete || run.Status == api.ScanStatusSkipped) {
+				if scanResult != nil && len(scanResult.Findings) > 0 {
+					run.Status = api.ScanStatusPartial
+				} else {
+					run.Status = api.ScanStatusFailed
+				}
+			} else if run.Status == "" {
+				switch {
+				case errors.Is(err, context.Canceled):
+					run.Status = api.ScanStatusFailed
+				case err != nil && scanResult != nil && len(scanResult.Findings) > 0:
+					run.Status = api.ScanStatusPartial
+				case err != nil:
+					run.Status = api.ScanStatusFailed
+				case scanResult != nil && len(scanResult.Warnings) > 0:
+					run.Status = api.ScanStatusPartial
+				default:
+					run.Status = api.ScanStatusComplete
+				}
 			}
 
 			outcomes[i].run = run
@@ -192,8 +215,12 @@ func (e *Engine) Scan(ctx context.Context, targetPath string) (*api.ScanResult, 
 			if e.config.FailOn.KEV && run.Error == "" {
 				// The KEV gate cannot be evaluated; fail closed instead of passing silently.
 				run.Error = msg
+				run.Status = api.ScanStatusFailed
 			} else {
 				run.Warnings = append(run.Warnings, msg)
+				if run.Status == api.ScanStatusComplete {
+					run.Status = api.ScanStatusPartial
+				}
 			}
 		}
 	}
@@ -204,6 +231,10 @@ func (e *Engine) Scan(ctx context.Context, targetPath string) (*api.ScanResult, 
 			run := depsRun(result)
 			switch {
 			case mode == "required":
+				run.Status = api.ScanStatusFailed
+				if errors.Is(err, context.DeadlineExceeded) {
+					run.Status = api.ScanStatusTimedOut
+				}
 				if run.Error == "" {
 					run.Error = redact.Line("reachability: " + err.Error())
 				} else {
@@ -211,8 +242,10 @@ func (e *Engine) Scan(ctx context.Context, targetPath string) (*api.ScanResult, 
 				}
 			case errors.Is(err, dependencies.ErrGovulncheckMissing):
 				run.Warnings = append(run.Warnings, "reachability: govulncheck not on PATH (mode=auto; skipping)")
+				run.Status = api.ScanStatusPartial
 			default:
 				run.Warnings = append(run.Warnings, redact.Line("reachability: "+err.Error()))
+				run.Status = api.ScanStatusPartial
 			}
 		}
 	}
@@ -231,7 +264,8 @@ func (e *Engine) Scan(ctx context.Context, targetPath string) (*api.ScanResult, 
 		}
 		rules, err := vex.Load(paths)
 		if err != nil {
-			return nil, fmt.Errorf("load VEX: %w", err)
+			markPostProcessFailure(result, startTime, "vex", err)
+			return result, fmt.Errorf("load VEX: %w", err)
 		}
 		result.Findings, vexed = vex.Filter(result.Findings, rules)
 	}
@@ -243,7 +277,8 @@ func (e *Engine) Scan(ctx context.Context, targetPath string) (*api.ScanResult, 
 			Staged: e.Staged,
 		})
 		if derr != nil {
-			return nil, fmt.Errorf("diff filter: %w", derr)
+			markPostProcessFailure(result, startTime, "diff", derr)
+			return result, fmt.Errorf("diff filter: %w", derr)
 		}
 		result.Findings = diff.Filter(result.Findings, changed)
 	}
@@ -258,7 +293,8 @@ func (e *Engine) Scan(ctx context.Context, targetPath string) (*api.ScanResult, 
 		}
 		bl, err := baseline.Load(blPath)
 		if err != nil {
-			return nil, fmt.Errorf("failed to load baseline %s: %w", blPath, err)
+			markPostProcessFailure(result, startTime, "baseline", err)
+			return result, fmt.Errorf("failed to load baseline %s: %w", blPath, err)
 		}
 		before := result.Findings
 		filtered := baseline.Filter(before, bl)
@@ -283,7 +319,8 @@ func (e *Engine) Scan(ctx context.Context, targetPath string) (*api.ScanResult, 
 
 	if e.BaselineRef != "" {
 		if err := e.filterBaselineRef(ctx, targetPath, result); err != nil {
-			result.ScannerRuns = append(result.ScannerRuns, api.ScannerRun{Scanner: "baseline-ref", Error: redact.Line(err.Error())})
+			result.ScannerRuns = append(result.ScannerRuns, api.ScannerRun{Scanner: "baseline-ref", Status: api.ScanStatusFailed, Error: redact.Line(err.Error())})
+			result.Status = statusForRuns(result.ScannerRuns)
 			result.Metadata.EndTime = time.Now()
 			result.Duration = api.DurationMS(time.Since(startTime))
 			return result, err
@@ -305,13 +342,74 @@ func (e *Engine) Scan(ctx context.Context, targetPath string) (*api.ScanResult, 
 		}
 		if len(result.ScannerRuns) > 0 {
 			result.ScannerRuns[0].Warnings = append(result.ScannerRuns[0].Warnings, skipMsgs...)
+			if result.ScannerRuns[0].Status == api.ScanStatusComplete {
+				result.ScannerRuns[0].Status = api.ScanStatusPartial
+			}
 		}
 	}
 
 	result.Metadata.EndTime = time.Now()
 	result.Duration = api.DurationMS(time.Since(startTime))
+	result.Status = statusForRuns(result.ScannerRuns)
+	if len(skipped) > 0 && result.Status == api.ScanStatusComplete {
+		result.Status = api.ScanStatusPartial
+	}
 
 	return result, nil
+}
+
+func markPostProcessFailure(result *api.ScanResult, startTime time.Time, name string, err error) {
+	status := api.ScanStatusFailed
+	if errors.Is(err, context.DeadlineExceeded) {
+		status = api.ScanStatusTimedOut
+	}
+	result.ScannerRuns = append(result.ScannerRuns, api.ScannerRun{
+		Scanner: "postprocess:" + name,
+		Status:  status,
+		Error:   redact.Line(err.Error()),
+	})
+	result.Metadata.EndTime = time.Now()
+	result.Duration = api.DurationMS(time.Since(startTime))
+	result.Status = statusForRuns(result.ScannerRuns)
+}
+
+func statusForRuns(runs []api.ScannerRun) api.ScanStatus {
+	if len(runs) == 0 {
+		return api.ScanStatusSkipped
+	}
+	status := api.ScanStatusComplete
+	allSkipped := true
+	allNotApplicable := true
+	for _, run := range runs {
+		if run.Status != api.ScanStatusSkipped {
+			allSkipped = false
+		}
+		if run.Status != api.ScanStatusNotApplicable {
+			allNotApplicable = false
+		}
+		switch run.Status {
+		case api.ScanStatusComplete:
+			// A successful run contributes no degradation.
+		case api.ScanStatusTimedOut:
+			return api.ScanStatusTimedOut
+		case api.ScanStatusFailed:
+			status = api.ScanStatusFailed
+		case api.ScanStatusPartial, api.ScanStatusNotApplicable, api.ScanStatusSkipped:
+			if status == api.ScanStatusComplete {
+				status = api.ScanStatusPartial
+			}
+		default:
+			// Unknown producer states must not be interpreted as complete coverage.
+			status = api.ScanStatusFailed
+		}
+	}
+	if allSkipped {
+		return api.ScanStatusSkipped
+	}
+	if allNotApplicable {
+		return api.ScanStatusNotApplicable
+	}
+	return status
 }
 
 func sortFindings(findings []api.Finding) {
