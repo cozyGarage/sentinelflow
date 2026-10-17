@@ -47,7 +47,7 @@ func TestSC091_BuiltCLIExitAndPartialReport(t *testing.T) {
 		assertCLIExit(t, bin, target, 0, "--secrets")
 	})
 	t.Run("pre-result engine error redacts sensitive target path", func(t *testing.T) {
-		target := filepath.Join(t.TempDir(), "api_key=SENTINELFLOW_SECRET_MARKER")
+		target := filepath.Join(t.TempDir(), "api_key=REDACT_ME")
 		if err := os.MkdirAll(target, 0700); err != nil {
 			t.Fatal(err)
 		}
@@ -63,7 +63,7 @@ func TestSC091_BuiltCLIExitAndPartialReport(t *testing.T) {
 		if !errors.As(err, &exitErr) || exitErr.ExitCode() != api.ExitTool {
 			t.Fatalf("want tool exit %d, got %v\nstdout:\n%s\nstderr:\n%s", api.ExitTool, err, stdout.String(), stderr.String())
 		}
-		if strings.Contains(stdout.String(), "SENTINELFLOW_SECRET_MARKER") || strings.Contains(stderr.String(), "SENTINELFLOW_SECRET_MARKER") {
+		if strings.Contains(stdout.String(), "REDACT_ME") || strings.Contains(stderr.String(), "REDACT_ME") {
 			t.Fatalf("pre-result engine error leaked synthetic secret\nstdout:\n%s\nstderr:\n%s", stdout.String(), stderr.String())
 		}
 		if !strings.Contains(stderr.String(), "load VEX") || !strings.Contains(stderr.String(), "REDACTED") {
@@ -114,7 +114,7 @@ func TestSC091_BuiltCLIExitAndPartialReport(t *testing.T) {
 		}
 		fakeBin := t.TempDir()
 		gitleaks := filepath.Join(fakeBin, "gitleaks")
-		script := "#!/bin/sh\nprintf '%s' '[{\"RuleID\":\"test.secret\",\"Description\":\"synthetic secret\",\"File\":\"secret.txt\",\"StartLine\":1,\"Match\":\"SYNTHETIC\"}]'\nprintf '%s\\n' 'api_key=SENTINELFLOW_SECRET_MARKER' >&2\nexit 2\n"
+		script := "#!/bin/sh\nprintf '%s' '[{\"RuleID\":\"test.secret\",\"Description\":\"synthetic secret\",\"File\":\"secret.txt\",\"StartLine\":1,\"Match\":\"SYNTHETIC\"}]'\nprintf '%s\\n' 'api_key=REDACT_ME' >&2\nexit 2\n"
 		if err := os.WriteFile(gitleaks, []byte(script), 0700); err != nil {
 			t.Fatal(err)
 		}
@@ -123,7 +123,7 @@ func TestSC091_BuiltCLIExitAndPartialReport(t *testing.T) {
 		if result == nil || len(result.Findings) != 1 || result.Findings[0].RuleID != "test.secret" {
 			t.Fatalf("required tool failure must preserve parsed finding in report: %+v", result)
 		}
-		if len(result.ScannerRuns) == 0 || strings.Contains(result.ScannerRuns[len(result.ScannerRuns)-1].Error, "SENTINELFLOW_SECRET_MARKER") || !strings.Contains(result.ScannerRuns[len(result.ScannerRuns)-1].Error, "REDACTED") {
+		if len(result.ScannerRuns) == 0 || strings.Contains(result.ScannerRuns[len(result.ScannerRuns)-1].Error, "REDACT_ME") || !strings.Contains(result.ScannerRuns[len(result.ScannerRuns)-1].Error, "REDACTED") {
 			t.Fatalf("scanner diagnostic must be redacted in public report: %+v", result.ScannerRuns)
 		}
 	})
@@ -184,7 +184,7 @@ func assertCLIExitEnv(t *testing.T, bin, target string, want int, extraEnv []str
 	if got != want {
 		t.Fatalf("exit=%d want=%d\nstdout:\n%s\nstderr:\n%s", got, want, stdout.String(), stderr.String())
 	}
-	if strings.Contains(stdout.String(), "SENTINELFLOW_SECRET_MARKER") || strings.Contains(stderr.String(), "SENTINELFLOW_SECRET_MARKER") {
+	if strings.Contains(stdout.String(), "REDACT_ME") || strings.Contains(stderr.String(), "REDACT_ME") {
 		t.Fatalf("CLI leaked synthetic diagnostic marker\nstdout:\n%s\nstderr:\n%s", stdout.String(), stderr.String())
 	}
 	data, readErr := os.ReadFile(reportPath)
