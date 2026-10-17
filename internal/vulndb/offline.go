@@ -251,6 +251,8 @@ type OfflineSource struct {
 	mu        sync.Mutex
 	index     map[string]map[string]json.RawMessage
 	snapshots map[string]api.VulnerabilityDataSource
+	maxAge    time.Duration
+	now       func() time.Time
 }
 
 // NewOfflineSource reads indexes from dir (OfflineDir() when empty).
@@ -258,7 +260,7 @@ func NewOfflineSource(dir string) *OfflineSource {
 	if dir == "" {
 		dir = OfflineDir()
 	}
-	return &OfflineSource{dir: dir, index: map[string]map[string]json.RawMessage{}, snapshots: map[string]api.VulnerabilityDataSource{}}
+	return &OfflineSource{dir: dir, index: map[string]map[string]json.RawMessage{}, snapshots: map[string]api.VulnerabilityDataSource{}, now: time.Now}
 }
 
 func (s *OfflineSource) Name() string { return "osv-offline" }
@@ -267,11 +269,15 @@ func (s *OfflineSource) load(eco string) (map[string]json.RawMessage, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if idx, ok := s.index[eco]; ok {
+		if err := s.validateFreshness(eco); err != nil {
+			return nil, err
+		}
 		return idx, nil
 	}
 	path := filepath.Join(s.dir, eco+".json.gz")
 	f, err := os.Open(path)
 	if os.IsNotExist(err) {
+		s.snapshots[eco] = api.VulnerabilityDataSource{Source: safeSourceURL(OfflineBaseURL + "/" + mapEcosystem(eco) + "/all.zip"), Mode: "offline", Ecosystem: eco, Supported: ecosystemSupported(eco), Status: "missing"}
 		return nil, fmt.Errorf("no offline database for %s; run `sentinelflow db update`", eco)
 	}
 	if err != nil {
@@ -280,10 +286,12 @@ func (s *OfflineSource) load(eco string) (map[string]json.RawMessage, error) {
 	defer f.Close()
 	gz, err := gzip.NewReader(f)
 	if err != nil {
-		return nil, err
+		s.snapshots[eco] = api.VulnerabilityDataSource{Source: safeSourceURL(OfflineBaseURL + "/" + mapEcosystem(eco) + "/all.zip"), Mode: "offline", Ecosystem: eco, Supported: ecosystemSupported(eco), Status: "corrupt"}
+		return nil, fmt.Errorf("offline database for %s is corrupt: %w", eco, err)
 	}
 	var idx offlineIndex
 	if err := json.NewDecoder(gz).Decode(&idx); err != nil {
+		s.snapshots[eco] = api.VulnerabilityDataSource{Source: safeSourceURL(OfflineBaseURL + "/" + mapEcosystem(eco) + "/all.zip"), Mode: "offline", Ecosystem: eco, Supported: ecosystemSupported(eco), Status: "corrupt"}
 		return nil, fmt.Errorf("offline database for %s is corrupt: %w", eco, err)
 	}
 	s.index[eco] = idx.Packages
@@ -303,7 +311,49 @@ func (s *OfflineSource) load(eco string) (map[string]json.RawMessage, error) {
 		Source: source, Mode: "offline", Ecosystem: eco,
 		SnapshotID: idx.SnapshotID, AcquiredAt: acquired, Supported: ecosystemSupported(eco), Status: "available",
 	}
+	if err := s.validateFreshness(eco); err != nil {
+		return nil, err
+	}
 	return idx.Packages, nil
+}
+
+func (s *OfflineSource) validateFreshness(eco string) error {
+	if s.maxAge <= 0 {
+		return nil
+	}
+	snapshot := s.snapshots[eco]
+	if snapshot.AcquiredAt == nil || snapshot.AcquiredAt.IsZero() {
+		snapshot.Status = "unknown_age"
+		s.snapshots[eco] = snapshot
+		return fmt.Errorf("offline OSV snapshot for %s has unknown acquisition time; refresh it with `sentinelflow db update --ecosystems %s`", eco, eco)
+	}
+	acquiredAt := snapshot.AcquiredAt.UTC()
+	age := s.now().Sub(acquiredAt)
+	if age < 0 {
+		age = 0
+	}
+	if age > s.maxAge {
+		snapshot.Status = "stale"
+		s.snapshots[eco] = snapshot
+		return fmt.Errorf("offline OSV snapshot for %s is stale (acquired %s, age %s, maximum %s); refresh it with `sentinelflow db update --ecosystems %s`", eco, acquiredAt.Format(time.RFC3339), age.Round(time.Second), s.maxAge, eco)
+	}
+	snapshot.Status = "available"
+	s.snapshots[eco] = snapshot
+	return nil
+}
+
+// CheckFreshness revalidates evidence before serving an in-memory query-cache
+// hit, so a long-running strict-offline client cannot outlive its age policy.
+func (s *OfflineSource) CheckFreshness(eco string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.maxAge <= 0 {
+		return nil
+	}
+	if _, ok := s.snapshots[eco]; !ok {
+		return fmt.Errorf("offline OSV snapshot for %s has not been verified; refresh it with `sentinelflow db update --ecosystems %s`", eco, eco)
+	}
+	return s.validateFreshness(eco)
 }
 
 // ProvenanceFor reports metadata from the loaded index. Missing and corrupt
@@ -312,7 +362,9 @@ func (s *OfflineSource) ProvenanceFor(ecosystem, status string) api.Vulnerabilit
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if snapshot, ok := s.snapshots[ecosystem]; ok {
-		snapshot.Status = status
+		if snapshot.Status == "available" || status == "available" {
+			snapshot.Status = status
+		}
 		return snapshot
 	}
 	return api.VulnerabilityDataSource{

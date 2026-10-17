@@ -394,7 +394,10 @@ func uniqueVulnerabilityData(in []api.VulnerabilityDataSource) []api.Vulnerabili
 		if a.Mode != b.Mode {
 			return a.Mode < b.Mode
 		}
-		return a.SnapshotID < b.SnapshotID
+		if a.SnapshotID != b.SnapshotID {
+			return a.SnapshotID < b.SnapshotID
+		}
+		return a.Status < b.Status
 	})
 	return out
 }

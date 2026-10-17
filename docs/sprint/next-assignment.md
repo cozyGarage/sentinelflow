@@ -14,7 +14,7 @@ SC-071–SC-075 are merged in [PR #58](https://github.com/cozyGarage/sentinelflo
 
 ## Active follow-up: vulnerability data quality (SC-081–SC-090)
 
-The current branch starts SC-081: carry source, snapshot identity, acquisition time and supported ecosystem evidence through live, offline and cache lookup paths into findings and scan metadata. Do not infer acquisition age from filesystem modification time. Online sources without immutable snapshot IDs and cross-run cache entries without stored origin remain explicit provenance limits.
+The current branch implements SC-081 snapshot provenance and begins SC-082 freshness enforcement. SC-081 local gates pass; its PR and hosted checks remain pending. SC-082 adds an opt-in required freshness limit for offline indexes, with actionable stale/missing/corrupt/unknown-age diagnostics and no mtime-based refresh. Online sources without immutable snapshot IDs and cross-run cache entries without stored origin remain explicit provenance limits.
 
 ## Subsequent batches
 

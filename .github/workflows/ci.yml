@@ -57,6 +57,18 @@ jobs:
           - id: SC-081
             package: ./internal/scanner/dependencies
             test: TestSC081_FindingIdentifiesAdvisorySource
+          - id: SC-082
+            package: ./internal/vulndb
+            test: TestSC082_OfflineFreshnessPolicyUsesSnapshotTimeAndReportsState
+          - id: SC-082
+            package: ./internal/vulndb
+            test: TestSC082_OfflineCacheHitRechecksFreshness
+          - id: SC-082
+            package: ./internal/config
+            test: TestSC082_OfflineFreshnessConfigDefaultsAndValidation
+          - id: SC-082
+            package: ./internal/cli
+            test: TestSC082_RequiredOfflineFreshnessErrorIsNotSoftened
           - id: SC-076
             package: ./internal/scanner
             test: TestSC076_SuppressedObservationsRetainSafeProvenance

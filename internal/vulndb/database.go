@@ -113,7 +113,10 @@ func (c *Client) VulnerabilityData() []api.VulnerabilityDataSource {
 		if a.Mode != b.Mode {
 			return a.Mode < b.Mode
 		}
-		return a.SnapshotID < b.SnapshotID
+		if a.SnapshotID != b.SnapshotID {
+			return a.SnapshotID < b.SnapshotID
+		}
+		return a.Status < b.Status
 	})
 	return out
 }
@@ -149,6 +152,10 @@ func (c *Client) Query(ctx context.Context, ecosystem, pkg, version string) ([]V
 	// Check cache first
 	cacheKey := cacheKey(ecosystem, pkg, version)
 	if vulns, err := c.cache.Get(cacheKey); err == nil {
+		if err := c.checkSourceFreshness(ecosystem); err != nil {
+			c.recordOfflineFreshnessFailure(ecosystem)
+			return nil, err
+		}
 		c.recordDataSource(api.VulnerabilityDataSource{Source: "query-cache", Mode: "cache", Ecosystem: ecosystem, Supported: ecosystemSupported(ecosystem), Status: "hit"})
 		return vulns, nil
 	}
@@ -218,6 +225,10 @@ func (c *Client) QueryMany(ctx context.Context, qs []PackageQuery) ([][]Vulnerab
 	var miss []int
 	for i, q := range qs {
 		if vulns, err := c.cache.Get(cacheKey(q.Ecosystem, q.Name, q.Version)); err == nil {
+			if err := c.checkSourceFreshness(q.Ecosystem); err != nil {
+				c.recordOfflineFreshnessFailure(q.Ecosystem)
+				return nil, err
+			}
 			out[i] = vulns
 			c.recordDataSource(api.VulnerabilityDataSource{Source: "query-cache", Mode: "cache", Ecosystem: q.Ecosystem, Supported: ecosystemSupported(q.Ecosystem), Status: "hit"})
 		} else {
@@ -283,6 +294,24 @@ func (c *Client) QueryMany(ctx context.Context, qs []PackageQuery) ([][]Vulnerab
 	return out, nil
 }
 
+func (c *Client) checkSourceFreshness(ecosystem string) error {
+	for _, source := range c.sources {
+		if checker, ok := source.(interface{ CheckFreshness(string) error }); ok {
+			return checker.CheckFreshness(ecosystem)
+		}
+	}
+	return nil
+}
+
+func (c *Client) recordOfflineFreshnessFailure(ecosystem string) {
+	for _, source := range c.sources {
+		if _, ok := source.(interface{ CheckFreshness(string) error }); ok {
+			c.recordSource(source, ecosystem, "error")
+			return
+		}
+	}
+}
+
 func fetchVulns(ctx context.Context, bs batchSource, hits [][]OSVVulnerability) (map[string]OSVVulnerability, error) {
 	var ids []string
 	details := map[string]OSVVulnerability{}
@@ -342,10 +371,14 @@ func WithCache(cache Cache) Option {
 
 // OfflineOptions makes a client answer from the local OSV database
 // (`sentinelflow db update`) with no network access when offline is true.
-func OfflineOptions(offline bool) []Option {
+func OfflineOptions(offline bool, requiredMaxAge ...time.Duration) []Option {
 	if !offline {
 		return nil
 	}
 	// Memory cache: online results in the disk cache must not mix with the offline DB.
-	return []Option{WithSources(NewOfflineSource("")), WithCache(NewMemoryCache())}
+	source := NewOfflineSource("")
+	if len(requiredMaxAge) > 0 && requiredMaxAge[0] > 0 {
+		source.maxAge = requiredMaxAge[0]
+	}
+	return []Option{WithSources(source), WithCache(NewMemoryCache())}
 }

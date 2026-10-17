@@ -34,6 +34,36 @@ func TestValidateAcceptsDefaults(t *testing.T) {
 	}
 }
 
+func TestSC082_OfflineFreshnessConfigDefaultsAndValidation(t *testing.T) {
+	cfg := Default()
+	if cfg.Scanners.Dependencies.OfflineRequireFresh {
+		t.Fatal("strict offline freshness must remain opt-in")
+	}
+	if age, err := cfg.OfflineMaxAgeDuration(); err != nil || age != 720*time.Hour {
+		t.Fatalf("default max age=%s err=%v, want 720h", age, err)
+	}
+	cfg.Scanners.Dependencies.OfflineMaxAge = "0s"
+	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "must be > 0") {
+		t.Fatalf("non-positive offline max age should fail validation, got %v", err)
+	}
+	cfg = Default()
+	cfg.Scanners.Dependencies.OfflineMaxAge = "not-a-duration"
+	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "invalid scanners.dependencies.offline_max_age") {
+		t.Fatalf("invalid offline max age should fail validation, got %v", err)
+	}
+	path := filepath.Join(t.TempDir(), ".sentinelflow.yaml")
+	if err := os.WriteFile(path, []byte("scanners:\n  dependencies:\n    offline_require_fresh: true\n    offline_max_age: 48h\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := LoadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cfg.Scanners.Dependencies.OfflineRequireFresh || cfg.Scanners.Dependencies.OfflineMaxAge != "48h" {
+		t.Fatalf("offline freshness settings did not load: %+v", cfg.Scanners.Dependencies)
+	}
+}
+
 func TestVEXBroadScopeRequiresExplicitConfig(t *testing.T) {
 	cfg := Default()
 	if cfg.VEXAllowBroad {

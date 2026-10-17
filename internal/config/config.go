@@ -110,6 +110,12 @@ type DependenciesConfig struct {
 	// Offline answers vulnerability lookups from the local OSV database built by
 	// `sentinelflow db update` and skips EPSS/KEV enrichment (no network).
 	Offline bool `yaml:"offline" mapstructure:"offline"`
+	// OfflineRequireFresh fails dependency lookups when the required local OSV
+	// snapshot is missing, corrupt, has unknown age, or exceeds OfflineMaxAge.
+	OfflineRequireFresh bool `yaml:"offline_require_fresh" mapstructure:"offline_require_fresh"`
+	// OfflineMaxAge is a Go duration (default 720h / 30 days) used when fresh
+	// offline evidence is required.
+	OfflineMaxAge string `yaml:"offline_max_age" mapstructure:"offline_max_age"`
 	// FailOnError fails the scan CLI when the dependencies scanner returns an
 	// error (e.g. OSV network blips). Default true. Set false to keep findings
 	// and report ScannerRun.Error without failing CI solely for transport errors.
@@ -307,6 +313,7 @@ func Default() *Config {
 				Severity:       "medium",
 				IgnoreDev:      false,
 				RiskEnrichment: true,
+				OfflineMaxAge:  "720h",
 			},
 			SAST: SASTConfig{
 				Enabled:     false,
@@ -412,6 +419,9 @@ func (c *Config) Validate() error {
 	if c.Scanners.MaxFileSize < 0 {
 		return fmt.Errorf("scanners.max_file_size must be >= 0")
 	}
+	if _, err := c.OfflineMaxAgeDuration(); err != nil {
+		return err
+	}
 	for _, tool := range []struct {
 		name string
 		mode string
@@ -465,6 +475,24 @@ func (c *Config) Validate() error {
 	}
 
 	return nil
+}
+
+// OfflineMaxAgeDuration parses scanners.dependencies.offline_max_age. The
+// duration is validated even when strict freshness is disabled, so dormant
+// configuration cannot surprise a later CI policy change.
+func (c *Config) OfflineMaxAgeDuration() (time.Duration, error) {
+	raw := strings.TrimSpace(c.Scanners.Dependencies.OfflineMaxAge)
+	if raw == "" {
+		raw = "720h"
+	}
+	d, err := time.ParseDuration(raw)
+	if err != nil {
+		return 0, fmt.Errorf("invalid scanners.dependencies.offline_max_age %q (use Go duration, e.g. 720h, 24h)", raw)
+	}
+	if d <= 0 {
+		return 0, fmt.Errorf("scanners.dependencies.offline_max_age must be > 0")
+	}
+	return d, nil
 }
 
 // ScanTimeoutDuration parses scan_timeout (default 10m).

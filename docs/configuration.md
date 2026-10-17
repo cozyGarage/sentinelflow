@@ -62,6 +62,8 @@ Run `sentinelflow init` to generate a starter configuration.
 | `reachability` | string | `off` | `auto` / `required` / `off`. Runs [`govulncheck`](https://go.dev/doc/security/vuln/) in each Go module with findings and marks each Go finding `reachable: true/false` (is the vulnerable function actually called). `auto` skips with a warning when govulncheck is not on PATH; `required` errors |
 | `fail_on_error` | bool | `true` | Fail the CLI when the dependencies scanner errors (e.g. OSV network blips). Set `false` to keep any findings and print a warning instead of failing solely for transport errors |
 | `offline` | bool | `false` | Answer lookups from the local OSV database built by `sentinelflow db update` (no network); skips EPSS/KEV. CLI: `--offline` |
+| `offline_require_fresh` | bool | `false` | Require offline snapshots to have a known acquisition time and be no older than `offline_max_age`; missing, corrupt, unknown-age or stale evidence fails even when dependency transport errors are soft |
+| `offline_max_age` | duration | `720h` | Maximum snapshot age used when `offline_require_fresh` is enabled; accepts Go durations such as `24h` or `720h` |
 
 Default stays strict for security. Soft-fail is for flaky CI networks only — findings that were collected still go through `fail_on`.
 
@@ -226,6 +228,8 @@ scanners:
       - auto
     severity: medium
     # fail_on_error: false  # optional: soft-skip OSV/network errors (default true)
+    # offline_require_fresh: true  # strict offline CI gate; implies offline mode
+    # offline_max_age: 720h       # 30 days; requires a scheduled db update
 
 policies:
   enabled: true

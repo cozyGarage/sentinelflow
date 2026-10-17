@@ -11,6 +11,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/cozygarage/sentinelflow/internal/config"
 	"github.com/cozygarage/sentinelflow/internal/scanner/fingerprint"
@@ -72,7 +73,14 @@ func NewScanner(cfg *config.Config) *Scanner {
 		ecosystems: make(map[string]EcosystemScanner),
 	}
 
-	client, err := vulndb.NewClient(vulndb.OfflineOptions(cfg.Scanners.Dependencies.Offline)...)
+	var offlineMaxAge []time.Duration
+	if cfg.Scanners.Dependencies.OfflineRequireFresh {
+		if age, err := cfg.OfflineMaxAgeDuration(); err == nil {
+			offlineMaxAge = append(offlineMaxAge, age)
+		}
+	}
+	useOffline := cfg.Scanners.Dependencies.Offline || cfg.Scanners.Dependencies.OfflineRequireFresh
+	client, err := vulndb.NewClient(vulndb.OfflineOptions(useOffline, offlineMaxAge...)...)
 	if err != nil {
 		s.client = nil
 	} else {

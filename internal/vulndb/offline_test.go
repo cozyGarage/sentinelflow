@@ -3,7 +3,9 @@ package vulndb
 import (
 	"archive/zip"
 	"bytes"
+	"compress/gzip"
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -33,6 +35,123 @@ func TestCompareVersions(t *testing.T) {
 		if got := compareVersions(c.typ, c.a, c.b); got != c.want {
 			t.Errorf("%s %s vs %s = %d, want %d", c.typ, c.a, c.b, got, c.want)
 		}
+	}
+}
+
+func TestSC082_OfflineFreshnessPolicyUsesSnapshotTimeAndReportsState(t *testing.T) {
+	now := time.Date(2026, 10, 17, 12, 0, 0, 0, time.UTC)
+	configured, err := NewClient(OfflineOptions(true, 24*time.Hour)...)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if source, ok := configured.sources[0].(*OfflineSource); !ok || source.maxAge != 24*time.Hour {
+		t.Fatalf("strict freshness option was not wired into offline source: %#v", configured.sources)
+	}
+	for _, tc := range []struct {
+		name       string
+		index      *offlineIndex
+		corrupt    bool
+		wantStatus string
+		wantErr    string
+	}{
+		{name: "fresh at boundary", index: &offlineIndex{Ecosystem: "Go", AcquiredAt: now.Add(-24 * time.Hour), Packages: map[string]json.RawMessage{}}, wantStatus: "available"},
+		{name: "stale despite future file mtime", index: &offlineIndex{Ecosystem: "Go", AcquiredAt: now.Add(-24*time.Hour - time.Second), Packages: map[string]json.RawMessage{}}, wantStatus: "stale", wantErr: "sentinelflow db update --ecosystems go"},
+		{name: "unknown legacy age", index: &offlineIndex{Ecosystem: "Go", Packages: map[string]json.RawMessage{}}, wantStatus: "unknown_age", wantErr: "unknown acquisition time"},
+		{name: "missing", wantStatus: "missing", wantErr: "db update"},
+		{name: "corrupt", corrupt: true, wantStatus: "corrupt", wantErr: "corrupt"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			path := filepath.Join(dir, "go.json.gz")
+			if tc.corrupt {
+				if err := os.WriteFile(path, []byte("not gzip"), 0600); err != nil {
+					t.Fatal(err)
+				}
+			} else if tc.index != nil {
+				f, err := os.Create(path)
+				if err != nil {
+					t.Fatal(err)
+				}
+				gz := gzip.NewWriter(f)
+				if err := json.NewEncoder(gz).Encode(tc.index); err != nil {
+					t.Fatal(err)
+				}
+				if err := gz.Close(); err != nil {
+					t.Fatal(err)
+				}
+				if err := f.Close(); err != nil {
+					t.Fatal(err)
+				}
+			}
+			future := now.Add(365 * 24 * time.Hour)
+			if tc.index != nil || tc.corrupt {
+				if err := os.Chtimes(path, future, future); err != nil {
+					t.Fatal(err)
+				}
+			}
+			source := NewOfflineSource(dir)
+			source.maxAge = 24 * time.Hour
+			source.now = func() time.Time { return now }
+			_, err := source.Query(context.Background(), "go", "example.com/pkg", "1.0.0")
+			if tc.wantErr == "" && err != nil {
+				t.Fatalf("fresh snapshot rejected: %v", err)
+			}
+			if tc.wantErr != "" && (err == nil || !strings.Contains(err.Error(), tc.wantErr)) {
+				t.Fatalf("error=%v, want substring %q", err, tc.wantErr)
+			}
+			status := "available"
+			if tc.wantErr != "" {
+				status = "error"
+			}
+			if got := source.ProvenanceFor("go", status).Status; got != tc.wantStatus {
+				t.Fatalf("provenance status=%q, want %q", got, tc.wantStatus)
+			}
+		})
+	}
+}
+
+func TestSC082_OfflineCacheHitRechecksFreshness(t *testing.T) {
+	cacheRoot := t.TempDir()
+	t.Setenv("SENTINELFLOW_CACHE_DIR", cacheRoot)
+	dir := OfflineDir()
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Date(2026, 10, 17, 12, 0, 0, 0, time.UTC)
+	index := offlineIndex{Ecosystem: "Go", AcquiredAt: now.Add(-time.Hour), Packages: map[string]json.RawMessage{}}
+	f, err := os.Create(filepath.Join(dir, "go.json.gz"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	gz := gzip.NewWriter(f)
+	if err := json.NewEncoder(gz).Encode(index); err != nil {
+		t.Fatal(err)
+	}
+	if err := gz.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.Close(); err != nil {
+		t.Fatal(err)
+	}
+	client, err := NewClient(OfflineOptions(true, 24*time.Hour)...)
+	if err != nil {
+		t.Fatal(err)
+	}
+	source := client.sources[0].(*OfflineSource)
+	source.now = func() time.Time { return now }
+	if _, err := client.Query(context.Background(), "go", "example.com/pkg", "1.0.0"); err != nil {
+		t.Fatalf("initial fresh lookup failed: %v", err)
+	}
+	now = now.Add(25 * time.Hour)
+	if _, err := client.Query(context.Background(), "go", "example.com/pkg", "1.0.0"); err == nil || !strings.Contains(err.Error(), "is stale") {
+		t.Fatalf("cached result bypassed freshness limit: %v", err)
+	}
+	var sawStale bool
+	for _, provenance := range client.VulnerabilityData() {
+		sawStale = sawStale || provenance.Status == "stale"
+	}
+	if !sawStale {
+		t.Fatalf("cache-hit provenance does not report stale snapshot: %+v", client.VulnerabilityData())
 	}
 }
 

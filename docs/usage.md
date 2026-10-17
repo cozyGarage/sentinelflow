@@ -218,9 +218,12 @@ sentinelflow db update                         # all ecosystems (~18 MB on disk,
 sentinelflow db update --ecosystems go,pip     # or just the ones you use
 sentinelflow db status                         # source, acquisition time and snapshot digest
 sentinelflow scan --deps --offline             # or scanners.dependencies.offline: true
+sentinelflow scan --deps --require-fresh-offline-db --offline-max-age 720h
 ```
 
 The database lives in `$SENTINELFLOW_CACHE_DIR/offline` (default `~/.cache/sentinelflow/vulndb/offline`). Each index records its OSV export source, SHA-256 snapshot ID, ecosystem, schema and acquisition timestamp; `db status` reads these fields from the index, so touching a file cannot make old data look fresh. Scan JSON records the queried live/offline/cache mode and any known snapshot identity. In CI, restore that directory from a cache and refresh it on a schedule. Offline mode also applies to `scan --sbom` and `scan --artifacts`, and it skips EPSS/KEV enrichment. Version ranges are evaluated locally: real semver for `SEMVER` ranges, and segment-wise numeric ordering for ecosystem ranges (Maven/PyPI/RubyGems/NuGet/Packagist). Exotic qualifiers such as `1.0.post1` or `-sp1` may order differently from the online API.
+
+Freshness enforcement is opt-in to preserve existing air-gapped workflows. Set `scanners.dependencies.offline_require_fresh: true` and optionally `offline_max_age: 720h`, or use the CLI flags above. Strict mode implies offline lookup and makes missing, corrupt, unknown-age or older-than-limit snapshots a hard scanner error, including when `fail_on_error: false`; diagnostics include the affected ecosystem and refresh command. The age comes from snapshot metadata, never the cache file's modification time. Schedule `sentinelflow db update` before scans so the required evidence remains available.
 
 ## Git History Secret Scanning
 
