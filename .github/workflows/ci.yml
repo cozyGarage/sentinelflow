@@ -12,6 +12,142 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  scan-correctness:
+    name: Scan correctness / ${{ matrix.id }} / ${{ matrix.test }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - id: SC-002
+            package: ./internal/adapter/external
+            test: TestSC032_AdapterDoesNotTreatFindingsAsProcessSuccess
+          - id: SC-002
+            package: ./internal/scanner/dependencies
+            test: TestSC042_(GovulncheckTruncatedStreamPreservesOnlyPositiveEvidence|CancelledGovulncheckKeepsReachabilityUnknown|CompleteCleanStreamIsSuccessful)
+          - id: SC-003
+            package: ./pkg/api
+            test: TestSC003_ExitCodeContract
+          - id: SC-011
+            package: ./internal/scanner/dependencies
+            test: TestSC011_(GoInventoryUsesSelectedGoModRequirement|QuerybatchUsesRequireVersionNotChecksumOnlyVersions)
+          - id: SC-012
+            package: ./internal/scanner/dependencies
+            test: TestSC012_(GoInventoryRejectsMalformedGoMod|GoRequireSyntaxPreservesVersionsAndLocations)
+          - id: SC-013
+            package: ./internal/scanner/dependencies
+            test: TestSC013_GoInventorySurvivesMissingOrMalformedSums
+          - id: SC-014
+            package: ./internal/scanner/dependencies
+            test: TestSC014_GoInventoryWarnsOnWorkspaceAndReplacementLimits
+          - id: SC-021
+            package: ./internal/scanner/dependencies
+            test: TestSC021_NpmLockRetainsInstalledInstances
+          - id: SC-022
+            package: ./internal/scanner/dependencies
+            test: TestSC022_NpmLockInventoryIsDeterministic
+          - id: SC-023
+            package: ./internal/scanner/dependencies
+            test: TestSC023_NpmV1LockTraversesArbitraryNestedDependencies
+          - id: SC-024
+            package: ./internal/scanner/dependencies
+            test: TestSC024_(DepFindingIdentityIncludesInstalledInstance|NpmInstancesReachOSVAndSurviveReportBaseline)
+          - id: SC-024
+            package: ./internal/baseline
+            test: TestSC024_BaselineDoesNotCollapsePackageInstances
+          - id: SC-031
+            package: ./internal/adapter/external
+            test: TestSC031_JsonAdaptersRequireReportOutput
+          - id: SC-032
+            package: ./internal/adapter/external
+            test: TestSC032_AdapterDoesNotTreatFindingsAsProcessSuccess
+          - id: SC-033
+            package: ./internal/adapter/external
+            test: TestSC033_RequiredAdapterRejects(EmptyReport|MalformedOrTruncatedReport)
+          - id: SC-033
+            package: ./internal/adapter/external
+            test: TestSC033_JsonReportsRequireToolSpecificResultCollections
+          - id: SC-034
+            package: ./internal/adapter/external
+            test: TestSC034_AutoModeKeepsFindingAndWarnsOnToolFailure
+          - id: SC-034
+            package: ./internal/adapter/external
+            test: TestSC034_AutoModeWarnsOnIncompleteSemgrepReportAndKeepsFindings
+          - id: SC-041
+            package: ./internal/scanner/dependencies
+            test: TestSC041_GovulncheckFailureAfterFindingsRemainsUnknown
+          - id: SC-042
+            package: ./internal/scanner/dependencies
+            test: TestSC042_(GovulncheckTruncatedStreamPreservesOnlyPositiveEvidence|CancelledGovulncheckKeepsReachabilityUnknown|CompleteCleanStreamIsSuccessful|EmptyFailureAndMalformedAdvisoryRemainUnknown)
+          - id: SC-043
+            package: ./internal/scanner/dependencies
+            test: TestSC043_(GovulncheckNegativeRequiresQualifiedPackageObservation|NonSymbolScanCannotEstablishUnreachable)
+          - id: SC-044
+            package: ./internal/cli
+            test: TestSC044_(ReachableOnlyFailsClosedForUnknown|RequiredReachabilityErrorIsNotSoftened)
+          - id: SC-044
+            package: ./internal/scanner
+            test: TestSC044_RequiredReachabilityFailureIsRecordedWithPartialFinding
+          - id: SC-051
+            package: ./internal/scanner
+            test: TestSC051_(BaselineRefRejectsHeadOrBaseScannerFailures|ScannerRunErrorCoexistsWithNilEngineError)
+          - id: SC-052
+            package: ./internal/scanner
+            test: TestSC052_RejectsMissingOrFailedScannerOutcome
+          - id: SC-053
+            package: ./internal/scanner
+            test: TestSC053_(BaselineRefUsesFreshComparableScannerInstances|RejectsScannerSetMismatch)
+          - id: SC-054
+            package: ./internal/scanner
+            test: TestSC054_(BaselineRefCleanupFailureIsVisible|TimeoutCleansTemporaryWorktree|WorktreeAddFailurePreservesCallerCheckout)|TestBaselineRefReportsOnlyNewFindings
+          - id: SC-091
+            package: ./internal/cli
+            test: TestSC091_BuiltCLIExitAndPartialReport
+          - id: SC-092
+            package: ./internal/cli
+            test: TestSC091_BuiltCLIExitAndPartialReport/deadline_with_partial_scanner_result_still_writes_report_and_exits_three
+          - id: SC-093
+            package: ./internal/cli
+            test: TestSC091_BuiltCLIExitAndPartialReport/incomplete_baseline_plus_threshold_finding_keeps_operational_exit
+          - id: SC-093
+            package: ./internal/scanner
+            test: TestSC093_UnknownReachabilityAndIncompleteBaseRetainHeadRisk
+          - id: SC-097
+            package: ./internal/scanner/dependencies
+            test: TestSC024_NpmInstancesReachOSVAndSurviveReportBaseline
+          - id: SC-098
+            package: ./internal/reporter
+            test: TestSC098_PublicReportsRedactScannerDiagnostics
+          - id: SC-098
+            package: ./internal/scanner
+            test: TestSC098_EngineRedactsScannerDiagnostics
+          - id: SC-098
+            package: ./internal/cli
+            test: TestSC091_BuiltCLIExitAndPartialReport/required_external_finding_plus_process_failure_exits_two_and_writes_report
+          - id: SC-098
+            package: ./internal/cli
+            test: TestSC091_BuiltCLIExitAndPartialReport/pre-result_engine_error_redacts_sensitive_target_path
+          - id: SC-034
+            package: ./internal/cli
+            test: TestSC091_BuiltCLIExitAndPartialReport/required_external_finding_plus_process_failure_exits_two_and_writes_report
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Run ${{ matrix.id }} regression
+        env:
+          TEST_NAME: ${{ matrix.test }}
+          PACKAGE: ${{ matrix.package }}
+        run: bash scripts/run-go-test-selector.sh "$PACKAGE" "$TEST_NAME"
+
   test:
     name: Unit Tests
     runs-on: ubuntu-latest
@@ -57,3 +193,80 @@ jobs:
           test "$(bash scripts/count-findings.sh gitlab-sast /tmp/gl.json)" = "2"
           printf '%s\n' '<?xml version="1.0"?><testsuite tests="1"><testcase name="a"><failure message="x"/></testcase></testsuite>' > /tmp/j.xml
           test "$(bash scripts/count-findings.sh junit /tmp/j.xml)" = "1"
+
+  scan-correctness-integration:
+    name: Scan correctness / SC-094 / integration-tag suite
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Run integration-tag suite
+        run: go test -tags=integration -count=1 ./test/...
+
+  scan-correctness-tool-inventory:
+    name: Scan correctness / SC-095 / govulncheck qualification and tool inventory
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Qualify pinned govulncheck with local advisory fixtures
+        run: bash scripts/qualify-govulncheck.sh
+
+      - name: Record available real scanner tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          for bin in semgrep gitleaks grype syft trivy yara govulncheck; do
+            if command -v "$bin" >/dev/null 2>&1; then
+              printf '%s available at %s; version/behavior still require explicit qualification\n' "$bin" "$(command -v "$bin")"
+            else
+              printf '%s unavailable; mark real-tool behavior unqualified\n' "$bin"
+            fi
+          done
+
+  scan-correctness-acceptance:
+    name: Scan correctness / SC-099 / exact-head gates
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Race suite
+        run: go test -race ./...
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Tagged integration suite
+        run: go test -tags=integration -count=1 ./test/...
+
+      - name: Delivery helper tests
+        run: |
+          bash scripts/install_checksum_test.sh
+          bash scripts/pr_comment_test.sh

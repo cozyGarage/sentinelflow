@@ -21,6 +21,7 @@ import (
 	"github.com/cozygarage/sentinelflow/internal/scanner/diff"
 	"github.com/cozygarage/sentinelflow/internal/scanner/filter"
 	"github.com/cozygarage/sentinelflow/internal/scanner/fingerprint"
+	"github.com/cozygarage/sentinelflow/internal/scanner/redact"
 	"github.com/cozygarage/sentinelflow/internal/scanner/suppress"
 	"github.com/cozygarage/sentinelflow/internal/scanner/types"
 	"github.com/cozygarage/sentinelflow/internal/scanner/vex"
@@ -32,10 +33,12 @@ type Scanner = adapter.Scanner
 
 // Engine orchestrates all security scanners
 type Engine struct {
-	config   *config.Config
-	scanners []Scanner
-	Staged   bool
-	DiffBase string
+	config         *config.Config
+	scanners       []Scanner
+	scannerFactory func(*config.Config) []Scanner
+	gitRunner      func(context.Context, string, ...string) (string, error)
+	Staged         bool
+	DiffBase       string
 	// BaselineRef, when set, reports only findings absent at this git ref.
 	BaselineRef string
 }
@@ -43,43 +46,54 @@ type Engine struct {
 // NewEngine creates a new scanning engine with configured scanners
 func NewEngine(cfg *config.Config) *Engine {
 	e := &Engine{
-		config:   cfg,
-		scanners: []Scanner{},
+		config: cfg,
 	}
 	if cfg == nil {
 		return e
 	}
 	e.DiffBase = cfg.DiffBase
+	e.scannerFactory = configuredScanners
+	e.scanners = configuredScanners(cfg)
+	return e
+}
 
+func configuredScanners(cfg *config.Config) []Scanner {
+	var scanners []Scanner
 	if cfg.Scanners.Secrets.Enabled {
-		e.scanners = append(e.scanners, adapter.NewSecretsAdapter(cfg))
+		scanners = append(scanners, adapter.NewSecretsAdapter(cfg))
 	}
 	if cfg.Scanners.IaC.Enabled {
-		e.scanners = append(e.scanners, adapter.NewIaCAdapter(cfg))
+		scanners = append(scanners, adapter.NewIaCAdapter(cfg))
 	}
 	if cfg.Scanners.Dependencies.Enabled {
-		e.scanners = append(e.scanners, adapter.NewDependenciesAdapter(cfg))
+		scanners = append(scanners, adapter.NewDependenciesAdapter(cfg))
 	}
 	if cfg.Policies.Enabled {
-		e.scanners = append(e.scanners, adapter.NewPolicyAdapter(cfg))
+		scanners = append(scanners, adapter.NewPolicyAdapter(cfg))
 	}
 	if cfg.Scanners.SAST.Enabled {
-		e.scanners = append(e.scanners, adapter.NewSASTAdapter(cfg))
+		scanners = append(scanners, adapter.NewSASTAdapter(cfg))
 	}
 	if cfg.Scanners.Container.Enabled {
-		e.scanners = append(e.scanners, adapter.NewContainerAdapter(cfg))
+		scanners = append(scanners, adapter.NewContainerAdapter(cfg))
 	}
 	if cfg.Scanners.License.Enabled {
-		e.scanners = append(e.scanners, adapter.NewLicenseAdapter(cfg))
+		scanners = append(scanners, adapter.NewLicenseAdapter(cfg))
 	}
 	if cfg.Scanners.Artifacts.Enabled {
-		e.scanners = append(e.scanners, adapter.NewArtifactsAdapter(cfg))
+		scanners = append(scanners, adapter.NewArtifactsAdapter(cfg))
 	}
 	for _, ext := range external.Adapters(cfg) {
-		e.scanners = append(e.scanners, ext)
+		scanners = append(scanners, ext)
 	}
+	return scanners
+}
 
-	return e
+func (e *Engine) runGit(ctx context.Context, dir string, args ...string) (string, error) {
+	if e.gitRunner != nil {
+		return e.gitRunner(ctx, dir, args...)
+	}
+	return runGit(ctx, dir, args...)
 }
 
 // Scan runs all enabled scanners on the target path
@@ -146,12 +160,15 @@ func (e *Engine) Scan(ctx context.Context, targetPath string) (*api.ScanResult, 
 			}
 
 			if err != nil {
-				run.Error = err.Error()
+				run.Error = redact.Line(err.Error())
 			}
 			if scanResult != nil {
 				run.FilesCount = scanResult.FilesCount
 				run.FindingsCount = len(scanResult.Findings)
-				run.Warnings = append([]string(nil), scanResult.Warnings...)
+				run.Warnings = make([]string, len(scanResult.Warnings))
+				for i, warning := range scanResult.Warnings {
+					run.Warnings[i] = redact.Line(warning)
+				}
 				outcomes[i].findings = scanResult.Findings
 			}
 
@@ -171,7 +188,7 @@ func (e *Engine) Scan(ctx context.Context, targetPath string) (*api.ScanResult, 
 	if e.config.Scanners.Dependencies.RiskEnrichment && !e.config.Scanners.Dependencies.Offline {
 		if err := enrichRisk(ctx, result.Findings); err != nil && len(result.ScannerRuns) > 0 {
 			run := depsRun(result)
-			msg := "EPSS/KEV enrichment incomplete: " + err.Error()
+			msg := redact.Line("EPSS/KEV enrichment incomplete: " + err.Error())
 			if e.config.FailOn.KEV && run.Error == "" {
 				// The KEV gate cannot be evaluated; fail closed instead of passing silently.
 				run.Error = msg
@@ -186,12 +203,16 @@ func (e *Engine) Scan(ctx context.Context, targetPath string) (*api.ScanResult, 
 		if err != nil && len(result.ScannerRuns) > 0 {
 			run := depsRun(result)
 			switch {
-			case mode == "required" && run.Error == "":
-				run.Error = "reachability: " + err.Error()
+			case mode == "required":
+				if run.Error == "" {
+					run.Error = redact.Line("reachability: " + err.Error())
+				} else {
+					run.Error = redact.Line(run.Error + "; reachability: " + err.Error())
+				}
 			case errors.Is(err, dependencies.ErrGovulncheckMissing):
 				run.Warnings = append(run.Warnings, "reachability: govulncheck not on PATH (mode=auto; skipping)")
 			default:
-				run.Warnings = append(run.Warnings, "reachability: "+err.Error())
+				run.Warnings = append(run.Warnings, redact.Line("reachability: "+err.Error()))
 			}
 		}
 	}
@@ -262,7 +283,10 @@ func (e *Engine) Scan(ctx context.Context, targetPath string) (*api.ScanResult, 
 
 	if e.BaselineRef != "" {
 		if err := e.filterBaselineRef(ctx, targetPath, result); err != nil {
-			return nil, err
+			result.ScannerRuns = append(result.ScannerRuns, api.ScannerRun{Scanner: "baseline-ref", Error: redact.Line(err.Error())})
+			result.Metadata.EndTime = time.Now()
+			result.Duration = api.DurationMS(time.Since(startTime))
+			return result, err
 		}
 	}
 	if len(vexed) > 0 {

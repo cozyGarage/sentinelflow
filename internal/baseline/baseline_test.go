@@ -57,6 +57,23 @@ func TestFilterDoesNotSuppressNewFindingSameRuleFile(t *testing.T) {
 	}
 }
 
+func TestSC024_BaselineDoesNotCollapsePackageInstances(t *testing.T) {
+	old := api.Finding{
+		ID: "DEP-npm-old", RuleID: "OSV-1", Title: "Vulnerable dependency: lodash",
+		Location: api.Location{File: "package-lock.json", Snippet: "lodash@4.17.20 (node_modules/a/node_modules/lodash)"},
+		Metadata: map[string]any{"package": "lodash", "version": "4.17.20", "install_path": "node_modules/a/node_modules/lodash"},
+	}
+	other := api.Finding{
+		ID: "DEP-npm-other", RuleID: "OSV-1", Title: "Vulnerable dependency: lodash",
+		Location: api.Location{File: "package-lock.json", Snippet: "lodash@4.17.21 (node_modules/lodash)"},
+		Metadata: map[string]any{"package": "lodash", "version": "4.17.21", "install_path": "node_modules/lodash"},
+	}
+	filtered := Filter([]api.Finding{old, other}, Generate([]api.Finding{old}))
+	if len(filtered) != 1 || filtered[0].ID != other.ID {
+		t.Fatalf("baseline for one installed instance suppressed another: %+v", filtered)
+	}
+}
+
 func TestSummarizeCountsSuppressedAndNew(t *testing.T) {
 	findings := []api.Finding{
 		{ID: "SEC-1", RuleID: "aws-access-key", Title: "AWS Key", Location: api.Location{File: "config.go", StartLine: 1}},

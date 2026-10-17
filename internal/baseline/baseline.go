@@ -149,6 +149,7 @@ func Filter(findings []api.Finding, baseline *File) []api.Finding {
 
 	now := time.Now()
 	baselined := make(map[string]struct{}, len(baseline.Findings)*3)
+	legacyHashes := make(map[string]struct{}, len(baseline.Findings))
 	var legacy map[legacyKey]struct{}
 	for _, e := range baseline.Findings {
 		if entryExpired(e, now) {
@@ -157,8 +158,12 @@ func Filter(findings []api.Finding, baseline *File) []api.Finding {
 		if e.Fingerprint != "" {
 			baselined["fp:"+e.Fingerprint] = struct{}{}
 		}
-		if e.Hash != "" {
-			baselined[e.Hash] = struct{}{}
+		if e.Hash != "" && e.Fingerprint == "" {
+			// V1/legacy entries use the line-sensitive hash as their only
+			// content identity. V2 entries have a stronger fingerprint; applying
+			// their legacy hash as a second, weaker key can suppress distinct
+			// package instances that share a rule, file, and title.
+			legacyHashes[e.Hash] = struct{}{}
 		}
 		if e.ID != "" {
 			baselined["id:"+e.ID] = struct{}{}
@@ -185,7 +190,7 @@ func Filter(findings []api.Finding, baseline *File) []api.Finding {
 				continue
 			}
 		}
-		if _, ok := baselined[HashFinding(f)]; ok {
+		if _, ok := legacyHashes[HashFinding(f)]; ok {
 			continue
 		}
 		if f.ID != "" {

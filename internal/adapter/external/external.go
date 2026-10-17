@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os/exec"
 	"strings"
@@ -19,12 +20,13 @@ type Scanner = types.ScannerResult
 
 // Adapter is a PATH-based tool wrapper.
 type Adapter struct {
-	name    string
-	bin     string
-	mode    string
-	version []string
-	args    func(path string) []string
-	parse   func(path string, stdout []byte) ([]api.Finding, error)
+	name           string
+	bin            string
+	mode           string
+	version        []string
+	args           func(path string) []string
+	parse          func(path string, stdout []byte) ([]api.Finding, error)
+	requiresOutput bool
 }
 
 func (a *Adapter) Name() string              { return a.name }
@@ -52,20 +54,28 @@ func (a *Adapter) Scan(ctx context.Context, path string, opts interface{}) (*typ
 	cmd.Stderr = &stderr
 	err := cmd.Run()
 	findings, parseErr := a.parse(path, stdout.Bytes())
-	if parseErr != nil && err == nil {
-		return result, parseErr
-	}
 	result.Findings = findings
 	result.FilesCount = 1
+	var failures []error
+	if parseErr != nil {
+		failures = append(failures, fmt.Errorf("invalid report: %w", parseErr))
+	}
 	if err != nil {
-		// Many tools (gitleaks, semgrep) exit 1 when they find issues.
-		if len(findings) > 0 {
-			return result, nil
+		failures = append(failures, err)
+	}
+	if a.requiresOutput && len(bytes.TrimSpace(stdout.Bytes())) == 0 && err == nil {
+		failures = append(failures, errors.New("produced no report output"))
+	}
+	if len(failures) > 0 {
+		failure := errors.Join(failures...)
+		detail := strings.TrimSpace(stderr.String())
+		if detail != "" {
+			failure = fmt.Errorf("%w (%s)", failure, detail)
 		}
 		if config.ExternalMode(a.mode) == "required" {
-			return result, fmt.Errorf("%s: %w (%s)", a.bin, err, strings.TrimSpace(stderr.String()))
+			return result, fmt.Errorf("%s: %w", a.bin, failure)
 		}
-		result.Warnings = append(result.Warnings, fmt.Sprintf("%s: %v", a.bin, err))
+		result.Warnings = append(result.Warnings, fmt.Sprintf("%s: %v", a.bin, failure))
 	}
 	return result, nil
 }
@@ -100,7 +110,7 @@ func semgrepAdapter() *Adapter {
 		args: func(path string) []string {
 			return []string{"--config=auto", "--json", "--quiet", path}
 		},
-		parse: parseSemgrep,
+		parse: parseSemgrep, requiresOutput: true,
 	}
 }
 
@@ -109,9 +119,9 @@ func gitleaksAdapter() *Adapter {
 		name: "gitleaks",
 		bin:  "gitleaks",
 		args: func(path string) []string {
-			return []string{"detect", "--source", path, "--report-format", "json", "--no-banner"}
+			return []string{"detect", "--source", path, "--report-format", "json", "--no-banner", "--exit-code", "0"}
 		},
-		parse: parseGitleaks,
+		parse: parseGitleaks, requiresOutput: true,
 	}
 }
 
@@ -122,7 +132,7 @@ func grypeAdapter() *Adapter {
 		args: func(path string) []string {
 			return []string{path, "-o", "json"}
 		},
-		parse: parseGrype,
+		parse: parseGrype, requiresOutput: true,
 	}
 }
 
@@ -133,7 +143,7 @@ func syftAdapter() *Adapter {
 		args: func(path string) []string {
 			return []string{path, "-o", "json"}
 		},
-		parse: parseSyft,
+		parse: parseSyft, requiresOutput: true,
 	}
 }
 
@@ -144,7 +154,7 @@ func trivyFSAdapter() *Adapter {
 		args: func(path string) []string {
 			return []string{"fs", "--format", "json", "--quiet", path}
 		},
-		parse: parseTrivyFS,
+		parse: parseTrivyFS, requiresOutput: true,
 	}
 }
 
@@ -163,9 +173,24 @@ func yaraAdapter(rules []string) *Adapter {
 	}
 }
 
+func requireJSONArray(stdout []byte, field, tool string) error {
+	var root map[string]json.RawMessage
+	if err := json.Unmarshal(stdout, &root); err != nil {
+		return err
+	}
+	raw, ok := root[field]
+	if !ok || len(bytes.TrimSpace(raw)) == 0 || bytes.TrimSpace(raw)[0] != '[' {
+		return fmt.Errorf("invalid %s report: expected %q array", tool, field)
+	}
+	return nil
+}
+
 func parseSemgrep(root string, stdout []byte) ([]api.Finding, error) {
 	if len(bytes.TrimSpace(stdout)) == 0 {
 		return nil, nil
+	}
+	if err := requireJSONArray(stdout, "results", "semgrep"); err != nil {
+		return nil, err
 	}
 	var report struct {
 		Results []struct {
@@ -179,6 +204,7 @@ func parseSemgrep(root string, stdout []byte) ([]api.Finding, error) {
 				Line int `json:"line"`
 			} `json:"start"`
 		} `json:"results"`
+		Errors []json.RawMessage `json:"errors"`
 	}
 	if err := json.Unmarshal(stdout, &report); err != nil {
 		return nil, err
@@ -199,13 +225,19 @@ func parseSemgrep(root string, stdout []byte) ([]api.Finding, error) {
 		f.Fingerprint = fingerprint.Of(f)
 		out = append(out, f)
 	}
+	if len(report.Errors) > 0 {
+		return out, fmt.Errorf("semgrep reported %d analysis errors", len(report.Errors))
+	}
 	return out, nil
 }
 
 func parseGitleaks(root string, stdout []byte) ([]api.Finding, error) {
 	stdout = bytes.TrimSpace(stdout)
-	if len(stdout) == 0 || stdout[0] != '[' {
+	if len(stdout) == 0 {
 		return nil, nil
+	}
+	if stdout[0] != '[' {
+		return nil, fmt.Errorf("invalid gitleaks report: expected JSON array")
 	}
 	var hits []struct {
 		RuleID      string `json:"RuleID"`
@@ -240,6 +272,9 @@ func parseGitleaks(root string, stdout []byte) ([]api.Finding, error) {
 func parseGrype(root string, stdout []byte) ([]api.Finding, error) {
 	if len(bytes.TrimSpace(stdout)) == 0 {
 		return nil, nil
+	}
+	if err := requireJSONArray(stdout, "matches", "grype"); err != nil {
+		return nil, err
 	}
 	var report struct {
 		Matches []struct {
@@ -282,6 +317,9 @@ func parseSyft(root string, stdout []byte) ([]api.Finding, error) {
 	if len(bytes.TrimSpace(stdout)) == 0 {
 		return nil, nil
 	}
+	if err := requireJSONArray(stdout, "artifacts", "syft"); err != nil {
+		return nil, err
+	}
 	var report struct {
 		Artifacts []struct {
 			Name    string `json:"name"`
@@ -316,7 +354,9 @@ func parseTrivyFS(root string, stdout []byte) ([]api.Finding, error) {
 		return nil, nil
 	}
 	var report struct {
-		Results []struct {
+		SchemaVersion int    `json:"SchemaVersion"`
+		ArtifactName  string `json:"ArtifactName"`
+		Results       []struct {
 			Target          string `json:"Target"`
 			Vulnerabilities []struct {
 				VulnerabilityID  string `json:"VulnerabilityID"`
@@ -329,6 +369,9 @@ func parseTrivyFS(root string, stdout []byte) ([]api.Finding, error) {
 	}
 	if err := json.Unmarshal(stdout, &report); err != nil {
 		return nil, err
+	}
+	if report.SchemaVersion == 0 || report.ArtifactName == "" {
+		return nil, fmt.Errorf("invalid trivy report: missing schema version or artifact name")
 	}
 	var out []api.Finding
 	for _, r := range report.Results {

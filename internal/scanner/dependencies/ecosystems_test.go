@@ -2,14 +2,72 @@ package dependencies
 
 import (
 	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/cozygarage/sentinelflow/internal/baseline"
 	"github.com/cozygarage/sentinelflow/internal/config"
+	"github.com/cozygarage/sentinelflow/internal/reporter"
+	"github.com/cozygarage/sentinelflow/internal/scanner/fingerprint"
+	"github.com/cozygarage/sentinelflow/internal/scanner/types"
+	"github.com/cozygarage/sentinelflow/internal/vulndb"
 	"github.com/cozygarage/sentinelflow/pkg/api"
 )
+
+func TestSC021_NpmLockRetainsInstalledInstances(t *testing.T) {
+	content := []byte(`{"lockfileVersion":3,"packages":{"":{"name":"app"},"node_modules/lodash":{"version":"4.17.21"},"node_modules/a/node_modules/lodash":{"version":"4.17.20"},"node_modules/@babel/core":{"version":"7.24.0"}}}`)
+	deps, err := parseNpmLock(content, "package-lock.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(deps) != 3 {
+		t.Fatalf("want all 3 installed package instances, got %+v", deps)
+	}
+	got := map[string]string{}
+	for _, d := range deps {
+		got[d.InstallPath] = d.Name + "@" + d.Version
+	}
+	if got["node_modules/lodash"] != "lodash@4.17.21" || got["node_modules/a/node_modules/lodash"] != "lodash@4.17.20" || got["node_modules/@babel/core"] != "@babel/core@7.24.0" {
+		t.Fatalf("unexpected install instances: %#v", got)
+	}
+}
+
+func TestSC022_NpmLockInventoryIsDeterministic(t *testing.T) {
+	first := []byte(`{"lockfileVersion":3,"packages":{"node_modules/z":{"version":"1"},"node_modules/a":{"version":"2"}}}`)
+	second := []byte(`{"lockfileVersion":3,"packages":{"node_modules/a":{"version":"2"},"node_modules/z":{"version":"1"}}}`)
+	a, err := parseNpmLock(first, "package-lock.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := parseNpmLock(second, "package-lock.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(a) != len(b) {
+		t.Fatalf("inventory sizes differ: %d != %d", len(a), len(b))
+	}
+	for i := range a {
+		if a[i].Name != b[i].Name || a[i].Version != b[i].Version || a[i].InstallPath != b[i].InstallPath {
+			t.Fatalf("input key order changed result at %d: %+v != %+v", i, a[i], b[i])
+		}
+	}
+}
+
+func TestSC023_NpmV1LockTraversesArbitraryNestedDependencies(t *testing.T) {
+	content := []byte(`{"lockfileVersion":1,"dependencies":{"a":{"version":"1","dependencies":{"b":{"version":"2","dependencies":{"@scope/c":{"version":"3"}}}}}}}`)
+	deps, err := parseNpmLock(content, "package-lock.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(deps) != 3 || deps[2].Name != "@scope/c" || deps[2].InstallPath != "node_modules/a/node_modules/b/node_modules/@scope/c" {
+		t.Fatalf("nested v1 inventory mismatch: %+v", deps)
+	}
+}
 
 func TestPipScannerRequirementsAndPyProject(t *testing.T) {
 	root := t.TempDir()
@@ -284,12 +342,85 @@ lodash@^4.0.0:
 	}
 }
 
-func TestDepFindingIDIncludesPackage(t *testing.T) {
+func TestSC024_DepFindingIdentityIncludesInstalledInstance(t *testing.T) {
 	s := NewScanner(config.Default())
-	a := s.createFinding(Dependency{Name: "pkg-a", Version: "1.0.0", Ecosystem: "npm", FilePath: "/tmp/package.json"}, Vulnerability{ID: "CVE-1", Severity: api.SeverityHigh}, "/tmp")
-	b := s.createFinding(Dependency{Name: "pkg-b", Version: "1.0.0", Ecosystem: "npm", FilePath: "/tmp/package.json"}, Vulnerability{ID: "CVE-1", Severity: api.SeverityHigh}, "/tmp")
+	a := s.createFinding(Dependency{Name: "lodash", Version: "4.17.21", Ecosystem: "npm", FilePath: "/tmp/package-lock.json", InstallPath: "node_modules/a/node_modules/lodash"}, Vulnerability{ID: "CVE-1", Severity: api.SeverityHigh}, "/tmp")
+	b := s.createFinding(Dependency{Name: "lodash", Version: "4.17.20", Ecosystem: "npm", FilePath: "/tmp/package-lock.json", InstallPath: "node_modules/b/node_modules/lodash"}, Vulnerability{ID: "CVE-1", Severity: api.SeverityHigh}, "/tmp")
 	if a.ID == b.ID {
-		t.Fatalf("same CVE in different packages must differ: %s", a.ID)
+		t.Fatalf("same CVE in different installed instances must differ: %s", a.ID)
+	}
+	if a.Location.Snippet == b.Location.Snippet || a.Metadata["install_path"] == b.Metadata["install_path"] {
+		t.Fatal("instance identity must survive in location and metadata")
+	}
+}
+
+func TestSC024_NpmInstancesReachOSVAndSurviveReportBaseline(t *testing.T) {
+	root := t.TempDir()
+	lockPath := filepath.Join(root, "package-lock.json")
+	body := `{"lockfileVersion":3,"packages":{"node_modules/lodash":{"version":"4.17.21"},"node_modules/a/node_modules/lodash":{"version":"4.17.20"}}}`
+	if err := os.WriteFile(lockPath, []byte(body), 0600); err != nil {
+		t.Fatal(err)
+	}
+	packagePath := filepath.Join(root, "package.json")
+	if err := os.WriteFile(packagePath, []byte(`{"name":"fixture"}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	queried := map[string]bool{}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/v1/querybatch":
+			var req struct {
+				Queries []vulndb.OSVRequest `json:"queries"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+				t.Errorf("decode query: %v", err)
+			}
+			results := make([]vulndb.OSVResponse, len(req.Queries))
+			for i, q := range req.Queries {
+				if q.Package.Name != "lodash" || q.Package.Ecosystem != "npm" {
+					t.Errorf("unexpected package tuple: %+v", q)
+				}
+				queried[q.Version] = true
+				results[i].Vulns = []vulndb.OSVVulnerability{{ID: "OSV-INSTANCE"}}
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{"results": results})
+		case "/v1/vulns/OSV-INSTANCE":
+			_, _ = w.Write([]byte(`{"id":"OSV-INSTANCE","summary":"synthetic package issue"}`))
+		default:
+			t.Errorf("unexpected request: %s", r.URL.Path)
+		}
+	}))
+	t.Cleanup(server.Close)
+	deps := &Scanner{config: &config.Config{}, client: testClient(t, server), ecosystems: map[string]EcosystemScanner{"npm": &NpmScanner{}}}
+	result, err := deps.Scan(context.Background(), root, types.ScanOptions{Files: []string{lockPath, packagePath}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(queried) != 2 || !queried["4.17.20"] || !queried["4.17.21"] || len(result.Findings) != 2 {
+		t.Fatalf("both installed versions must be queried and attributed: queries=%v findings=%+v", queried, result.Findings)
+	}
+	for i := range result.Findings {
+		f := &result.Findings[i]
+		if f.Metadata["package"] != "lodash" || f.Metadata["ecosystem"] != "npm" || f.Metadata["install_path"] == nil || f.Location.Snippet == "" {
+			t.Fatalf("package-instance identity missing from finding: %+v", *f)
+		}
+	}
+	fingerprint.Ensure(result.Findings)
+	encoded, err := reporter.New(&config.Config{}).Generate(&api.ScanResult{Findings: result.Findings}, "json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var report api.ScanResult
+	if err := json.Unmarshal([]byte(encoded), &report); err != nil {
+		t.Fatal(err)
+	}
+	if len(report.Findings) != 2 || report.Findings[0].Metadata["install_path"] == report.Findings[1].Metadata["install_path"] {
+		t.Fatalf("JSON report lost installed-instance identity: %+v", report.Findings)
+	}
+	filtered := baseline.Filter(report.Findings, baseline.Generate([]api.Finding{report.Findings[0]}))
+	if len(filtered) != 1 || filtered[0].Metadata["install_path"] == report.Findings[0].Metadata["install_path"] {
+		t.Fatalf("baseline must suppress only the matching installed instance: %+v", filtered)
 	}
 }
 

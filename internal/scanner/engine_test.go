@@ -4,12 +4,15 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/cozygarage/sentinelflow/internal/baseline"
 	"github.com/cozygarage/sentinelflow/internal/config"
+	"github.com/cozygarage/sentinelflow/internal/scanner/dependencies"
 	"github.com/cozygarage/sentinelflow/internal/scanner/types"
 	"github.com/cozygarage/sentinelflow/pkg/api"
 )
@@ -211,6 +214,49 @@ func TestEngineOrdersResultsIndependentOfScannerCompletion(t *testing.T) {
 	}
 }
 
+func TestSC044_RequiredReachabilityFailureIsRecordedWithPartialFinding(t *testing.T) {
+	root := t.TempDir()
+	moduleDir := filepath.Join(root, "svc")
+	if err := os.MkdirAll(moduleDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(moduleDir, "go.mod"), []byte("module example.com/svc\n\ngo 1.22\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	tool := filepath.Join(t.TempDir(), "govulncheck")
+	script := `#!/bin/sh
+cat <<'JSON'
+{"config":{"protocol_version":"v1.0.0","scan_level":"symbol"}}
+{"finding":{"osv":"GO-1","trace":[{"module":"m","version":"v1.2.3","package":"m/p","function":"F"}]}}
+JSON
+exit 2
+`
+	if err := os.WriteFile(tool, []byte(script), 0755); err != nil {
+		t.Fatal(err)
+	}
+	old := dependencies.GovulncheckBin
+	dependencies.GovulncheckBin = tool
+	t.Cleanup(func() { dependencies.GovulncheckBin = old })
+
+	cfg := config.Default()
+	cfg.Scanners.Dependencies.Reachability = "required"
+	e := NewEngine(cfg)
+	e.scanners = []Scanner{&stubScanner{name: "dependencies", findings: []api.Finding{{
+		Scanner: "dependencies", RuleID: "GO-1", Severity: api.SeverityHigh,
+		Location: api.Location{File: "svc/go.mod"}, Metadata: map[string]any{"ecosystem": "go", "package": "m", "version": "v1.2.3"},
+	}}}}
+	result, err := e.Scan(context.Background(), root)
+	if err != nil {
+		t.Fatalf("scanner outcome should be recorded in the result: %v", err)
+	}
+	if len(result.Findings) != 1 || result.Findings[0].Reachable == nil || !*result.Findings[0].Reachable {
+		t.Fatalf("partial positive evidence should survive: %+v", result.Findings)
+	}
+	if len(result.ScannerRuns) != 1 || !strings.Contains(result.ScannerRuns[0].Error, "reachability:") {
+		t.Fatalf("required reachability failure must be visible in scanner outcome: %+v", result.ScannerRuns)
+	}
+}
+
 func TestEnginePreservesFindingsOnScannerError(t *testing.T) {
 	tmpDir := t.TempDir()
 	cfg := &config.Config{}
@@ -234,6 +280,68 @@ func TestEnginePreservesFindingsOnScannerError(t *testing.T) {
 	}
 	if len(result.ScannerRuns) != 1 || result.ScannerRuns[0].Error == "" {
 		t.Fatalf("expected ScannerRun.Error set, got %+v", result.ScannerRuns)
+	}
+}
+
+func TestSC093_UnknownReachabilityAndIncompleteBaseRetainHeadRisk(t *testing.T) {
+	root := t.TempDir()
+	for name, content := range map[string]string{
+		"finding.txt": "synthetic finding\n",
+		"go.mod":      "module example.com/app\n\ngo 1.22\n",
+	} {
+		if err := os.WriteFile(filepath.Join(root, name), []byte(content), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	git := exec.Command("git", "-C", root, "init", "-q")
+	if out, err := git.CombinedOutput(); err != nil {
+		t.Fatalf("git init: %v\n%s", err, out)
+	}
+	for _, args := range [][]string{{"add", "."}, {"-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "base"}} {
+		cmd := exec.Command("git", append([]string{"-C", root}, args...)...)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+	govulncheck := filepath.Join(t.TempDir(), "govulncheck")
+	script := "#!/bin/sh\n[ \"$1\" = \"-json\" ] && [ \"$2\" = \"-C\" ] && [ \"$4\" = \"./...\" ] || exit 90\nprintf '%s\\n' '{\"config\":{\"protocol_version\":\"v1.0.0\",\"scan_level\":\"symbol\"}}'\ncase \"$3\" in *sentinelflow-baseref-*) exit 2;; esac\n"
+	if err := os.WriteFile(govulncheck, []byte(script), 0700); err != nil {
+		t.Fatal(err)
+	}
+	previous := dependencies.GovulncheckBin
+	dependencies.GovulncheckBin = govulncheck
+	t.Cleanup(func() { dependencies.GovulncheckBin = previous })
+	cfg := config.Default()
+	cfg.Scanners.Dependencies.Reachability = "required"
+	finding := api.Finding{ID: "risk", Scanner: "dependencies", RuleID: "GO-UNKNOWN", Severity: api.SeverityHigh,
+		Location: api.Location{File: "go.mod"}, Metadata: map[string]any{"ecosystem": "go", "package": "example.com/lib", "version": "v1.2.3"}}
+	e := NewEngine(cfg)
+	e.scanners = []Scanner{&stubScanner{name: "dependencies", findings: []api.Finding{finding}}}
+	e.scannerFactory = nil
+	e.BaselineRef = "HEAD"
+	result, err := e.Scan(context.Background(), root)
+	if err == nil {
+		t.Fatal("failed base reachability must reject baseline subtraction")
+	}
+	if result == nil || len(result.Findings) != 1 || result.Findings[0].Reachable != nil {
+		t.Fatalf("unknown head risk must survive incomplete base comparison: result=%+v", result)
+	}
+	if len(result.ScannerRuns) < 2 || result.ScannerRuns[len(result.ScannerRuns)-1].Scanner != "baseline-ref" {
+		t.Fatalf("comparison failure must be represented: %+v", result.ScannerRuns)
+	}
+}
+
+func TestSC098_EngineRedactsScannerDiagnostics(t *testing.T) {
+	root := t.TempDir()
+	cfg := &config.Config{}
+	e := NewEngine(cfg)
+	e.scanners = []Scanner{&stubScanner{name: "fake", err: fmt.Errorf("tool failed api_key=SENTINELFLOW_SECRET_MARKER")}}
+	result, err := e.Scan(context.Background(), root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.ScannerRuns) != 1 || strings.Contains(result.ScannerRuns[0].Error, "SENTINELFLOW_SECRET_MARKER") || !strings.Contains(result.ScannerRuns[0].Error, "REDACTED") {
+		t.Fatalf("engine scanner diagnostic must be useful but redacted: %+v", result.ScannerRuns)
 	}
 }
 

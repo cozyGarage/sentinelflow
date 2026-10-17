@@ -17,6 +17,7 @@ import (
 	"github.com/cozygarage/sentinelflow/internal/scanner/types"
 	"github.com/cozygarage/sentinelflow/internal/vulndb"
 	"github.com/cozygarage/sentinelflow/pkg/api"
+	"golang.org/x/mod/modfile"
 )
 
 // Scanner implements dependency vulnerability scanning
@@ -41,6 +42,11 @@ type Dependency struct {
 	FilePath  string
 	Line      int
 	Dev       bool
+	// Inventory identifies the source used to select this package version.
+	// It is descriptive evidence, not proof of the contents of a built artifact.
+	Inventory string
+	// InstallPath distinguishes multiple installed instances of the same package.
+	InstallPath string
 }
 
 // Vulnerability represents a known vulnerability
@@ -128,6 +134,7 @@ func (s *Scanner) Scan(ctx context.Context, path string, opts interface{}) (*Sca
 	var mu sync.Mutex
 	var scanErrs []string
 	var deps []Dependency
+	var scanWarnings []string
 
 	for _, dir := range s.manifestDirs(files) {
 		for name, ecosys := range s.detectEcosystems(dir) {
@@ -143,6 +150,10 @@ func (s *Scanner) Scan(ctx context.Context, path string, opts interface{}) (*Sca
 					scanErrs = append(scanErrs, fmt.Sprintf("%s (%s): %v", ecoName, filepath.ToSlash(rel), err))
 					return
 				}
+				if ecoName == "go" {
+					rel, _ := filepath.Rel(path, dir)
+					scanWarnings = append(scanWarnings, fmt.Sprintf("%s: Go inventory is read from go.mod requirements; go.sum, workspace selection, and replacements are not used to establish a resolved package graph", filepath.ToSlash(filepath.Join(rel, "go.mod"))))
+				}
 				for _, dep := range found {
 					if s.config.Scanners.Dependencies.IgnoreDev && dep.Dev {
 						continue
@@ -153,6 +164,8 @@ func (s *Scanner) Scan(ctx context.Context, path string, opts interface{}) (*Sca
 		}
 	}
 	wg.Wait()
+	sort.Strings(scanWarnings)
+	result.Warnings = scanWarnings
 
 	// Stable order keeps findings and error messages deterministic.
 	sort.Slice(deps, func(i, j int) bool {
@@ -163,7 +176,10 @@ func (s *Scanner) Scan(ctx context.Context, path string, opts interface{}) (*Sca
 		if a.Name != b.Name {
 			return a.Name < b.Name
 		}
-		return a.Version < b.Version
+		if a.Version != b.Version {
+			return a.Version < b.Version
+		}
+		return a.InstallPath < b.InstallPath
 	})
 	sort.Strings(scanErrs)
 
@@ -352,9 +368,16 @@ func firstFixedVersion(fixed []string, affected []vulndb.Range) string {
 // createFinding creates a finding from a vulnerability
 func (s *Scanner) createFinding(dep Dependency, vuln Vulnerability, basePath string) api.Finding {
 	relPath, _ := filepath.Rel(basePath, dep.FilePath)
+	metadata := map[string]any{"package": dep.Name, "version": dep.Version, "ecosystem": dep.Ecosystem}
+	if dep.Inventory != "" {
+		metadata["inventory"] = dep.Inventory
+	}
+	if dep.InstallPath != "" {
+		metadata["install_path"] = dep.InstallPath
+	}
 
 	return api.Finding{
-		ID:          fmt.Sprintf("DEP-%s-%s-%s", dep.Ecosystem, fingerprint.Token(dep.Name), vuln.ID),
+		ID:          fmt.Sprintf("DEP-%s-%s-%s", dep.Ecosystem, fingerprint.Token(dep.Name+"@"+dep.Version+"@"+dep.InstallPath), vuln.ID),
 		Type:        api.FindingTypeVulnerability,
 		Severity:    vuln.Severity,
 		Title:       fmt.Sprintf("Vulnerable dependency: %s", dep.Name),
@@ -363,10 +386,10 @@ func (s *Scanner) createFinding(dep Dependency, vuln Vulnerability, basePath str
 			File:      relPath,
 			StartLine: dep.Line,
 			EndLine:   dep.Line,
-			Snippet:   fmt.Sprintf("%s@%s", dep.Name, dep.Version),
+			Snippet:   fmt.Sprintf("%s@%s (%s)", dep.Name, dep.Version, dep.InstallPath),
 		},
 		Remediation: fmt.Sprintf("Update %s to a patched version%s", dep.Name, formatFixedIn(vuln.FixedIn)),
-		Metadata:    map[string]any{"package": dep.Name, "version": dep.Version, "ecosystem": dep.Ecosystem},
+		Metadata:    metadata,
 		References:  vuln.References,
 		Scanner:     "dependencies",
 		RuleID:      vuln.ID,
@@ -400,77 +423,22 @@ func (g *GoModScanner) Scan(ctx context.Context, path string) ([]Dependency, err
 		return nil, err
 	}
 
-	var deps []Dependency
-	lines := strings.Split(string(content), "\n")
-
-	inRequire := false
-	for lineNum, line := range lines {
-		trimmed := strings.TrimSpace(line)
-		if trimmed == "" || strings.HasPrefix(trimmed, "//") {
-			continue
-		}
-
-		if strings.HasPrefix(trimmed, "require") {
-			parts := strings.Fields(trimmed)
-			// Single-line: require module version [// indirect]
-			if len(parts) >= 3 && parts[0] == "require" && parts[1] != "(" {
-				deps = append(deps, Dependency{
-					Name:      parts[1],
-					Version:   parts[2],
-					Ecosystem: "go",
-					FilePath:  goModPath,
-					Line:      lineNum + 1,
-				})
-				continue
-			}
-			// Multi-line: require (
-			inRequire = true
-			continue
-		}
-
-		if inRequire && trimmed == ")" {
-			inRequire = false
-			continue
-		}
-
-		if inRequire {
-			parts := strings.Fields(trimmed)
-			if len(parts) >= 2 {
-				deps = append(deps, Dependency{
-					Name:      parts[0],
-					Version:   parts[1],
-					Ecosystem: "go",
-					FilePath:  goModPath,
-					Line:      lineNum + 1,
-				})
-			}
-		}
+	parsed, err := modfile.Parse(goModPath, content, nil)
+	if err != nil {
+		return nil, fmt.Errorf("parse go.mod: %w", err)
 	}
-
-	// Overlay exact versions from go.sum onto go.mod requires, then append
-	// remaining go.sum modules (transitive dependencies) with fixed versions.
-	if sumDeps, err := parseGoSum(filepath.Join(path, "go.sum")); err == nil && len(sumDeps) > 0 {
-		sumVer := map[string]string{}
-		for _, sd := range sumDeps {
-			sumVer[sd.Name] = sd.Version
+	deps := make([]Dependency, 0, len(parsed.Require))
+	for _, req := range parsed.Require {
+		line := 0
+		if req.Syntax != nil {
+			line = req.Syntax.Start.Line
 		}
-		seen := map[string]bool{}
-		for i := range deps {
-			if v, ok := sumVer[deps[i].Name]; ok {
-				deps[i].Version = v
-				deps[i].FilePath = filepath.Join(path, "go.sum")
-			}
-			seen[deps[i].Name] = true
-		}
-		for _, sd := range sumDeps {
-			if seen[sd.Name] {
-				continue
-			}
-			seen[sd.Name] = true
-			deps = append(deps, sd)
-		}
+		deps = append(deps, Dependency{
+			Name: req.Mod.Path, Version: req.Mod.Version, Ecosystem: "go",
+			FilePath: goModPath, Line: line, Dev: req.Indirect,
+			Inventory: "go.mod_require",
+		})
 	}
-
 	return deps, nil
 }
 
@@ -677,61 +645,100 @@ func parseNpmLock(content []byte, lockPath string) ([]Dependency, error) {
 			Version string `json:"version"`
 			Dev     bool   `json:"dev"`
 		} `json:"packages"`
-		Dependencies map[string]struct {
-			Version string `json:"version"`
-			Dev     bool   `json:"dev"`
-		} `json:"dependencies"`
+		Dependencies map[string]*npmLockDependency `json:"dependencies"`
 	}
 	if err := json.Unmarshal(content, &lock); err != nil {
 		return nil, err
 	}
 
 	var deps []Dependency
-	seen := map[string]bool{}
 
 	// lockfileVersion 2/3
-	for key, pkg := range lock.Packages {
+	packagePaths := make([]string, 0, len(lock.Packages))
+	for key := range lock.Packages {
+		packagePaths = append(packagePaths, key)
+	}
+	sort.Strings(packagePaths)
+	for _, key := range packagePaths {
+		pkg := lock.Packages[key]
 		if key == "" || pkg.Version == "" {
 			continue
 		}
-		name := key
-		if strings.HasPrefix(name, "node_modules/") {
-			name = strings.TrimPrefix(name, "node_modules/")
-			// nested: node_modules/foo/node_modules/bar → bar
-			if i := strings.LastIndex(name, "node_modules/"); i >= 0 {
-				name = name[i+len("node_modules/"):]
-			}
-		}
-		if seen[name] {
+		name := npmPackageName(key)
+		if name == "" {
 			continue
 		}
-		seen[name] = true
 		deps = append(deps, Dependency{
-			Name:      name,
-			Version:   pkg.Version,
-			Ecosystem: "npm",
-			FilePath:  lockPath,
-			Dev:       pkg.Dev,
+			Name:        name,
+			Version:     pkg.Version,
+			Ecosystem:   "npm",
+			FilePath:    lockPath,
+			Dev:         pkg.Dev,
+			Inventory:   "package-lock",
+			InstallPath: key,
 		})
 	}
 
 	// lockfileVersion 1
 	if len(deps) == 0 {
-		for name, pkg := range lock.Dependencies {
-			if pkg.Version == "" || seen[name] {
-				continue
+		rootPaths := make([]string, 0, len(lock.Dependencies))
+		for name := range lock.Dependencies {
+			rootPaths = append(rootPaths, name)
+		}
+		sort.Strings(rootPaths)
+		for _, name := range rootPaths {
+			pkg := lock.Dependencies[name]
+			if err := collectNpmV1(lockPath, name, pkg, "", 0, &deps); err != nil {
+				return nil, err
 			}
-			seen[name] = true
-			deps = append(deps, Dependency{
-				Name:      name,
-				Version:   pkg.Version,
-				Ecosystem: "npm",
-				FilePath:  lockPath,
-				Dev:       pkg.Dev,
-			})
 		}
 	}
 	return deps, nil
+}
+
+const maxNpmLockDepth = 256
+
+func npmPackageName(installPath string) string {
+	parts := strings.Split(strings.Trim(installPath, "/"), "/")
+	for i := len(parts) - 1; i >= 0; i-- {
+		if parts[i] == "node_modules" && i+1 < len(parts) {
+			if strings.HasPrefix(parts[i+1], "@") && i+2 < len(parts) {
+				return parts[i+1] + "/" + parts[i+2]
+			}
+			return parts[i+1]
+		}
+	}
+	return ""
+}
+
+type npmLockDependency struct {
+	Version      string                        `json:"version"`
+	Dev          bool                          `json:"dev"`
+	Dependencies map[string]*npmLockDependency `json:"dependencies"`
+}
+
+func collectNpmV1(lockPath, name string, pkg *npmLockDependency, parent string, depth int, out *[]Dependency) error {
+	if depth > maxNpmLockDepth {
+		return fmt.Errorf("package-lock.json dependency nesting exceeds %d", maxNpmLockDepth)
+	}
+	installPath := filepath.ToSlash(filepath.Join(parent, "node_modules", name))
+	if pkg != nil && pkg.Version != "" {
+		*out = append(*out, Dependency{Name: name, Version: pkg.Version, Ecosystem: "npm", FilePath: lockPath, Dev: pkg.Dev, Inventory: "package-lock", InstallPath: installPath})
+	}
+	if pkg == nil {
+		return nil
+	}
+	children := make([]string, 0, len(pkg.Dependencies))
+	for child := range pkg.Dependencies {
+		children = append(children, child)
+	}
+	sort.Strings(children)
+	for _, child := range children {
+		if err := collectNpmV1(lockPath, child, pkg.Dependencies[child], installPath, depth+1, out); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // Collect parses every supported manifest/lockfile in dir without querying a

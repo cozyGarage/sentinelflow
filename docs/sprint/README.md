@@ -1,0 +1,73 @@
+# Scan correctness work package
+
+Prepared: 2026-10-17. Status: **in progress**. Go dependency inventory, npm lockfile identity, external adapter outcomes, Go reachability, baseline-ref comparison, and built-CLI exits now have focused regressions and implementation changes. Hosted checks and broader 14-day acceptance work remain outstanding.
+
+This package expands the scan-correctness work from the [readiness review](../organizational-readiness.md) and [DevSecOps sprint plan](../devsecops-sprints.md). It contains a scoped plan for **one developer over 14 working days**, plus a **100-item backlog** when scheduling by issues instead of time. Fourteen working days means approximately three calendar weeks; no weekend work is assumed.
+
+- [14-day developer plan](scan-correctness-14-days.md): scope, daily outcomes, PR boundaries, test matrix and completion checklist.
+- [100 assignment-ready backlog items](scan-correctness-backlog.md): stable IDs, implementation direction, dependencies and verifiable acceptance criteria.
+- [Compatibility notes](compatibility.md): current behavior changes, baseline implications and unqualified tool boundaries.
+- [Acceptance report](scan-correctness-acceptance.md): current in-progress evidence and explicit missing hosted/final-revision gates.
+- [Proposed next assignment](next-assignment.md): ordered follow-up work and readiness boundaries for SC-100.
+
+The 14-day core selects **32 items** from the backlog. These are small implementation, regression, decision and qualification tasks, not 32 independent features. The other 68 items are ordered follow-up work. Do not assign the entire backlog with a 14-day deadline.
+
+The source audit was anchored at `cdd7cd7c390c65809fcd08e10dd0492360579565`. Reproduce findings against the assigned checkout before changing code. The working tree is still based on that revision, with uncommitted implementation and documentation changes.
+
+Assignments should reference IDs such as `SC-031`, preserve their dependencies, and attach the evidence required in each item. An item can close as already satisfied only with a reproducer, current code reference and exact-revision passing evidence. No GitHub issues have been created by this package.
+
+The GitHub Actions correctness matrix has named checks for `SC-002`, `SC-003`, `SC-011` through `SC-014`, `SC-021` through `SC-024`, `SC-031` through `SC-034`, `SC-041` through `SC-044`, `SC-051` through `SC-054`, `SC-091` through `SC-093`, and `SC-097`–`SC-098`. Separate jobs run the integration-tag suite (`SC-094`), pinned govulncheck qualification plus hosted tool inventory (`SC-095`), and exact-head race/vet/integration/helper gates (`SC-099`). Matrix rows use `scripts/run-go-test-selector.sh`, which fails if a selector executes no tests; this avoids a green check on a misspelled selector. SC-002 has external-tool and reachability fixtures; SC-034 and SC-044 have separate adapter/CLI or engine/CLI checks. These checks are configured but have no hosted result until the changes are pushed to a branch that triggers CI. Local test success does not close an item when its full acceptance criteria are broader than the current regression.
+
+## Current progress and evidence
+
+| Backlog IDs | Current evidence | Remaining before closure |
+| --- | --- | --- |
+| SC-001 | Starting HEAD is `cdd7cd7c390c65809fcd08e10dd0492360579565` on branch `main`; Go is `go1.27.2 linux/amd64`. The implementation worktree is intentionally dirty with existing docs and scan-correctness changes. Dedicated `/home/trung/.cache` Go build/temp paths make focused tests runnable after `/tmp` quota restrictions. | Final exact-head inventory and broad validation are still required; this checkout-specific observation cannot be replaced by hosted CI. |
+| SC-002 | Deterministic fakes cover finding-then-operational-exit, truncated/malformed/clean govulncheck streams, cancellation, bad refs and cleanup faults. The fake govulncheck validates command arguments. | Hosted checks pending; verify all fake cases remain synthetic and deterministic in the final suite. |
+| SC-003 | This plan records narrow Go inventory, package-instance identity, failure/unknown semantics, baseline comparison and `0/1/2/3` precedence. API exit constants have a named regression; scanner/CLI tests map the other invariants. | Compatibility and migration examples remain under SC-097; hosted check pending. |
+| SC-011 | A stale checksum-order regression plus captured OSV `querybatch` assert only the `go.mod` requirement tuple is queried; checksum-only modules are not promoted. Local focused tests pass. | Hosted check pending; qualification of selected transitive graph remains follow-up. |
+| SC-012 | Module-aware parser regressions cover inline/grouped requirements, indirect comments, exact versions/line attribution, and malformed syntax. | Hosted check pending. |
+| SC-013 | Missing and malformed `go.sum` fixtures retain declared requirements deterministically; `go.sum` no longer supplies inventory. | Hosted check pending. |
+| SC-014 | Scanner emits an explicit warning that Go requirements are not a resolved graph and workspace selection/replacements are not applied. A `go.work` plus `replace` fixture verifies it. | Hosted check pending; no resolved-graph mode is advertised or implemented by this core. |
+| SC-021–SC-023 | npm v2/v3 preserves multiple installed versions and scoped names; inventory order is deterministic; nested npm v1 dependencies are discovered. Focused tests pass locally. | Add full OSV query-set and attribution evidence, plus malformed/depth-bound behavior required for completion. |
+| SC-024 | Mocked OSV queries both installed versions and attributes both findings; JSON report retains each install path. A baseline for one instance preserves the other. This exposed and fixed weak v2 hash fallback suppressing distinct package instances. | Document the narrow legacy-hash compatibility behavior under SC-097; hosted checks pending. |
+| SC-031 | JSON-report adapters declare required output; Gitleaks separates its finding exit code; structured parsers reject missing result collections/report identity. | Qualify each supported command/version and its clean, finding, operational-error and output behavior; external-adapter binaries remain unqualified. |
+| SC-032 | A fake adapter emits a valid finding and then exits with an operational error; the finding is returned with the error. | Verify the required/optional distinction and failure propagation through engine and actual CLI gates. |
+| SC-033 | Empty, malformed, truncated and wrong-root structured reports fail; Semgrep/Grype/Syft require result collections, Trivy requires a report envelope, and explicit empty forms remain clean. | Hosted check pending; qualify each supported real tool version separately. |
+| SC-034 | Auto mode retains parsed findings and warns on process failure or Semgrep's reported parse errors; required fake Gitleaks failure retains its parsed finding in the built CLI report and exits `2`. | Observe the named hosted checks and confirm warnings reach the public report. |
+| SC-041 | Failing-first fake showed a nonzero process exit after valid JSON was accepted. It now reports an operational error while retaining confirmed positive symbol evidence. | Qualify the pinned tool contract and complete hosted CI evidence. In JSON mode, a nonzero exit is treated as failure; findings do not excuse it. |
+| SC-042 | Regressions cover clean completion, empty operational failure, malformed advisory, truncated output, and cancellation. Incomplete streams retain only confirmed positive observations. | Run the named hosted check; include this in the final exact-head suite. |
+| SC-043 | Negative reachability requires a completed symbol-level observation with matching advisory/alias, Go module path, and exact version. Pinned govulncheck v1.9.0 confirms a called symbol is reachable; imported-only and absent observations remain unknown; a real missing-module failure is operational and remains unknown. | Hosted qualification pending; retain unknown when the analyzer emits no correlated observation. |
+| SC-044 | Engine preserves a positive finding and records required reachability errors; CLI regressions prove `reachable_only` gates both unknown and reachable findings, and a required failure cannot be softened by dependency transport policy. | Run both named hosted checks and the final actual-CLI exit/report matrix. |
+| SC-051 | Head-side and base-side fake failures both reject delta filtering; standalone scanner failure remains visible in `ScannerRuns` even when `Engine.Scan` returns no top-level error. Focused tests pass locally. | Preserve these exact outcomes in the integrated CLI path; hosted check pending. |
+| SC-052 | Missing, failed, or unexpected scanner outcomes are rejected before baseline subtraction; complete comparable baseline behavior remains covered by the existing line-motion regression. | Hosted check pending; expand required-completeness semantics if new scanner outcome states are added. |
+| SC-053 | Baseline scans create fresh instances through the same configured factory and reject changed scanner name/count sets. Stateful fake proves no head/base instance reuse. | Compare any additional scope-affecting configuration explicitly; hosted check pending. |
+| SC-054 | Tests cover bounded cancellation cleanup, visible cleanup errors, invalid-ref/worktree-add failure, caller HEAD/index/worktree preservation, and successful cleanup. Focused suite passes locally. | Hosted check pending; CLI timeout/report precedence belongs to SC-091–SC-092. |
+| SC-091 | Built binary regression captures stdout, stderr, report file, and actual exit status for clean (`0`), threshold (`1`), comparison failure (`2`), and deadline (`3`) cases. Comparison error still writes its retained head finding. Local test passes. | Hosted check remains; SC-093 adds combined unknown-reachability/comparison coverage. |
+| SC-092 | A required fake external tool times out after returning a parseable result; built CLI emits the partial report and preserves timeout exit `3`. | Hosted check pending; broader timeout phases belong to follow-up qualification. |
+| SC-093 | Built CLI combines an incomplete baseline ref with a threshold finding and returns operational exit `2`; engine regression combines unknown reachability with a failing base scan and retains the head risk. | Hosted checks pending; add any additional adverse combination discovered during integration. |
+| SC-094 | CI runs named stable-ID regressions and a separate integration-tag job; the selector wrapper rejects zero-test matches. The workflow passes `actionlint`; all 37 configured selectors matched locally, the nonexistent-selector negative control failed, and the tagged suite passed. | Observe the named jobs on the exact changes in hosted Actions. |
+| SC-095 | [Real tool qualification matrix](real-tool-qualification.md) records exact adapter commands and a live PATH inventory. Pinned govulncheck has a local synthetic DB qualification; Semgrep, Gitleaks, Grype, Syft, Trivy and YARA are missing locally and remain unqualified. | Hosted govulncheck qualification pending; qualify optional scanner behavior on an allowed runner or retain unqualified status. |
+| SC-097 | [Compatibility notes](compatibility.md) document Go inventory limits, npm identity changes, v2 baseline hash behavior, reachability tri-state and exit precedence. | Review against final code and include exact revision in final acceptance report. |
+| SC-098 | Failing-first checks demonstrated diagnostic leaks through text/JSON/SARIF, engine outcomes and top-level CLI errors. Engine, reporter and CLI error paths redact them; built-CLI cases cover required-tool and pre-result VEX failures. | Hosted checks pending; review all newly affected output surfaces in final acceptance. |
+| SC-099–SC-100 | Working acceptance report exists; next-assignment draft prepared. | Refresh on the final committed revision, reconcile every core item, and attach named hosted Actions evidence. |
+
+The exact current worktree passed the full local qualification set, including the pre-result CLI redaction regression, after routing the Go build cache, compiler work directory, and cgo temporary files under `/home/trung` to avoid `/tmp` quota limits:
+
+```sh
+rtk proxy env \
+  GOCACHE=/home/trung/.cache/go-build-sentinelflow \
+  GOTMPDIR=/home/trung/.cache/go-tmp-sentinelflow \
+  TMPDIR=/home/trung/.cache/tmp-sentinelflow \
+  go test -count=1 ./internal/scanner/dependencies ./internal/adapter/external
+```
+
+On this current worktree, `go test -race -count=1 ./...`, `go vet ./...`, `go test -tags=integration -count=1 ./test/...`, `bash scripts/qualify-govulncheck.sh`, both delivery helper scripts, `actionlint .github/workflows/ci.yml`, YAML parsing, `gofmt` verification, and `git diff --check` passed. Focused packages for adapter, dependency, CLI, scanner, reporter and API tests also pass. These are local uncommitted-tree results only; GitHub Actions has not run on these changes. The acceptance report remains incomplete.
+
+The reachability contract is based on govulncheck's documented JSON behavior: `-json` exits successfully when findings are present, and symbol-level results distinguish a package-level observation without a vulnerable symbol from a called-symbol trace. The parser therefore requires clean process completion and a valid symbol-level stream before using negative evidence. [govulncheck command documentation](https://go.googlesource.com/vuln/+/b5c78527fdb1ac31e0903712d8707aed4de17d14/cmd/govulncheck/doc.go), [govulncheck JSON types](https://pkg.go.dev/golang.org/x/vuln/internal/govulncheck).
+
+## How to assign and close work
+
+Assign stable backlog IDs from [scan-correctness-backlog.md](scan-correctness-backlog.md), retain prerequisite order, and use the [14-day plan](scan-correctness-14-days.md) for sequencing and PR boundaries. The backlog—not this status page—is the acceptance source of truth. A passing CI check is necessary where the item calls for it, but close the item only after every acceptance condition, positive control, compatibility note, and limitation is evidenced on the exact change revision.
+
+For each item, record the reproducer, pre-fix observation, named regression and post-fix result, exact revision, focused local checks, named hosted GitHub Actions result, and any unrun real-tool/integration checks. Keep local, hosted, real-tool, and blocked evidence distinct. Never infer “zero findings” from a successful process exit alone, or “complete coverage” from a successful scanner invocation.
