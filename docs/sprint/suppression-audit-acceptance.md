@@ -11,7 +11,7 @@ Scope: SC-076–SC-080. Implementation and hosted evidence are being recorded on
 
 ## Hosted evidence
 
-Pending PR and final-head GitHub Actions / Security Scan results. Record the exact commit and run links here before merge.
+Hosted evidence for implementation head `c7d26c0408a885d05118036981cca31b0f9e5c54`: [CI, including the complete scan-correctness matrix and SC-076–SC-080 selectors](https://github.com/cozyGarage/sentinelflow/actions/runs/39053922567) and [Security Scan](https://github.com/cozyGarage/sentinelflow/actions/runs/39053922597) completed successfully. `gh pr checks 59` reported 71 passed and zero failed checks. These checks cover the implementation commit; the acceptance-record update will receive a fresh exact-head run before merge.
 
 ## Limits
 
