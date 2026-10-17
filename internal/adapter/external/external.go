@@ -116,8 +116,9 @@ func semgrepAdapter() *Adapter {
 
 func gitleaksAdapter() *Adapter {
 	return &Adapter{
-		name: "gitleaks",
-		bin:  "gitleaks",
+		name:    "gitleaks",
+		bin:     "gitleaks",
+		version: []string{"--version"},
 		args: func(path string) []string {
 			return []string{"detect", "--source", path, "--report-format", "json", "--no-banner", "--exit-code", "0"}
 		},
@@ -127,8 +128,9 @@ func gitleaksAdapter() *Adapter {
 
 func grypeAdapter() *Adapter {
 	return &Adapter{
-		name: "grype",
-		bin:  "grype",
+		name:    "grype",
+		bin:     "grype",
+		version: []string{"--version"},
 		args: func(path string) []string {
 			return []string{path, "-o", "json"}
 		},
@@ -138,8 +140,9 @@ func grypeAdapter() *Adapter {
 
 func syftAdapter() *Adapter {
 	return &Adapter{
-		name: "syft",
-		bin:  "syft",
+		name:    "syft",
+		bin:     "syft",
+		version: []string{"--version"},
 		args: func(path string) []string {
 			return []string{path, "-o", "json"}
 		},
@@ -149,8 +152,9 @@ func syftAdapter() *Adapter {
 
 func trivyFSAdapter() *Adapter {
 	return &Adapter{
-		name: "trivy-fs",
-		bin:  "trivy",
+		name:    "trivy-fs",
+		bin:     "trivy",
+		version: []string{"--version"},
 		args: func(path string) []string {
 			return []string{"fs", "--format", "json", "--quiet", path}
 		},
@@ -160,8 +164,9 @@ func trivyFSAdapter() *Adapter {
 
 func yaraAdapter(rules []string) *Adapter {
 	return &Adapter{
-		name: "yara",
-		bin:  "yara",
+		name:    "yara",
+		bin:     "yara",
+		version: []string{"--version"},
 		args: func(path string) []string {
 			r := "."
 			if len(rules) > 0 {

@@ -141,6 +141,42 @@ func TestSC031_JsonAdaptersRequireReportOutput(t *testing.T) {
 	}
 }
 
+func TestSC031_ExternalToolCommandContracts(t *testing.T) {
+	root := "/repo with spaces"
+	tests := []struct {
+		name        string
+		adapter     *Adapter
+		wantBin     string
+		wantArgs    []string
+		wantVersion []string
+		wantReport  bool
+	}{
+		{"semgrep", semgrepAdapter(), "semgrep", []string{"--config=auto", "--json", "--quiet", root}, []string{"--version"}, true},
+		{"gitleaks", gitleaksAdapter(), "gitleaks", []string{"detect", "--source", root, "--report-format", "json", "--no-banner", "--exit-code", "0"}, []string{"--version"}, true},
+		{"grype", grypeAdapter(), "grype", []string{root, "-o", "json"}, []string{"--version"}, true},
+		{"syft", syftAdapter(), "syft", []string{root, "-o", "json"}, []string{"--version"}, true},
+		{"trivy", trivyFSAdapter(), "trivy", []string{"fs", "--format", "json", "--quiet", root}, []string{"--version"}, true},
+		{"yara", yaraAdapter([]string{"rules.yar", "ignored.yar"}), "yara", []string{"-r", "rules.yar", root}, []string{"--version"}, false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if tc.adapter.bin != tc.wantBin {
+				t.Fatalf("executable = %q, want %q", tc.adapter.bin, tc.wantBin)
+			}
+			got := tc.adapter.args(root)
+			if strings.Join(got, "\x00") != strings.Join(tc.wantArgs, "\x00") {
+				t.Fatalf("args = %#v, want %#v", got, tc.wantArgs)
+			}
+			if tc.adapter.requiresOutput != tc.wantReport {
+				t.Fatalf("requiresOutput = %v, want %v", tc.adapter.requiresOutput, tc.wantReport)
+			}
+			if strings.Join(tc.adapter.version, "\x00") != strings.Join(tc.wantVersion, "\x00") {
+				t.Fatalf("version probe args = %#v, want %#v", tc.adapter.version, tc.wantVersion)
+			}
+		})
+	}
+}
+
 func TestParseSemgrep(t *testing.T) {
 	raw := []byte(`{"results":[{"check_id":"go.lang.security.audit.xss","path":"a.go","extra":{"message":"xss","severity":"ERROR"},"start":{"line":4}}]}`)
 	findings, err := parseSemgrep(".", raw)

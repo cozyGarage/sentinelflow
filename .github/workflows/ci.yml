@@ -83,7 +83,7 @@ jobs:
             test: TestSC024_BaselineDoesNotCollapsePackageInstances
           - id: SC-031
             package: ./internal/adapter/external
-            test: TestSC031_JsonAdaptersRequireReportOutput
+            test: TestSC031_(JsonAdaptersRequireReportOutput|ExternalToolCommandContracts)
           - id: SC-032
             package: ./internal/adapter/external
             test: TestSC032_AdapterDoesNotTreatFindingsAsProcessSuccess
