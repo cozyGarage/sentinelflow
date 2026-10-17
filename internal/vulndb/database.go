@@ -26,6 +26,7 @@ type Vulnerability struct {
 	Affected   []Range   `json:"affected"`
 	Fixed      []string  `json:"fixed"`
 	References []string  `json:"references"`
+	Aliases    []string  `json:"aliases,omitempty"`
 	Source     string    `json:"source"`
 }
 

@@ -12,6 +12,8 @@ This package develops the readiness review into one developer's **14-working-day
 - [Proposed next assignment](next-assignment.md): ordered work after the core.
 - [Scan outcome contract](scan-outcome-contract.md): compatibility, status semantics, failure retention and consumer migration for SC-004–SC-006.
 - [Scan outcome acceptance](scan-outcome-acceptance.md): implementation scope, local evidence and hosted gate boundary for SC-004–SC-006.
+- [VEX suppression identity](vex-suppression-identity.md): supported PURL identity, explicit broad-scope migration, aliases and expiry semantics for SC-071–SC-075.
+- [VEX suppression acceptance](vex-suppression-acceptance.md): behavior changes, compatibility migration and local/hosted evidence for SC-071–SC-075.
 
 The audited source/tests/workflow passed local and hosted gates on `23e245da4be46e76a1fbfe2bc7b1e094e8f528dd`; the acceptance report links hosted workflows and records item-level evidence. Current repository state is authoritative; use `git status --short --branch` and `git rev-parse HEAD` before assigning or accepting work.
 

@@ -2,6 +2,7 @@ package baseline
 
 import (
 	"testing"
+	"time"
 
 	"github.com/cozygarage/sentinelflow/pkg/api"
 )
@@ -136,6 +137,33 @@ func TestFilterExpiredEntryDoesNotSuppress(t *testing.T) {
 	filtered := Filter([]api.Finding{a}, bl)
 	if len(filtered) != 1 {
 		t.Fatalf("expired entry must not suppress, got %+v", filtered)
+	}
+}
+
+func TestSC075_ExpiryBoundaryIsUTCAndMalformedExpiryDoesNotSuppress(t *testing.T) {
+	finding := api.Finding{ID: "x", RuleID: "r", Location: api.Location{File: "x"}}
+	base := &File{Findings: []Entry{{ID: "x", Expires: "2025-01-02"}}}
+	cases := []struct {
+		name           string
+		now            time.Time
+		wantSuppressed bool
+	}{
+		{name: "before expiry end", now: time.Date(2025, 1, 2, 23, 59, 59, 0, time.UTC), wantSuppressed: true},
+		{name: "local time still inside UTC expiry day", now: time.Date(2025, 1, 3, 0, 30, 0, 0, time.FixedZone("plus-one", 3600)), wantSuppressed: true},
+		{name: "at next midnight", now: time.Date(2025, 1, 3, 0, 0, 0, 0, time.UTC)},
+		{name: "after next midnight", now: time.Date(2025, 1, 3, 0, 0, 1, 0, time.UTC)},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			filtered := FilterAt([]api.Finding{finding}, base, tc.now)
+			if got := len(filtered) == 0; got != tc.wantSuppressed {
+				t.Fatalf("suppressed=%v want=%v", got, tc.wantSuppressed)
+			}
+		})
+	}
+	base.Findings[0].Expires = "2025-02-30"
+	if filtered := FilterAt([]api.Finding{finding}, base, time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)); len(filtered) != 1 {
+		t.Fatalf("malformed expiry must fail open and retain finding, got %+v", filtered)
 	}
 }
 

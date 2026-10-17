@@ -424,6 +424,19 @@ func TestSC024_NpmInstancesReachOSVAndSurviveReportBaseline(t *testing.T) {
 	}
 }
 
+func TestSC074_OSVAliasesSurviveDependencyFindingConstruction(t *testing.T) {
+	s := &Scanner{}
+	finding := s.createFinding(
+		Dependency{Name: "lodash", Version: "4.17.21", Ecosystem: "npm", FilePath: "/tmp/package-lock.json"},
+		Vulnerability{ID: "OSV-1", Aliases: []string{"GHSA-aaaa", "CVE-2024-0001"}},
+		"/tmp",
+	)
+	aliases, ok := finding.Metadata["vulnerability_aliases"].([]string)
+	if !ok || len(aliases) != 2 || aliases[0] != "GHSA-aaaa" || aliases[1] != "CVE-2024-0001" {
+		t.Fatalf("OSV aliases must remain available for scoped VEX matching: %#v", finding.Metadata["vulnerability_aliases"])
+	}
+}
+
 func TestRubyGemsScannerGemfileLock(t *testing.T) {
 	root := t.TempDir()
 	lock := `GEM

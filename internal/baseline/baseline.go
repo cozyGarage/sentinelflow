@@ -130,14 +130,20 @@ func entryExpired(e Entry, now time.Time) bool {
 	}
 	day, err := time.Parse("2006-01-02", raw)
 	if err != nil {
-		return false
+		// Invalid expiry metadata is not authority to suppress indefinitely.
+		return true
 	}
 	// Expires at the end of the given day (inclusive until next midnight UTC).
-	return now.UTC().After(day.UTC().Add(24 * time.Hour))
+	return !now.UTC().Before(day.UTC().Add(24 * time.Hour))
 }
 
 // Filter removes baselined findings from the result set
 func Filter(findings []api.Finding, baseline *File) []api.Finding {
+	return FilterAt(findings, baseline, time.Now())
+}
+
+// FilterAt applies baseline entries using a caller-supplied clock.
+func FilterAt(findings []api.Finding, baseline *File, now time.Time) []api.Finding {
 	if baseline == nil || len(baseline.Findings) == 0 {
 		return findings
 	}
@@ -147,7 +153,6 @@ func Filter(findings []api.Finding, baseline *File) []api.Finding {
 		file   string
 	}
 
-	now := time.Now()
 	baselined := make(map[string]struct{}, len(baseline.Findings)*3)
 	legacyHashes := make(map[string]struct{}, len(baseline.Findings))
 	var legacy map[legacyKey]struct{}

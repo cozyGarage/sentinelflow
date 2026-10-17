@@ -52,6 +52,7 @@ type Dependency struct {
 // Vulnerability represents a known vulnerability
 type Vulnerability struct {
 	ID          string
+	Aliases     []string
 	CVE         string
 	Severity    api.Severity
 	CVSS        float64
@@ -307,6 +308,7 @@ func (s *Scanner) checkAll(ctx context.Context, deps []Dependency) ([][]Vulnerab
 		for _, v := range vulns {
 			out[i] = append(out[i], Vulnerability{
 				ID:          v.ID,
+				Aliases:     append([]string(nil), v.Aliases...),
 				CVE:         v.CVE,
 				Severity:    severityFromVulnDB(v.Severity, v.CVSS),
 				CVSS:        v.CVSS,
@@ -369,6 +371,9 @@ func firstFixedVersion(fixed []string, affected []vulndb.Range) string {
 func (s *Scanner) createFinding(dep Dependency, vuln Vulnerability, basePath string) api.Finding {
 	relPath, _ := filepath.Rel(basePath, dep.FilePath)
 	metadata := map[string]any{"package": dep.Name, "version": dep.Version, "ecosystem": dep.Ecosystem}
+	if len(vuln.Aliases) > 0 {
+		metadata["vulnerability_aliases"] = append([]string(nil), vuln.Aliases...)
+	}
 	if dep.Inventory != "" {
 		metadata["inventory"] = dep.Inventory
 	}

@@ -203,7 +203,7 @@ baseline:
 
 When a baseline is applied, the CLI summary, JSON (`baseline`), and Markdown report show how many findings were suppressed and how many are new. **Total findings** and the fail gate use the new (post-filter) set.
 
-Baseline v2 matches line-independent fingerprints (`rule + path + value/snippet hash`) and supports `reason` and `expires`. v1 files still load.
+Baseline v2 matches line-independent fingerprints (`rule + path + value/snippet hash`) and supports `reason` and `expires`. An `expires: YYYY-MM-DD` entry is valid through that date in UTC and expires at the next midnight UTC; malformed expiry dates do not suppress findings. v1 files still load.
 
 In GitHub Actions, set `use-baseline: 'true'` (requires the baseline file committed). See [cicd-integration.md](cicd-integration.md).
 

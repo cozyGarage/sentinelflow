@@ -45,6 +45,27 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          - id: SC-071
+            package: ./internal/scanner/vex
+            test: TestSC071_VEXProductIdentityIncludesEcosystemAndCanonicalName
+          - id: SC-072
+            package: ./internal/scanner/vex
+            test: TestSC072_VEXDoesNotDiscardQualifiersOrSubpath
+          - id: SC-073
+            package: ./internal/scanner/vex
+            test: TestSC073_BroadVEXRequiresExplicitAuthorization
+          - id: SC-074
+            package: ./internal/scanner/vex
+            test: TestSC074_VEXAliasesMatchOnlyWithinScopedProduct
+          - id: SC-074
+            package: ./internal/vulndb
+            test: TestSC074_OSVAliasesSurviveNormalization
+          - id: SC-074
+            package: ./internal/scanner/dependencies
+            test: TestSC074_OSVAliasesSurviveDependencyFindingConstruction
+          - id: SC-075
+            package: ./internal/baseline
+            test: TestSC075_ExpiryBoundaryIsUTCAndMalformedExpiryDoesNotSuppress
           - id: SC-004
             package: ./pkg/api
             test: TestScanStatusJSONIsAdditiveAndDistinguishesCleanFromSkipped
