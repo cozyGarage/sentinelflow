@@ -75,6 +75,9 @@ jobs:
           - id: SC-083
             package: ./internal/vulndb
             test: TestSC083_UnsupportedOrderingCannotBecomeCleanOfflineResult
+          - id: SC-084
+            package: ./internal/vulndb
+            test: TestSC084_GitRangesRemainUnassessedButExactVersionsMatch
           - id: SC-076
             package: ./internal/scanner
             test: TestSC076_SuppressedObservationsRetainSafeProvenance

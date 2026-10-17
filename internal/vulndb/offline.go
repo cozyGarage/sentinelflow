@@ -410,7 +410,7 @@ func versionAffected(v OSVVulnerability, ecosystem, version string) (bool, error
 		}
 		for _, r := range a.Ranges {
 			if r.Type == "GIT" {
-				continue
+				return false, fmt.Errorf("unsupported OSV GIT range for %s (advisory %s); exact listed versions are still evaluated", ecosystem, v.ID)
 			}
 			events := make([]rangeEvent, 0, len(r.Events))
 			for _, e := range r.Events {

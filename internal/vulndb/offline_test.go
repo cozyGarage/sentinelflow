@@ -80,6 +80,19 @@ func TestSC083_UnsupportedOrderingCannotBecomeCleanOfflineResult(t *testing.T) {
 	}
 }
 
+func TestSC084_GitRangesRemainUnassessedButExactVersionsMatch(t *testing.T) {
+	var advisory OSVVulnerability
+	if err := json.Unmarshal([]byte(`{"id":"OSV-GIT-1","affected":[{"package":{"name":"example","ecosystem":"Go"},"versions":["1.2.3"],"ranges":[{"type":"GIT","events":[{"introduced":"abc123"},{"fixed":"def456"}]}]}]}`), &advisory); err != nil {
+		t.Fatal(err)
+	}
+	if affected, err := versionAffected(advisory, "go", "1.2.3"); err != nil || !affected {
+		t.Fatalf("listed exact version must still match: affected=%v err=%v", affected, err)
+	}
+	if affected, err := versionAffected(advisory, "go", "1.2.4"); err == nil || affected || !strings.Contains(err.Error(), "unsupported OSV GIT range") {
+		t.Fatalf("unlisted GIT range must remain explicitly unassessed: affected=%v err=%v", affected, err)
+	}
+}
+
 func TestSC082_OfflineFreshnessPolicyUsesSnapshotTimeAndReportsState(t *testing.T) {
 	now := time.Date(2026, 10, 17, 12, 0, 0, 0, time.UTC)
 	configured, err := NewClient(OfflineOptions(true, 24*time.Hour)...)
