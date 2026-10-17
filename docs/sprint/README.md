@@ -1,6 +1,6 @@
 # Scan correctness work package
 
-**Status: in progress.** The 32-item scan-correctness core has implementation and local regression evidence on branch `codex/scan-correctness-sprint`. Draft [PR #56](https://github.com/cozyGarage/sentinelflow/pull/56) is open. CI passed on the initial PR head; later security scans found the long synthetic API-key marker quoted in the test and acceptance report. The test marker is corrected, and the acceptance-report correction is queued for the next hosted run. This package is not an acceptance or release claim.
+**Status: in progress.** The 32-item scan-correctness core has implementation and local regression evidence on branch `codex/scan-correctness-sprint`. Draft [PR #56](https://github.com/cozyGarage/sentinelflow/pull/56) is open. CI and the security workflow passed on head `04edb9ea63808902422804c7c5f9a328e85d54bc`; the security scan exposed a long synthetic API-key marker in the new test and acceptance report, which has been shortened. This report update will trigger another PR run; use the PR checks page for the current exact-head result. SC-095 and overall sprint acceptance remain open.
 
 This package develops the readiness review into one developer's **14-working-day plan** and a **100-item assignment backlog**. The core is 32 dependency-ordered items; the other 68 are follow-up work, not extra scope for the same timebox.
 
