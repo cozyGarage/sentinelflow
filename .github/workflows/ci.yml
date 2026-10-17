@@ -90,6 +90,18 @@ jobs:
           - id: SC-086
             package: ./internal/vulndb
             test: TestSC086_OnlineOfflineParityAgainstSameAdvisoryFixture
+          - id: SC-087
+            package: ./internal/vulndb
+            test: TestSC087_CopyLimitedEnforcesInclusiveByteCeiling
+          - id: SC-087
+            package: ./internal/vulndb
+            test: TestSC087_IndexReaderEnforcesDecompressedSize
+          - id: SC-087
+            package: ./internal/vulndb
+            test: TestSC087_FailedRefreshPreservesSnapshotAndCleansTemps
+          - id: SC-087
+            package: ./internal/vulndb
+            test: TestSC087_ConcurrentRefreshesAndReadersSeeCompleteSnapshots
           - id: SC-076
             package: ./internal/scanner
             test: TestSC076_SuppressedObservationsRetainSafeProvenance

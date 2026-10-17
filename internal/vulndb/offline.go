@@ -24,6 +24,13 @@ import (
 // OfflineBaseURL serves OSV's per-ecosystem exports (<base>/<Ecosystem>/all.zip).
 var OfflineBaseURL = "https://osv-vulnerabilities.storage.googleapis.com"
 
+const (
+	maxOfflineArchiveBytes  int64 = 2 << 30 // OSV exports may be large; still bound untrusted downloads.
+	maxOfflineAdvisoryBytes int64 = 32 << 20
+	maxOfflineExpandedBytes int64 = 1 << 30
+	maxOfflineIndexBytes    int64 = 512 << 20
+)
+
 // OfflineEcosystems are the ecosystems SentinelFlow can scan, by our names.
 var OfflineEcosystems = []string{"go", "npm", "pip", "maven", "cargo", "rubygems", "composer", "nuget"}
 
@@ -64,6 +71,10 @@ func UpdateOffline(ctx context.Context, client *http.Client, dir string, ecosyst
 }
 
 func updateEcosystem(ctx context.Context, client *http.Client, dir, eco string) (int, error) {
+	updateLock := offlineUpdateLock(eco)
+	updateLock.Lock()
+	defer updateLock.Unlock()
+
 	tmp, err := os.CreateTemp(dir, eco+"-*.zip")
 	if err != nil {
 		return 0, err
@@ -83,8 +94,11 @@ func updateEcosystem(ctx context.Context, client *http.Client, dir, eco string) 
 	if resp.StatusCode != http.StatusOK {
 		return 0, fmt.Errorf("download returned status %d", resp.StatusCode)
 	}
+	if resp.ContentLength > maxOfflineArchiveBytes {
+		return 0, fmt.Errorf("download exceeds maximum archive size of %d bytes", maxOfflineArchiveBytes)
+	}
 	snapshotHash := sha256.New()
-	size, err := io.Copy(io.MultiWriter(tmp, snapshotHash), resp.Body)
+	size, err := copyLimited(io.MultiWriter(tmp, snapshotHash), resp.Body, maxOfflineArchiveBytes)
 	if err != nil {
 		return 0, err
 	}
@@ -96,18 +110,32 @@ func updateEcosystem(ctx context.Context, client *http.Client, dir, eco string) 
 	byPkg := map[string][]OSVVulnerability{}
 	osvEco := mapEcosystem(eco)
 	count := 0
+	var expandedBytes int64
 	for _, f := range zr.File {
 		if !strings.HasSuffix(f.Name, ".json") {
 			continue
+		}
+		if f.UncompressedSize64 > uint64(maxOfflineAdvisoryBytes) {
+			return 0, fmt.Errorf("%s exceeds maximum advisory size of %d bytes", f.Name, maxOfflineAdvisoryBytes)
+		}
+		if f.UncompressedSize64 > uint64(maxOfflineExpandedBytes-expandedBytes) {
+			return 0, fmt.Errorf("archive exceeds maximum expanded size of %d bytes", maxOfflineExpandedBytes)
 		}
 		rc, err := f.Open()
 		if err != nil {
 			return 0, err
 		}
-		var v OSVVulnerability
-		err = json.NewDecoder(rc).Decode(&v)
+		data, err := io.ReadAll(io.LimitReader(rc, maxOfflineAdvisoryBytes+1))
 		rc.Close()
 		if err != nil {
+			return 0, fmt.Errorf("%s: %w", f.Name, err)
+		}
+		if int64(len(data)) > maxOfflineAdvisoryBytes {
+			return 0, fmt.Errorf("%s exceeds maximum advisory size of %d bytes", f.Name, maxOfflineAdvisoryBytes)
+		}
+		expandedBytes += int64(len(data))
+		var v OSVVulnerability
+		if err := json.Unmarshal(data, &v); err != nil {
 			return 0, fmt.Errorf("%s: %w", f.Name, err)
 		}
 		withdrawn, err := withdrawnAt(v.Withdrawn, time.Now())
@@ -147,13 +175,15 @@ func updateEcosystem(ctx context.Context, client *http.Client, dir, eco string) 
 	}
 
 	out := filepath.Join(dir, eco+".json.gz")
-	part := out + ".part"
-	w, err := os.Create(part)
+	w, err := os.CreateTemp(dir, eco+".json.gz-*.part")
 	if err != nil {
 		return 0, err
 	}
+	part := w.Name()
+	defer os.Remove(part)
 	gz := gzip.NewWriter(w)
-	if err := json.NewEncoder(gz).Encode(idx); err != nil {
+	limited := &sizeLimitWriter{w: gz, limit: maxOfflineIndexBytes}
+	if err := json.NewEncoder(limited).Encode(idx); err != nil {
 		w.Close()
 		return 0, err
 	}
@@ -165,6 +195,44 @@ func updateEcosystem(ctx context.Context, client *http.Client, dir, eco string) 
 		return 0, err
 	}
 	return count, os.Rename(part, out) // atomic: a failed update keeps the old index
+}
+
+var offlineUpdateLocks sync.Map
+
+func offlineUpdateLock(ecosystem string) *sync.Mutex {
+	lock, _ := offlineUpdateLocks.LoadOrStore(ecosystem, &sync.Mutex{})
+	return lock.(*sync.Mutex)
+}
+
+func copyLimited(dst io.Writer, src io.Reader, limit int64) (int64, error) {
+	n, err := io.Copy(dst, io.LimitReader(src, limit+1))
+	if err != nil {
+		return n, err
+	}
+	if n > limit {
+		return n, fmt.Errorf("download exceeds maximum archive size of %d bytes", limit)
+	}
+	return n, nil
+}
+
+type sizeLimitWriter struct {
+	w     io.Writer
+	limit int64
+	wrote int64
+}
+
+func (w *sizeLimitWriter) Write(p []byte) (int, error) {
+	remaining := w.limit - w.wrote
+	if int64(len(p)) > remaining {
+		if remaining > 0 {
+			n, _ := w.w.Write(p[:remaining])
+			w.wrote += int64(n)
+		}
+		return 0, fmt.Errorf("offline index exceeds maximum uncompressed size of %d bytes", w.limit)
+	}
+	n, err := w.w.Write(p)
+	w.wrote += int64(n)
+	return n, err
 }
 
 func safeSourceURL(raw string) string {
@@ -234,9 +302,22 @@ func readOfflineIndex(path string) (offlineIndex, error) {
 		return offlineIndex{}, err
 	}
 	defer gz.Close()
+	return decodeOfflineIndex(gz, maxOfflineIndexBytes)
+}
+
+func decodeOfflineIndex(r io.Reader, limit int64) (offlineIndex, error) {
+	data, err := io.ReadAll(io.LimitReader(r, limit+1))
+	if err != nil {
+		return offlineIndex{}, err
+	}
+	if int64(len(data)) > limit {
+		return offlineIndex{}, fmt.Errorf("offline index exceeds maximum uncompressed size of %d bytes", limit)
+	}
 	var idx offlineIndex
-	err = json.NewDecoder(gz).Decode(&idx)
-	return idx, err
+	if err := json.Unmarshal(data, &idx); err != nil {
+		return offlineIndex{}, err
+	}
+	return idx, nil
 }
 
 func indexAcquiredAt(idx offlineIndex) time.Time {
@@ -293,8 +374,8 @@ func (s *OfflineSource) load(eco string) (map[string]json.RawMessage, error) {
 		s.snapshots[eco] = api.VulnerabilityDataSource{Source: safeSourceURL(OfflineBaseURL + "/" + mapEcosystem(eco) + "/all.zip"), Mode: "offline", Ecosystem: eco, Supported: ecosystemSupported(eco), Status: "corrupt"}
 		return nil, fmt.Errorf("offline database for %s is corrupt: %w", eco, err)
 	}
-	var idx offlineIndex
-	if err := json.NewDecoder(gz).Decode(&idx); err != nil {
+	idx, err := decodeOfflineIndex(gz, maxOfflineIndexBytes)
+	if err != nil {
 		s.snapshots[eco] = api.VulnerabilityDataSource{Source: safeSourceURL(OfflineBaseURL + "/" + mapEcosystem(eco) + "/all.zip"), Mode: "offline", Ecosystem: eco, Supported: ecosystemSupported(eco), Status: "corrupt"}
 		return nil, fmt.Errorf("offline database for %s is corrupt: %w", eco, err)
 	}
