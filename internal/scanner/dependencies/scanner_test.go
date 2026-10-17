@@ -202,8 +202,79 @@ func TestSC015_GoModuleGraphRejectsReplacementsBeforeRunningTool(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, err := (&GoModScanner{ResolveGraph: true, goCommand: fake}).Scan(context.Background(), root)
-	if err == nil || !strings.Contains(err.Error(), "replacements in go.mod are not yet supported") {
+	if err == nil || !strings.Contains(err.Error(), "local replacements are not yet supported") {
 		t.Fatalf("replacement boundary should be explicit before graph command, got %v", err)
+	}
+}
+
+func TestSC016_VersionedReplacementQueriesBothCoordinatesAndRetainsDeclaration(t *testing.T) {
+	root := t.TempDir()
+	goMod := filepath.Join(root, "go.mod")
+	content := "module example.com/root\n\ngo 1.22\n\nrequire example.com/lib v1.2.0\nreplace example.com/lib v1.2.0 => example.com/fork/lib v2.3.4\n"
+	if err := os.WriteFile(goMod, []byte(content), 0600); err != nil {
+		t.Fatal(err)
+	}
+	fake := filepath.Join(root, "fake-go")
+	script := `#!/bin/sh
+printf '%s\n' '{"Path":"example.com/root","Main":true}' '{"Path":"example.com/lib","Version":"v1.2.0","Replace":{"Path":"example.com/fork/lib","Version":"v2.3.4"}}'
+`
+	if err := os.WriteFile(fake, []byte(script), 0700); err != nil {
+		t.Fatal(err)
+	}
+	var queried []vulndb.OSVRequest
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/v1/querybatch":
+			var req struct {
+				Queries []vulndb.OSVRequest `json:"queries"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+				t.Errorf("decode query: %v", err)
+			}
+			queried = append(queried, req.Queries...)
+			results := make([]vulndb.OSVResponse, len(req.Queries))
+			for i, query := range req.Queries {
+				if query.Package.Name == "example.com/fork/lib" {
+					results[i].Vulns = []vulndb.OSVVulnerability{{ID: "OSV-REPLACEMENT"}}
+				}
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{"results": results})
+		case "/v1/vulns/OSV-REPLACEMENT":
+			_, _ = w.Write([]byte(`{"id":"OSV-REPLACEMENT","summary":"replacement advisory"}`))
+		default:
+			t.Errorf("unexpected request: %s", r.URL.Path)
+		}
+	}))
+	t.Cleanup(server.Close)
+	s := &Scanner{
+		config: config.Default(), client: testClient(t, server),
+		ecosystems: map[string]EcosystemScanner{"go": &GoModScanner{ResolveGraph: true, goCommand: fake}},
+	}
+	result, err := s.Scan(context.Background(), root, types.ScanOptions{Files: []string{goMod}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(queried) != 2 {
+		t.Fatalf("both declared and replacement coordinates must be queried: %+v", queried)
+	}
+	got := map[string]string{}
+	for _, query := range queried {
+		got[query.Package.Name] = query.Version
+	}
+	if got["example.com/lib"] != "1.2.0" || got["example.com/fork/lib"] != "2.3.4" {
+		t.Fatalf("wrong advisory coordinates: %+v", queried)
+	}
+	if len(result.Findings) != 1 {
+		t.Fatalf("replacement advisory should not disappear: %+v", result.Findings)
+	}
+	finding := result.Findings[0]
+	if finding.Metadata["package"] != "example.com/lib" || finding.Metadata["version"] != "v1.2.0" {
+		t.Fatalf("finding should retain the declared dependency attribution: %+v", finding.Metadata)
+	}
+	coordinates, ok := finding.Metadata["additional_advisory_coordinates"].([]map[string]string)
+	if !ok || len(coordinates) != 1 || coordinates[0]["package"] != "example.com/fork/lib" || coordinates[0]["version"] != "v2.3.4" {
+		t.Fatalf("finding should disclose replacement advisory coordinates: %#v", finding.Metadata["additional_advisory_coordinates"])
 	}
 }
 

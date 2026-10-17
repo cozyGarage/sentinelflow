@@ -150,6 +150,9 @@ jobs:
           - id: SC-015
             package: ./internal/config
             test: TestSC015_GoModuleGraphOptionsAreExplicitAndOfflineSafe
+          - id: SC-016
+            package: ./internal/scanner/dependencies
+            test: TestSC016_VersionedReplacementQueriesBothCoordinatesAndRetainsDeclaration
           - id: SC-076
             package: ./internal/scanner
             test: TestSC076_SuppressedObservationsRetainSafeProvenance

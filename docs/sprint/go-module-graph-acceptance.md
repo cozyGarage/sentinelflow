@@ -4,7 +4,7 @@ Scope: SC-015 opt-in `go list -m` resolution, source attribution, network policy
 
 ## Required local evidence
 
-- [x] Named SC-015 selectors pass locally for selected versions, direct/transitive attribution, offline/config policy, command failure, timeout, missing tool, and replacement boundary (7 tests across config, CLI, and dependencies packages).
+- [x] Named SC-015 selectors pass locally for selected versions, direct/transitive attribution, offline/config policy, command failure, timeout, missing tool, and the local-replacement boundary (7 tests across config, CLI, and dependencies packages).
 - [x] `go test ./...` passes: 466 tests across 33 packages.
 - [x] `go test -race -count=1 ./...` passes: 466 tests across 33 packages.
 - [x] `go vet ./...`, `actionlint .github/workflows/ci.yml`, sprint documentation checker and its four regression tests pass.

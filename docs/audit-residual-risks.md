@@ -16,7 +16,7 @@ Re-audit after each release train. Unit tests green; `make demo` fails the gate 
 | Action pins / delivery | Floating tags; default image `:latest` unpublished | R3: SHA pins; `delivery: release` verifies `checksums.txt`; version-tagged default image. |
 | Docker Hub | Images not published yet | Binaries + `delivery: release` / `build` first. Hub needs `DOCKER_USERNAME` / `DOCKER_PASSWORD`. |
 | License scanner | High FN rate by design | Uses npm lockfile metadata when present plus a small hardcoded map. **Honesty path:** opt-in only (not in `--all`). |
-| Dependencies | Bare Gemfile / Gradle still unsupported | Lockfile-first; `Gemfile.lock` supported. Go defaults to declared requirements; opt-in selected module graph is offline by default; replacements/workspaces remain unsupported. |
+| Dependencies | Bare Gemfile / Gradle still unsupported | Lockfile-first; `Gemfile.lock` supported. Go defaults to declared requirements; opt-in selected module graph is offline by default; versioned replacements receive dual advisory lookups, while local replacements/workspaces remain unsupported. |
 | OSV / network | Transport flake; was memory-only cache, no retry | Default `fail_on_error: true`. R4: querybatch, retry, 24h disk cache (`SENTINELFLOW_CACHE_DIR`). No offline/air-gapped mode yet. |
 | SAST | Regex-first; Go SSA covers selected shell flows | Other source/sink families and dynamic dispatch remain uncovered. Semgrep adapter when installed (`mode: auto`). |
 | Artifacts | Built outputs were never scanned | R5: classifier + unpacker + catalogers; `--artifacts` opt-in (not in `--all`). |

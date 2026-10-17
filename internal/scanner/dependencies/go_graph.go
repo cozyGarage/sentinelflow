@@ -102,11 +102,18 @@ func (g *GoModScanner) resolveGraph(ctx context.Context, goModPath string, decla
 			return nil, fmt.Errorf("resolve Go module graph: returned a module without path or version")
 		}
 		if module.Replace != nil {
-			return nil, fmt.Errorf("resolve Go module graph: replacement for %s is not yet supported; use declared requirements until SC-016/SC-017 support is enabled", module.Path)
+			if module.Replace.Path == "" || module.Replace.Version == "" {
+				return nil, fmt.Errorf("resolve Go module graph: replacement for %s has no versioned module identity; local replacements are not yet supported (SC-017)", module.Path)
+			}
 		}
 		dep := Dependency{
 			Name: module.Path, Version: module.Version, Ecosystem: "go",
 			FilePath: goModPath, Inventory: "go_list_module",
+		}
+		if module.Replace != nil {
+			dep.AdditionalAdvisoryCoordinates = []PackageCoordinate{{
+				Name: module.Replace.Path, Version: module.Replace.Version, Ecosystem: "go",
+			}}
 		}
 		if original, ok := declaredByPath[module.Path]; ok {
 			dep.Line = original.Line

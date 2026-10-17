@@ -48,6 +48,16 @@ type Dependency struct {
 	Inventory string
 	// InstallPath distinguishes multiple installed instances of the same package.
 	InstallPath string
+	// AdditionalAdvisoryCoordinates retain replacement coordinates so advisories
+	// can be checked against both the declared module and versioned replacement.
+	AdditionalAdvisoryCoordinates []PackageCoordinate
+}
+
+// PackageCoordinate is an additional package identity for advisory lookup.
+type PackageCoordinate struct {
+	Name      string
+	Version   string
+	Ecosystem string
 }
 
 // Vulnerability represents a known vulnerability
@@ -319,16 +329,38 @@ func (s *Scanner) checkAll(ctx context.Context, deps []Dependency) ([][]Vulnerab
 		return nil, fmt.Errorf("vulnerability database unavailable")
 	}
 
-	qs := make([]vulndb.PackageQuery, len(deps))
+	qs := make([]vulndb.PackageQuery, 0, len(deps))
+	owners := make([]int, 0, len(deps))
 	for i, dep := range deps {
-		qs[i] = vulndb.PackageQuery{Ecosystem: dep.Ecosystem, Name: dep.Name, Version: normalizeVersion(dep.Version)}
+		coordinates := append([]PackageCoordinate{{Name: dep.Name, Version: dep.Version, Ecosystem: dep.Ecosystem}}, dep.AdditionalAdvisoryCoordinates...)
+		seen := make(map[PackageCoordinate]bool, len(coordinates))
+		for _, coordinate := range coordinates {
+			if coordinate.Name == "" || coordinate.Version == "" || coordinate.Ecosystem == "" || seen[coordinate] {
+				continue
+			}
+			seen[coordinate] = true
+			qs = append(qs, vulndb.PackageQuery{Ecosystem: coordinate.Ecosystem, Name: coordinate.Name, Version: normalizeVersion(coordinate.Version)})
+			owners = append(owners, i)
+		}
 	}
 	found, err := s.client.QueryMany(ctx, qs)
 
 	out := make([][]Vulnerability, len(deps))
+	seenVulnerabilities := make([]map[string]bool, len(deps))
 	for i, vulns := range found {
+		if i >= len(owners) {
+			break
+		}
+		owner := owners[i]
+		if seenVulnerabilities[owner] == nil {
+			seenVulnerabilities[owner] = make(map[string]bool)
+		}
 		for _, v := range vulns {
-			out[i] = append(out[i], Vulnerability{
+			if seenVulnerabilities[owner][v.ID] {
+				continue
+			}
+			seenVulnerabilities[owner][v.ID] = true
+			out[owner] = append(out[owner], Vulnerability{
 				ID:          v.ID,
 				Source:      v.Source,
 				Aliases:     append([]string(nil), v.Aliases...),
@@ -406,6 +438,13 @@ func (s *Scanner) createFinding(dep Dependency, vuln Vulnerability, basePath str
 	if dep.InstallPath != "" {
 		metadata["install_path"] = dep.InstallPath
 	}
+	if len(dep.AdditionalAdvisoryCoordinates) > 0 {
+		coordinates := make([]map[string]string, 0, len(dep.AdditionalAdvisoryCoordinates))
+		for _, coordinate := range dep.AdditionalAdvisoryCoordinates {
+			coordinates = append(coordinates, map[string]string{"package": coordinate.Name, "version": coordinate.Version, "ecosystem": coordinate.Ecosystem})
+		}
+		metadata["additional_advisory_coordinates"] = coordinates
+	}
 
 	return api.Finding{
 		ID:          fmt.Sprintf("DEP-%s-%s-%s", dep.Ecosystem, fingerprint.Token(dep.Name+"@"+dep.Version+"@"+dep.InstallPath), vuln.ID),
@@ -462,8 +501,12 @@ func (g *GoModScanner) Scan(ctx context.Context, path string) ([]Dependency, err
 	if err != nil {
 		return nil, fmt.Errorf("parse go.mod: %w", err)
 	}
-	if g.ResolveGraph && len(parsed.Replace) > 0 {
-		return nil, fmt.Errorf("resolve Go module graph: replacements in go.mod are not yet supported; use declared requirements until SC-016/SC-017 support is enabled")
+	if g.ResolveGraph {
+		for _, replace := range parsed.Replace {
+			if replace.New.Path == "" || replace.New.Version == "" {
+				return nil, fmt.Errorf("resolve Go module graph: replacement for %s has no versioned module identity; local replacements are not yet supported (SC-017)", replace.Old.Path)
+			}
+		}
 	}
 	deps := make([]Dependency, 0, len(parsed.Require))
 	for _, req := range parsed.Require {
