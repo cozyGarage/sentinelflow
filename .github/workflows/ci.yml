@@ -45,6 +45,39 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          - id: SC-076
+            package: ./internal/scanner
+            test: TestSC076_SuppressedObservationsRetainSafeProvenance
+          - id: SC-076
+            package: ./internal/scanner
+            test: TestSC076_InlineAndVEXSuppressionsRetainObservation
+          - id: SC-076
+            package: ./internal/scanner
+            test: TestBaselineRefReportsOnlyNewFindings
+          - id: SC-077
+            package: ./internal/scanner/suppress
+            test: TestSC077_IgnoreDirectiveMustAppearInCommentText
+          - id: SC-077
+            package: ./internal/scanner/suppress
+            test: TestSC077_StrictModeRequiresSpecificRuleAndReason
+          - id: SC-077
+            package: ./internal/scanner
+            test: TestSC077_StrictIgnoreFailureRetainsFinding
+          - id: SC-078
+            package: ./internal/scanner/fingerprint
+            test: TestSC078_FingerprintEncodingCannotCollideOnDelimiters
+          - id: SC-078
+            package: ./internal/scanner/fingerprint
+            test: TestSC078_FingerprintIncludesDependencyInstanceIdentity
+          - id: SC-079
+            package: ./internal/scanner/suppress
+            test: TestSC079_InlineIgnoreCannotReadOutsideScanRoot
+          - id: SC-079
+            package: ./internal/scanner
+            test: TestSC079_BaselineRefFingerprintOmitsTemporaryCheckoutPrefix
+          - id: SC-080
+            package: ./internal/scanner
+            test: TestSC080_SuppressionAuthorityIsExplicitlySelfAttested
           - id: SC-071
             package: ./internal/scanner/vex
             test: TestSC071_VEXProductIdentityIncludesEcosystemAndCanonicalName

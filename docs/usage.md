@@ -167,6 +167,8 @@ Inline suppressions (same line or the line above):
 os.Open(p) // sentinelflow:ignore path-traversal -- test fixture
 ```
 
+Directives are read only from comments, and file access stays within the scan root. `strict_ignores: true` requires a specific rule and non-empty `-- reason`; legacy mode continues to accept wildcard and reasonless directives. JSON reports retain redacted suppression observations so teams can audit which policy source filtered a finding.
+
 `--verify-secrets` is opt-in live verification against provider APIs (network). Off by default.
 
 ## Git Hooks
@@ -201,7 +203,7 @@ baseline:
   file: .sentinelflow/baseline.yaml
 ```
 
-When a baseline is applied, the CLI summary, JSON (`baseline`), and Markdown report show how many findings were suppressed and how many are new. **Total findings** and the fail gate use the new (post-filter) set.
+When suppressions apply, JSON includes redacted `suppressed` observations (fingerprint, source, generic reason and authority); the `baseline` summary reconciles `total = suppressed + new` and includes source subtotals. The fail gate uses only the final `new` findings. Suppressed records omit paths, snippets and raw finding values. Repository provenance means self-attested input, not independent approval.
 
 Baseline v2 matches line-independent fingerprints (`rule + path + value/snippet hash`) and supports `reason` and `expires`. An `expires: YYYY-MM-DD` entry is valid through that date in UTC and expires at the next midnight UTC; malformed expiry dates do not suppress findings. v1 files still load.
 

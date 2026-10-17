@@ -53,6 +53,23 @@ func TestVEXBroadScopeRequiresExplicitConfig(t *testing.T) {
 	}
 }
 
+func TestStrictIgnoresLoadsOptInAndDefaultsOff(t *testing.T) {
+	if Default().StrictIgnores {
+		t.Fatal("strict inline ignore mode must remain opt-in")
+	}
+	path := filepath.Join(t.TempDir(), ".sentinelflow.yaml")
+	if err := os.WriteFile(path, []byte("strict_ignores: true\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := LoadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cfg.StrictIgnores {
+		t.Fatal("strict_ignores setting was not loaded")
+	}
+}
+
 func TestValidateNormalizesFailOnSeverity(t *testing.T) {
 	cfg := Default()
 	cfg.FailOn.Severity = "HIGH"

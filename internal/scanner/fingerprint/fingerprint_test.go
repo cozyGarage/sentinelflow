@@ -56,3 +56,20 @@ func TestEnsureFillsEmpty(t *testing.T) {
 		t.Fatal("Ensure should be stable with Of")
 	}
 }
+
+func TestSC078_FingerprintEncodingCannotCollideOnDelimiters(t *testing.T) {
+	a := api.Finding{RuleID: "a|b", Location: api.Location{File: "c"}}
+	b := api.Finding{RuleID: "a", Location: api.Location{File: "b|c"}}
+	if Key(a) == Key(b) || Of(a) == Of(b) {
+		t.Fatal("delimiter-bearing fields must not collide in fingerprint serialization")
+	}
+}
+
+func TestSC078_FingerprintIncludesDependencyInstanceIdentity(t *testing.T) {
+	a := api.Finding{RuleID: "OSV-1", Metadata: map[string]any{"ecosystem": "npm", "package": "widget", "version": "1.0.0"}}
+	b := a
+	b.Metadata = map[string]any{"ecosystem": "npm", "package": "widget", "version": "2.0.0"}
+	if Of(a) == Of(b) {
+		t.Fatal("distinct installed package versions must have distinct fingerprints")
+	}
+}

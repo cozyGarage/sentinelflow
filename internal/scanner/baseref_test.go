@@ -11,9 +11,30 @@ import (
 	"time"
 
 	"github.com/cozygarage/sentinelflow/internal/config"
+	"github.com/cozygarage/sentinelflow/internal/scanner/fingerprint"
 	"github.com/cozygarage/sentinelflow/internal/scanner/types"
 	"github.com/cozygarage/sentinelflow/pkg/api"
 )
+
+func TestSC079_BaselineRefFingerprintOmitsTemporaryCheckoutPrefix(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "checkout", "nested")
+	file := filepath.Join(root, "src", "main.go")
+	finding := api.Finding{RuleID: "rule", Location: api.Location{File: file, Snippet: "vulnerable()"}, Fingerprint: "stale-path-bound-fingerprint"}
+	got := findingsForPathComparison([]api.Finding{finding}, root)
+	if got[0].Location.File != "src/main.go" {
+		t.Fatalf("path=%q, want relative path", got[0].Location.File)
+	}
+	if got[0].Fingerprint == finding.Fingerprint || got[0].Fingerprint != fingerprint.Of(got[0]) {
+		t.Fatalf("fingerprint was not recomputed: %+v", got[0])
+	}
+	otherRoot := filepath.Join(t.TempDir(), "different-checkout", "nested")
+	other := finding
+	other.Location.File = filepath.Join(otherRoot, "src", "main.go")
+	other = findingsForPathComparison([]api.Finding{other}, otherRoot)[0]
+	if got[0].Fingerprint != other.Fingerprint {
+		t.Fatal("temporary checkout prefixes must not change finding identity")
+	}
+}
 
 func TestSC051_BaselineRefRejectsHeadOrBaseScannerFailures(t *testing.T) {
 	for _, failOnBase := range []bool{false, true} {
@@ -277,6 +298,15 @@ func TestBaselineRefReportsOnlyNewFindings(t *testing.T) {
 	}
 	if res.Baseline == nil || res.Baseline.Suppressed != len(full.Findings)-len(res.Findings) {
 		t.Fatalf("baseline summary wrong: %+v", res.Baseline)
+	}
+	var refSuppressed int
+	for _, observation := range res.Suppressed {
+		if observation.Source == "baseline-ref" && observation.Authority == "repository_ref" && observation.Fingerprint != "" {
+			refSuppressed++
+		}
+	}
+	if refSuppressed != res.Baseline.Suppressed {
+		t.Fatalf("baseline-ref observations=%d summary=%+v", refSuppressed, res.Baseline)
 	}
 	out, _ := exec.Command("git", "-C", root, "worktree", "list").Output()
 	if n := len(strings.Split(strings.TrimSpace(string(out)), "\n")); n != 1 {

@@ -156,12 +156,24 @@ func (d DurationMS) Std() time.Duration {
 // BaselineSummary counts findings before and after baseline filtering.
 // Total is the pre-filter count. New is the post-filter count the fail gate uses.
 type BaselineSummary struct {
-	Enabled    bool `json:"enabled"`
-	Total      int  `json:"total"`
-	Suppressed int  `json:"suppressed"`
-	New        int  `json:"new"`
-	Inline     int  `json:"inline,omitempty"`
-	VEX        int  `json:"vex,omitempty"`
+	Enabled     bool `json:"enabled"`
+	Total       int  `json:"total"`
+	Suppressed  int  `json:"suppressed"`
+	New         int  `json:"new"`
+	Inline      int  `json:"inline,omitempty"`
+	VEX         int  `json:"vex,omitempty"`
+	Diff        int  `json:"diff,omitempty"`
+	BaselineRef int  `json:"baseline_ref,omitempty"`
+}
+
+// SuppressedObservation is a redacted audit record. It carries only a stable
+// finding fingerprint and policy metadata, never the original snippet/value.
+type SuppressedObservation struct {
+	Fingerprint string `json:"fingerprint"`
+	RuleID      string `json:"rule_id,omitempty"`
+	Source      string `json:"source"`
+	Reason      string `json:"reason"`
+	Authority   string `json:"authority"`
 }
 
 // ScanResult contains the complete results of a security scan
@@ -169,11 +181,12 @@ type ScanResult struct {
 	Findings    []Finding    `json:"findings"`
 	ScannerRuns []ScannerRun `json:"scanner_runs"`
 	// Status summarizes analysis coverage. It is additive; empty means a legacy producer.
-	Status   ScanStatus       `json:"status,omitempty"`
-	Metadata ScanMetadata     `json:"metadata"`
-	Duration DurationMS       `json:"duration_ms"`
-	Baseline *BaselineSummary `json:"baseline,omitempty"`
-	Skipped  []SkippedFile    `json:"skipped,omitempty"`
+	Status     ScanStatus              `json:"status,omitempty"`
+	Metadata   ScanMetadata            `json:"metadata"`
+	Duration   DurationMS              `json:"duration_ms"`
+	Baseline   *BaselineSummary        `json:"baseline,omitempty"`
+	Suppressed []SuppressedObservation `json:"suppressed,omitempty"`
+	Skipped    []SkippedFile           `json:"skipped,omitempty"`
 }
 
 // ScannerRun contains information about an individual scanner execution

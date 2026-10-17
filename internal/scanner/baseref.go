@@ -32,7 +32,24 @@ func (e *Engine) filterBaselineRef(ctx context.Context, targetPath string, resul
 		bl.Findings = append(bl.Findings, baseline.Entry{Fingerprint: fingerprint.Of(f)})
 	}
 	before := result.Findings
-	result.Findings = baseline.Filter(before, bl)
+	comparison := findingsForPathComparison(before, targetPath)
+	filteredComparison := baseline.Filter(comparison, bl)
+	keep := make(map[string]int, len(filteredComparison))
+	for _, f := range filteredComparison {
+		keep[fingerprint.Of(f)]++
+	}
+	result.Findings = make([]api.Finding, 0, len(filteredComparison))
+	var suppressedComparison []api.Finding
+	for i, f := range before {
+		key := fingerprint.Of(comparison[i])
+		if keep[key] > 0 {
+			keep[key]--
+			result.Findings = append(result.Findings, f)
+		} else {
+			suppressedComparison = append(suppressedComparison, comparison[i])
+		}
+	}
+	appendSuppressed(result, suppressedComparison, "baseline-ref", "finding already exists at the selected baseline ref", "repository_ref")
 	suppressed := len(before) - len(result.Findings)
 
 	if result.Baseline == nil {
@@ -142,7 +159,29 @@ func (e *Engine) scanAtRef(ctx context.Context, targetPath, ref string) (finding
 	if err := e.validateBaselineRuns(res.ScannerRuns, "base"); err != nil {
 		return res.Findings, err
 	}
-	return res.Findings, nil
+	return findingsForPathComparison(res.Findings, filepath.Join(wt, rel)), nil
+}
+
+// findingsForPathComparison removes checkout-specific absolute prefixes
+// before recomputing identities. This keeps temporary baseline worktree paths
+// out of fingerprints while retaining the original findings for reporting.
+func findingsForPathComparison(findings []api.Finding, root string) []api.Finding {
+	out := append([]api.Finding(nil), findings...)
+	for i := range out {
+		file := strings.ReplaceAll(out[i].Location.File, `\`, "/")
+		if filepath.IsAbs(file) {
+			if rel, err := filepath.Rel(root, file); err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+				file = rel
+			}
+		}
+		if file != "" && !filepath.IsAbs(file) {
+			file = filepath.Clean(filepath.FromSlash(file))
+		}
+		out[i].Location.File = filepath.ToSlash(file)
+		out[i].Fingerprint = ""
+	}
+	fingerprint.Ensure(out)
+	return out
 }
 
 func runGit(ctx context.Context, dir string, args ...string) (string, error) {

@@ -2,6 +2,7 @@ package scanner
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -13,6 +14,7 @@ import (
 	"github.com/cozygarage/sentinelflow/internal/baseline"
 	"github.com/cozygarage/sentinelflow/internal/config"
 	"github.com/cozygarage/sentinelflow/internal/scanner/dependencies"
+	"github.com/cozygarage/sentinelflow/internal/scanner/fingerprint"
 	"github.com/cozygarage/sentinelflow/internal/scanner/types"
 	"github.com/cozygarage/sentinelflow/pkg/api"
 )
@@ -412,7 +414,7 @@ func TestSC098_EngineRedactsScannerDiagnostics(t *testing.T) {
 	}
 }
 
-func TestEngineBaselineSummaryKeepsOnlyNewFindings(t *testing.T) {
+func TestSC076_SuppressedObservationsRetainSafeProvenance(t *testing.T) {
 	tmpDir := t.TempDir()
 	suppressed := api.Finding{
 		ID: "OLD", RuleID: "aws-access-key", Title: "old", Severity: api.SeverityCritical,
@@ -448,8 +450,84 @@ func TestEngineBaselineSummaryKeepsOnlyNewFindings(t *testing.T) {
 	if result.Baseline.Total != 2 || result.Baseline.Suppressed != 1 || result.Baseline.New != 1 {
 		t.Fatalf("baseline summary = %+v", result.Baseline)
 	}
+	if result.Baseline.Total != result.Baseline.New+result.Baseline.Suppressed || result.Baseline.Total != len(result.Findings)+len(result.Suppressed) {
+		t.Fatalf("retained observations and summary do not reconcile: summary=%+v findings=%d observations=%d", result.Baseline, len(result.Findings), len(result.Suppressed))
+	}
 	if result.Baseline.New != len(result.Findings) {
 		t.Fatalf("new count %d must match findings the gate sees (%d)", result.Baseline.New, len(result.Findings))
+	}
+	if len(result.Suppressed) != 1 || result.Suppressed[0].Source != "baseline" || result.Suppressed[0].Authority != "repository" || result.Suppressed[0].Fingerprint == "" {
+		t.Fatalf("baseline suppression must retain redacted identity and provenance: %+v", result.Suppressed)
+	}
+}
+
+func TestSC080_SuppressionAuthorityIsExplicitlySelfAttested(t *testing.T) {
+	const marker = "SENTINELFLOW_RAW_SECRET_MARKER"
+	result := &api.ScanResult{}
+	finding := api.Finding{RuleID: "secret-rule", Location: api.Location{File: "private/path.go", Snippet: marker}, ValueHash: fingerprint.ValueHash(marker)}
+	appendSuppressed(result, []api.Finding{finding}, "inline", "matched inline ignore directive", "repository")
+	if len(result.Suppressed) != 1 || result.Suppressed[0].Authority != "repository" || result.Suppressed[0].Fingerprint == "" {
+		t.Fatalf("suppression provenance must be explicit and self-attested: %+v", result.Suppressed)
+	}
+	encoded, err := json.Marshal(result)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(encoded), marker) || strings.Contains(string(encoded), "private/path.go") {
+		t.Fatalf("suppression record leaked value or path: %s", encoded)
+	}
+}
+
+func TestSC076_InlineAndVEXSuppressionsRetainObservation(t *testing.T) {
+	for _, source := range []string{"inline", "vex"} {
+		t.Run(source, func(t *testing.T) {
+			root := t.TempDir()
+			finding := api.Finding{ID: "F1", RuleID: "CVE-2025-1", CVE: "CVE-2025-1", Location: api.Location{File: "app.go", StartLine: 2, Snippet: "bad()"}}
+			cfg := &config.Config{}
+			if source == "inline" {
+				if err := os.WriteFile(filepath.Join(root, "app.go"), []byte("// sentinelflow:ignore CVE-2025-1 -- accepted test exception\nbad()\n"), 0600); err != nil {
+					t.Fatal(err)
+				}
+			} else {
+				path := filepath.Join(root, "vex.json")
+				body := `{"statements":[{"vulnerability":{"name":"CVE-2025-1"},"status":"not_affected"}]}`
+				if err := os.WriteFile(path, []byte(body), 0600); err != nil {
+					t.Fatal(err)
+				}
+				cfg.VEX = []string{"vex.json"}
+				cfg.VEXAllowBroad = true
+			}
+			e := NewEngine(cfg)
+			e.scanners = []Scanner{&stubScanner{name: "stub", findings: []api.Finding{finding}}}
+			result, err := e.Scan(context.Background(), root)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(result.Findings) != 0 || len(result.Suppressed) != 1 || result.Suppressed[0].Source != source || result.Suppressed[0].Fingerprint != fingerprint.Of(finding) {
+				t.Fatalf("suppression observation lost: findings=%+v suppressed=%+v", result.Findings, result.Suppressed)
+			}
+			if result.Baseline == nil || result.Baseline.Total != 1 || result.Baseline.Suppressed != 1 || result.Baseline.New != 0 {
+				t.Fatalf("suppression summary did not reconcile: %+v", result.Baseline)
+			}
+		})
+	}
+}
+
+func TestSC077_StrictIgnoreFailureRetainsFinding(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "app.go"), []byte("bad() // sentinelflow:ignore rule\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	cfg := &config.Config{StrictIgnores: true}
+	finding := api.Finding{RuleID: "rule", Location: api.Location{File: "app.go", StartLine: 1}}
+	e := NewEngine(cfg)
+	e.scanners = []Scanner{&stubScanner{name: "stub", findings: []api.Finding{finding}}}
+	result, err := e.Scan(context.Background(), root)
+	if err == nil || result == nil || len(result.Findings) != 1 || result.Findings[0].RuleID != "rule" {
+		t.Fatalf("strict suppression failure must preserve the finding: result=%+v err=%v", result, err)
+	}
+	if result.Status != api.ScanStatusFailed {
+		t.Fatalf("status=%q, want failed", result.Status)
 	}
 }
 

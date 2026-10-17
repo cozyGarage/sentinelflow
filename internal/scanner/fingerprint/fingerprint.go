@@ -4,6 +4,7 @@ package fingerprint
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"hash/fnv"
 	"path/filepath"
@@ -27,8 +28,8 @@ func Of(f api.Finding) string {
 
 // Key is the raw material hashed by Of (exported for tests).
 func Key(f api.Finding) string {
-	path := filepath.ToSlash(f.Location.File)
-	artifact := filepath.ToSlash(f.Location.ArtifactPath)
+	path := normalizedPath(f.Location.File)
+	artifact := normalizedPath(f.Location.ArtifactPath)
 	payload := strings.TrimSpace(f.ValueHash)
 	if payload == "" {
 		payload = normalizeSnippet(f.Location.Snippet)
@@ -36,13 +37,28 @@ func Key(f api.Finding) string {
 	if payload == "" {
 		payload = strings.TrimSpace(f.Title)
 	}
-	return strings.Join([]string{
-		strings.TrimSpace(f.RuleID),
-		path,
-		artifact,
-		payload,
-		strings.TrimSpace(f.CVE),
-	}, "|")
+	// JSON array encoding is unambiguous even when individual fields contain
+	// separators. Package identity keeps installed versions/ecosystems distinct.
+	var ecosystem, pkg, version string
+	if f.Metadata != nil {
+		ecosystem, _ = f.Metadata["ecosystem"].(string)
+		pkg, _ = f.Metadata["package"].(string)
+		version, _ = f.Metadata["version"].(string)
+	}
+	encoded, _ := json.Marshal([]string{
+		strings.TrimSpace(f.RuleID), path, artifact, payload,
+		strings.TrimSpace(f.CVE), strings.TrimSpace(ecosystem),
+		strings.TrimSpace(pkg), strings.TrimSpace(version),
+	})
+	return string(encoded)
+}
+
+func normalizedPath(path string) string {
+	if path == "" {
+		return ""
+	}
+	path = strings.ReplaceAll(path, `\`, "/")
+	return filepath.ToSlash(filepath.Clean(path))
 }
 
 // ValueHash returns a hex SHA-256 prefix of a secret or component value.

@@ -250,7 +250,12 @@ func (e *Engine) Scan(ctx context.Context, targetPath string) (*api.ScanResult, 
 		}
 	}
 
-	kept, inline := suppress.Filter(result.Findings, targetPath)
+	kept, inline, inlineErr := suppress.FilterWithOptions(result.Findings, targetPath, e.config.StrictIgnores)
+	if inlineErr != nil {
+		markPostProcessFailure(result, startTime, "inline-suppression", inlineErr)
+		return result, inlineErr
+	}
+	appendSuppressed(result, inline, "inline", "matched inline ignore directive", "repository")
 	result.Findings = kept
 
 	var vexed []api.Finding
@@ -268,6 +273,7 @@ func (e *Engine) Scan(ctx context.Context, targetPath string) (*api.ScanResult, 
 			return result, fmt.Errorf("load VEX: %w", err)
 		}
 		result.Findings, vexed = vex.Filter(result.Findings, rules)
+		appendSuppressed(result, vexed, "vex", "matched not_affected or fixed VEX statement", "repository")
 	}
 
 	if e.diffBase() != "" || e.Staged {
@@ -280,7 +286,9 @@ func (e *Engine) Scan(ctx context.Context, targetPath string) (*api.ScanResult, 
 			markPostProcessFailure(result, startTime, "diff", derr)
 			return result, fmt.Errorf("diff filter: %w", derr)
 		}
-		result.Findings = diff.Filter(result.Findings, changed)
+		before := result.Findings
+		result.Findings = diff.Filter(before, changed)
+		appendRemovedSuppressed(result, before, result.Findings, "diff", "finding is outside the selected changed lines", "repository")
 	}
 
 	if e.config.Baseline.Enabled {
@@ -298,6 +306,7 @@ func (e *Engine) Scan(ctx context.Context, targetPath string) (*api.ScanResult, 
 		}
 		before := result.Findings
 		filtered := baseline.Filter(before, bl)
+		appendRemovedSuppressed(result, before, filtered, "baseline", "matched active baseline entry", "repository")
 		summary := baseline.Summarize(before, filtered)
 		result.Findings = filtered
 		result.Baseline = &api.BaselineSummary{
@@ -334,6 +343,7 @@ func (e *Engine) Scan(ctx context.Context, targetPath string) (*api.ScanResult, 
 		result.Baseline.Suppressed += len(vexed)
 		result.Baseline.VEX = len(vexed)
 	}
+	reconcileSuppressionSummary(result, e.config.Baseline.Enabled || e.BaselineRef != "")
 
 	if len(skipped) > 0 {
 		var skipMsgs []string
@@ -356,6 +366,59 @@ func (e *Engine) Scan(ctx context.Context, targetPath string) (*api.ScanResult, 
 	}
 
 	return result, nil
+}
+
+func appendSuppressed(result *api.ScanResult, findings []api.Finding, source, reason, authority string) {
+	for _, f := range findings {
+		result.Suppressed = append(result.Suppressed, api.SuppressedObservation{
+			Fingerprint: fingerprint.Of(f), RuleID: f.RuleID, Source: source,
+			Reason: reason, Authority: authority,
+		})
+	}
+}
+
+func appendRemovedSuppressed(result *api.ScanResult, before, after []api.Finding, source, reason, authority string) {
+	remaining := make(map[string]int, len(after))
+	for _, f := range after {
+		remaining[fingerprint.Of(f)]++
+	}
+	var removed []api.Finding
+	for _, f := range before {
+		key := fingerprint.Of(f)
+		if remaining[key] > 0 {
+			remaining[key]--
+			continue
+		}
+		removed = append(removed, f)
+	}
+	appendSuppressed(result, removed, source, reason, authority)
+}
+
+func reconcileSuppressionSummary(result *api.ScanResult, enabled bool) {
+	if result == nil || (result.Baseline == nil && len(result.Suppressed) == 0) {
+		return
+	}
+	if result.Baseline == nil {
+		result.Baseline = &api.BaselineSummary{}
+	}
+	summary := result.Baseline
+	summary.Enabled = summary.Enabled || enabled
+	summary.New = len(result.Findings)
+	summary.Suppressed = len(result.Suppressed)
+	summary.Total = summary.New + summary.Suppressed
+	summary.Inline, summary.VEX, summary.Diff, summary.BaselineRef = 0, 0, 0, 0
+	for _, observation := range result.Suppressed {
+		switch observation.Source {
+		case "inline":
+			summary.Inline++
+		case "vex":
+			summary.VEX++
+		case "diff":
+			summary.Diff++
+		case "baseline-ref":
+			summary.BaselineRef++
+		}
+	}
 }
 
 func markPostProcessFailure(result *api.ScanResult, startTime time.Time, name string, err error) {

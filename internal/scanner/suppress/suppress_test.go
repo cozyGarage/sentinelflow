@@ -3,6 +3,7 @@ package suppress
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/cozygarage/sentinelflow/pkg/api"
@@ -47,5 +48,54 @@ func TestFilterStarIgnoresAllRules(t *testing.T) {
 	}, dir)
 	if len(kept) != 0 || len(suppressed) != 1 {
 		t.Fatalf("kept=%d suppressed=%d", len(kept), len(suppressed))
+	}
+}
+
+func TestSC077_IgnoreDirectiveMustAppearInCommentText(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "x.go")
+	if err := os.WriteFile(path, []byte("value := `sentinelflow:ignore * -- looks like a directive`\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	kept, suppressed := Filter([]api.Finding{{RuleID: "rule", Location: api.Location{File: "x.go", StartLine: 1}}}, dir)
+	if len(kept) != 1 || len(suppressed) != 0 {
+		t.Fatalf("literal text suppressed finding: kept=%d suppressed=%d", len(kept), len(suppressed))
+	}
+}
+
+func TestSC077_StrictModeRequiresSpecificRuleAndReason(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "x.go"), []byte("bad() // sentinelflow:ignore rule\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	finding := api.Finding{RuleID: "rule", Location: api.Location{File: "x.go", StartLine: 1}}
+	kept, suppressed, err := FilterWithOptions([]api.Finding{finding}, dir, true)
+	if err == nil || len(suppressed) != 0 || len(kept) != 1 || !strings.Contains(err.Error(), "non-empty reason") {
+		t.Fatalf("strict reasonless directive: kept=%d suppressed=%d err=%v", len(kept), len(suppressed), err)
+	}
+	if _, suppressed := Filter([]api.Finding{finding}, dir); len(suppressed) != 1 {
+		t.Fatal("legacy mode must preserve reasonless compatibility")
+	}
+}
+
+func TestSC079_InlineIgnoreCannotReadOutsideScanRoot(t *testing.T) {
+	root := t.TempDir()
+	outside := filepath.Join(t.TempDir(), "outside.go")
+	if err := os.WriteFile(outside, []byte("// sentinelflow:ignore * -- outside\ncode()\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	for _, rel := range []string{"../outside.go", outside} {
+		_, suppressed := Filter([]api.Finding{{RuleID: "rule", Location: api.Location{File: rel, StartLine: 2}}}, root)
+		if len(suppressed) != 0 {
+			t.Fatalf("outside path %q suppressed a finding", rel)
+		}
+	}
+	link := filepath.Join(root, "linked.go")
+	if err := os.Symlink(outside, link); err != nil {
+		t.Skipf("symlink unavailable: %v", err)
+	}
+	_, suppressed := Filter([]api.Finding{{RuleID: "rule", Location: api.Location{File: "linked.go", StartLine: 2}}}, root)
+	if len(suppressed) != 0 {
+		t.Fatal("symlink escaping scan root suppressed a finding")
 	}
 }
