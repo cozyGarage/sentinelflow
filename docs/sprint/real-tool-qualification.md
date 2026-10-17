@@ -1,8 +1,8 @@
 # Real tool qualification matrix
 
-Status: **govulncheck locally qualified against synthetic fixtures; other optional tools unqualified; hosted checks pending**. Captured 2026-10-17 on `linux/amd64`, Go `go1.27.2`, repository starting revision `cdd7cd7c390c65809fcd08e10dd0492360579565` with scan-correctness changes uncommitted.
+Status: **govulncheck locally qualified against synthetic fixtures; other optional tools unqualified; hosted checks pending**. The local `PATH`/version inventory was refreshed on 2026-10-17 at branch head `5cc8f0d2a2299debe4ba6c707ec417510223c3ce` on `linux/amd64`, Go `go1.27.2`. The initial source audit was based at `cdd7cd7c390c65809fcd08e10dd0492360579565`.
 
-The deterministic fake-executable checks validate SentinelFlow's control flow and parsing. They do not qualify the behavior of installed upstream binaries. An initial local PATH inventory found none of the optional tools or `govulncheck`; the pinned govulncheck qualification below was then run through Go's module installer. No local binaries were available for Semgrep, Gitleaks, Grype, Syft, Trivy or YARA, so their behavior remains unqualified.
+The deterministic fake-executable checks validate SentinelFlow's control flow and parsing. They do not qualify the behavior of installed upstream binaries. The refreshed `command -v` inventory found no standalone binaries for Semgrep, Gitleaks, Grype, Syft, Trivy, YARA, or govulncheck; the pinned govulncheck qualification below was run through Go's module installer. The six external scanner integrations remain unqualified.
 
 | Tool | Adapter invocation in this checkout | Version evidence | Clean / finding / operational observations |
 | --- | --- | --- | --- |
