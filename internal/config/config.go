@@ -29,6 +29,7 @@ type Config struct {
 	// not_affected/fixed statements suppress matching findings.
 	VEX           []string `yaml:"vex" mapstructure:"vex"`
 	VEXAllowBroad bool     `yaml:"vex_allow_broad" mapstructure:"vex_allow_broad"`
+	StrictIgnores bool     `yaml:"strict_ignores" mapstructure:"strict_ignores"`
 }
 
 // ScannersConfig contains settings for all scanners

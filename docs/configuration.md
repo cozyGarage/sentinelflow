@@ -13,6 +13,8 @@ Run `sentinelflow init` to generate a starter configuration.
 | `version` | string | `"1.0"` | Configuration schema version |
 | `scan_timeout` | string | `"10m"` | Overall scan deadline (Go duration). Overridable with `--timeout` |
 | `diff_base` | string | — | Limit findings to files/lines changed since this git ref (`--diff-base`) |
+| `strict_ignores` | bool | `false` | Reject applicable inline wildcard or reasonless ignore directives |
+| `vex_allow_broad` | bool | `false` | Allow product-free or versionless VEX suppressions; repository-controlled, not independent approval |
 
 ## Scanners
 
@@ -175,7 +177,12 @@ A list of [OpenVEX](https://github.com/openvex/spec) documents, relative to the 
 vex:
   - .sentinelflow/vex.openvex.json
 vex_allow_broad: false
+strict_ignores: false
 ```
+
+`strict_ignores: true` rejects an applicable inline ignore that uses `*`/`all` or omits a non-empty reason. Legacy mode continues to accept these forms for compatibility. Directives are recognized only in comment text, and inline suppression reads are confined to the scan root (including symlink resolution).
+
+Reports include redacted suppressed-observation records with a stable finding fingerprint, suppression source, generic reason, and authority provenance. Records omit paths, snippets, and raw secret values. `authority: repository` means the exception came from repository-controlled input; it does not indicate independent approval.
 
 CLI: `--vex file.json` (repeatable).
 
