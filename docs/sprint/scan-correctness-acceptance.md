@@ -2,7 +2,7 @@
 
 **Status: INCOMPLETE — local implementation commit, not a release or acceptance claim.** This is the SC-099 working record for the current local commit. It does not pass the sprint acceptance criteria because hosted Actions and some real-tool evidence remain outstanding.
 
-Prepared 2026-10-17. Repository: `/home/trung/Projects/sentinelflow`. Checked-out branch: `codex/scan-correctness-sprint`. Base HEAD: `cdd7cd7c390c65809fcd08e10dd0492360579565`. Current local implementation commit: `8d37b349fe0f87f3854b61655b344a1a00806efe`. No PR exists and GitHub Actions has not run on this commit.
+Prepared 2026-10-17. Repository: `/home/trung/Projects/sentinelflow`. Checked-out branch: `codex/scan-correctness-sprint`. Base HEAD: `cdd7cd7c390c65809fcd08e10dd0492360579565`. Validated implementation source commit: `3e128766b4e497136984bb0f9fbcafe9d91e7693`. This report is updated after those local gates; no code or workflow source changed afterward. No PR exists and GitHub Actions has not run on the branch.
 
 ## Core item status
 
@@ -45,7 +45,7 @@ Prepared 2026-10-17. Repository: `/home/trung/Projects/sentinelflow`. Checked-ou
 
 ## Commands observed locally
 
-Commands below ran against the implementation source based on `cdd7cd7c390c65809fcd08e10dd0492360579565`, before its local commit, using Go cache under `/home/trung/.cache`; temp files used the writable repository temp directory when `/tmp` quota or sandbox restrictions required it. No source code changed after those runs; a final post-commit verification is still required.
+Commands below were rerun against implementation commit `3e128766b4e497136984bb0f9fbcafe9d91e7693`, using Go cache under `/home/trung/.cache`; temp files used `/home/trung/.cache/tmp` to keep them outside the Git worktree and avoid `/tmp` quota.
 
 | Command | Result |
 | --- | --- |
@@ -66,7 +66,7 @@ Commands below ran against the implementation source based on `cdd7cd7c390c65809
 | Built CLI `TestSC091_BuiltCLIExitAndPartialReport/pre-result_engine_error_redacts_sensitive_target_path` | Failing-first: missing VEX file exposed `api_key=SENTINELFLOW_SECRET_MARKER` on stderr. After redacting top-level engine errors, the CLI returns exit `2`, omits the marker, and retains a useful redacted `load VEX` reason. |
 | `test -z "$(gofmt -l .)"` | Pass after formatting the Go fixture modules. |
 
-These full local gates were rerun after the latest scanner, CLI, baseline, reporter and workflow changes, including top-level scan-error redaction and external-report completeness fixes. The latest race suite, vet, tagged integration suite, actionlint, and all 37 configured selectors passed before local commit `8d37b349fe0f87f3854b61655b344a1a00806efe`; a fresh post-commit rerun is required to bind evidence to that exact revision. No claim is made about hosted Actions.
+These full local gates were rerun after the latest scanner, CLI, baseline, reporter and workflow changes, including top-level scan-error redaction and external-report completeness fixes. The latest race suite, vet, tagged integration suite, actionlint, and all 37 configured selectors passed against implementation commit `3e128766b4e497136984bb0f9fbcafe9d91e7693`. The only subsequent change is this acceptance-report correction. No claim is made about hosted Actions.
 
 ## Hosted and upstream-tool evidence
 
