@@ -198,12 +198,8 @@ func (b *cappedBuffer) Write(p []byte) (int, error) {
 }
 
 func (g *GoModScanner) resolveGraph(ctx context.Context, goModPath string, declared []Dependency, workspacePath string, mainModules []string) ([]Dependency, error) {
-	binary := g.goCommand
-	if binary == "" {
-		binary = "go"
-	}
 	stdout, stderr := &cappedBuffer{limit: maxGoGraphOutputBytes}, &cappedBuffer{limit: maxGoGraphOutputBytes}
-	cmd := exec.CommandContext(ctx, binary, "list", "-m", "-json", "-mod=readonly", "all")
+	cmd := exec.CommandContext(ctx, "go", "list", "-m", "-json", "-mod=readonly", "all")
 	cmd.Dir = filepath.Dir(goModPath)
 	cmd.Env = goGraphEnvironment(os.Environ(), g.AllowNetwork, workspacePath)
 	cmd.Stdout, cmd.Stderr = stdout, stderr
@@ -214,7 +210,7 @@ func (g *GoModScanner) resolveGraph(ctx context.Context, goModPath string, decla
 		case stdout.overflow || stderr.overflow:
 			return nil, fmt.Errorf("resolve Go module graph: output exceeded %d bytes", maxGoGraphOutputBytes)
 		case errors.Is(err, exec.ErrNotFound) || errors.Is(err, os.ErrNotExist):
-			return nil, fmt.Errorf("resolve Go module graph: Go tool %q is unavailable", binary)
+			return nil, fmt.Errorf("resolve Go module graph: Go tool %q is unavailable", "go")
 		default:
 			diagnostic := strings.TrimSpace(stderr.String())
 			if len(diagnostic) > maxGoGraphDiagnosticBytes {

@@ -113,13 +113,25 @@ func TestGoModScannerParsesSingleLineRequire(t *testing.T) {
 	}
 }
 
+func installFakeGo(t *testing.T, dir, script string) {
+	t.Helper()
+	path := filepath.Join(dir, "go")
+	if err := os.WriteFile(path, []byte(script), 0700); err != nil {
+		t.Fatal(err)
+	}
+	searchPath := dir
+	if current := os.Getenv("PATH"); current != "" {
+		searchPath += string(os.PathListSeparator) + current
+	}
+	t.Setenv("PATH", searchPath)
+}
+
 func TestSC015_OptInGoModuleGraphUsesSelectedVersionsAndPreservesDirectAttribution(t *testing.T) {
 	root := t.TempDir()
 	goMod := "module example.com/root\n\ngo 1.22\n\nrequire (\n\texample.com/direct v1.0.0\n\texample.com/indirect v1.1.0 // indirect\n)\n"
 	if err := os.WriteFile(filepath.Join(root, "go.mod"), []byte(goMod), 0600); err != nil {
 		t.Fatal(err)
 	}
-	fake := filepath.Join(root, "fake-go")
 	script := `#!/bin/sh
 test "$GOWORK" = off || exit 20
 test "$GOPROXY" = off || exit 21
@@ -129,10 +141,8 @@ test -z "$GOFLAGS" || exit 25
 test "$1 $2 $3 $4 $5" = "list -m -json -mod=readonly all" || exit 24
 printf '%s\n' '{"Path":"example.com/root","Main":true}' '{"Path":"example.com/direct","Version":"v1.4.0"}' '{"Path":"example.com/transitive","Version":"v2.3.1"}'
 `
-	if err := os.WriteFile(fake, []byte(script), 0700); err != nil {
-		t.Fatal(err)
-	}
-	deps, err := (&GoModScanner{ResolveGraph: true, goCommand: fake}).Scan(context.Background(), root)
+	installFakeGo(t, root, script)
+	deps, err := (&GoModScanner{ResolveGraph: true}).Scan(context.Background(), root)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -161,21 +171,19 @@ func TestSC015_GoModuleGraphFailsClosedForErrorTimeoutAndMissingTool(t *testing.
 	for _, tc := range []struct {
 		name    string
 		script  string
-		command string
+		missing bool
 		timeout time.Duration
 		want    string
 	}{
 		{name: "command error", script: "#!/bin/sh\necho synthetic module error >&2\nexit 2\n", want: "synthetic module error"},
-		{name: "timeout", script: "#!/bin/sh\nexec sleep 2\n", timeout: 25 * time.Millisecond, want: "deadline exceeded"},
-		{name: "missing tool", command: filepath.Join(root, "missing-go"), want: "unavailable"},
+		{name: "timeout", script: "#!/bin/sh\nexec /bin/sleep 2\n", timeout: 25 * time.Millisecond, want: "deadline exceeded"},
+		{name: "missing tool", missing: true, want: "unavailable"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			command := tc.command
-			if command == "" {
-				command = filepath.Join(root, "fake-"+strings.ReplaceAll(tc.name, " ", "-"))
-				if err := os.WriteFile(command, []byte(tc.script), 0700); err != nil {
-					t.Fatal(err)
-				}
+			if tc.missing {
+				t.Setenv("PATH", t.TempDir())
+			} else {
+				installFakeGo(t, root, tc.script)
 			}
 			ctx := context.Background()
 			cancel := func() {}
@@ -183,7 +191,7 @@ func TestSC015_GoModuleGraphFailsClosedForErrorTimeoutAndMissingTool(t *testing.
 				ctx, cancel = context.WithTimeout(ctx, tc.timeout)
 			}
 			defer cancel()
-			_, err := (&GoModScanner{ResolveGraph: true, goCommand: command}).Scan(ctx, root)
+			_, err := (&GoModScanner{ResolveGraph: true}).Scan(ctx, root)
 			if err == nil || !strings.Contains(err.Error(), tc.want) {
 				t.Fatalf("graph resolution error=%v, want %q", err, tc.want)
 			}
@@ -197,11 +205,8 @@ func TestSC015_GoModuleGraphRejectsReplacementsBeforeRunningTool(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(root, "go.mod"), []byte(goMod), 0600); err != nil {
 		t.Fatal(err)
 	}
-	fake := filepath.Join(root, "fake-go")
-	if err := os.WriteFile(fake, []byte("#!/bin/sh\nexit 99\n"), 0700); err != nil {
-		t.Fatal(err)
-	}
-	_, err := (&GoModScanner{ResolveGraph: true, goCommand: fake}).Scan(context.Background(), root)
+	installFakeGo(t, root, "#!/bin/sh\nexit 99\n")
+	_, err := (&GoModScanner{ResolveGraph: true}).Scan(context.Background(), root)
 	if err == nil || !strings.Contains(err.Error(), "local replacements are not yet supported") {
 		t.Fatalf("replacement boundary should be explicit before graph command, got %v", err)
 	}
@@ -214,13 +219,10 @@ func TestSC016_VersionedReplacementQueriesBothCoordinatesAndRetainsDeclaration(t
 	if err := os.WriteFile(goMod, []byte(content), 0600); err != nil {
 		t.Fatal(err)
 	}
-	fake := filepath.Join(root, "fake-go")
 	script := `#!/bin/sh
 printf '%s\n' '{"Path":"example.com/root","Main":true}' '{"Path":"example.com/lib","Version":"v1.2.0","Replace":{"Path":"example.com/fork/lib","Version":"v2.3.4"}}'
 `
-	if err := os.WriteFile(fake, []byte(script), 0700); err != nil {
-		t.Fatal(err)
-	}
+	installFakeGo(t, root, script)
 	var queried []vulndb.OSVRequest
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -249,7 +251,7 @@ printf '%s\n' '{"Path":"example.com/root","Main":true}' '{"Path":"example.com/li
 	t.Cleanup(server.Close)
 	s := &Scanner{
 		config: config.Default(), client: testClient(t, server),
-		ecosystems: map[string]EcosystemScanner{"go": &GoModScanner{ResolveGraph: true, goCommand: fake}},
+		ecosystems: map[string]EcosystemScanner{"go": &GoModScanner{ResolveGraph: true}},
 	}
 	result, err := s.Scan(context.Background(), root, types.ScanOptions{Files: []string{goMod}})
 	if err != nil {
@@ -294,11 +296,8 @@ func TestSC017_LocalAndUnversionedReplacementsFailWithoutRegistryIdentity(t *tes
 			if err := os.WriteFile(filepath.Join(root, "go.mod"), []byte(content), 0600); err != nil {
 				t.Fatal(err)
 			}
-			fake := filepath.Join(root, "fake-go")
-			if err := os.WriteFile(fake, []byte("#!/bin/sh\nexit 99\n"), 0700); err != nil {
-				t.Fatal(err)
-			}
-			deps, err := (&GoModScanner{ResolveGraph: true, goCommand: fake}).Scan(context.Background(), root)
+			installFakeGo(t, root, "#!/bin/sh\nexit 99\n")
+			deps, err := (&GoModScanner{ResolveGraph: true}).Scan(context.Background(), root)
 			if err == nil || !strings.Contains(err.Error(), tc.wantError) {
 				t.Fatalf("replacement should fail with explicit unresolved coverage, deps=%+v err=%v", deps, err)
 			}
@@ -332,11 +331,8 @@ func TestSC018_WorkspaceUsesSelectedGraphOnceAndKeepsMemberAttribution(t *testin
 		t.Fatal(err)
 	}
 	marker := filepath.Join(root, "go-list-invocations")
-	fake := filepath.Join(root, "fake-go")
 	script := "#!/bin/sh\necho invoked >> '" + marker + "'\ntest \"$GOWORK\" = '" + goWork + "' || exit 20\ntest \"$1 $2 $3 $4 $5\" = 'list -m -json -mod=readonly all' || exit 21\nprintf '%s\\n' '{\"Path\":\"example.com/a\",\"Main\":true}' '{\"Path\":\"example.com/b\",\"Main\":true}' '{\"Path\":\"example.com/lib\",\"Version\":\"v1.2.0\",\"Replace\":{\"Path\":\"example.com/fork/lib\",\"Version\":\"v2.0.0\"}}' '{\"Path\":\"example.com/transitive\",\"Version\":\"v3.1.0\"}'\n"
-	if err := os.WriteFile(fake, []byte(script), 0700); err != nil {
-		t.Fatal(err)
-	}
+	installFakeGo(t, root, script)
 	var queried []vulndb.OSVRequest
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -369,7 +365,7 @@ func TestSC018_WorkspaceUsesSelectedGraphOnceAndKeepsMemberAttribution(t *testin
 	t.Cleanup(server.Close)
 	s := &Scanner{
 		config: config.Default(), client: testClient(t, server),
-		ecosystems: map[string]EcosystemScanner{"go": &GoModScanner{ResolveGraph: true, goCommand: fake}},
+		ecosystems: map[string]EcosystemScanner{"go": &GoModScanner{ResolveGraph: true}},
 	}
 	result, err := s.Scan(context.Background(), root, types.ScanOptions{Files: []string{goModA, goModB}})
 	if err != nil {
@@ -445,11 +441,8 @@ func TestSC018_LocalWorkspaceReplacementFailsBeforeGraphCommand(t *testing.T) {
 		t.Fatal(err)
 	}
 	marker := filepath.Join(root, "unexpected-go-list")
-	fake := filepath.Join(root, "fake-go")
-	if err := os.WriteFile(fake, []byte("#!/bin/sh\ntouch '"+marker+"'\nexit 99\n"), 0700); err != nil {
-		t.Fatal(err)
-	}
-	deps, err := (&GoModScanner{ResolveGraph: true, WorkspacePath: goWork, goCommand: fake}).Scan(context.Background(), moduleDir)
+	installFakeGo(t, root, "#!/bin/sh\ntouch '"+marker+"'\nexit 99\n")
+	deps, err := (&GoModScanner{ResolveGraph: true, WorkspacePath: goWork}).Scan(context.Background(), moduleDir)
 	if err == nil || !strings.Contains(err.Error(), "local workspace replacements are not yet supported") {
 		t.Fatalf("local workspace replacement must fail with explicit coverage error: deps=%+v err=%v", deps, err)
 	}

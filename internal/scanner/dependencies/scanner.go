@@ -509,7 +509,6 @@ type GoModScanner struct {
 	ResolveGraph  bool
 	AllowNetwork  bool
 	WorkspacePath string
-	goCommand     string
 }
 
 func (g *GoModScanner) Name() string { return "go" }
