@@ -454,6 +454,77 @@ func TestSC018_LocalWorkspaceReplacementFailsBeforeGraphCommand(t *testing.T) {
 	}
 }
 
+func TestSC019_GoVersionTuplesPreservePseudoVersionsAndMajorPaths(t *testing.T) {
+	root := t.TempDir()
+	goMod := filepath.Join(root, "go.mod")
+	pseudo := "v0.0.0-20240102030405-0123456789ab"
+	content := "module example.com/main\n\ngo 1.22\ntoolchain go1.27.2\n\nrequire (\n\tgithub.com/acme/lib/v2 v2.0.0\n\texample.com/pseudo " + pseudo + "\n)\n\nexclude github.com/acme/lib/v2 v2.0.0\n"
+	if err := os.WriteFile(goMod, []byte(content), 0600); err != nil {
+		t.Fatal(err)
+	}
+	script := `#!/bin/sh
+printf '%s\n' '{"Path":"example.com/main","Main":true}' '{"Path":"github.com/acme/lib/v2","Version":"v2.1.3"}' '{"Path":"example.com/pseudo","Version":"v0.0.0-20240102030405-0123456789ab"}'
+`
+	installFakeGo(t, root, script)
+	deps, err := (&GoModScanner{ResolveGraph: true}).Scan(context.Background(), root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	byName := map[string]Dependency{}
+	for _, dep := range deps {
+		byName[dep.Name] = dep
+	}
+	if got := byName["github.com/acme/lib/v2"]; got.Version != "v2.1.3" || got.Line == 0 {
+		t.Fatalf("major-version module path or selected version changed: %+v", got)
+	}
+	if got := byName["example.com/pseudo"]; got.Version != pseudo || got.Line == 0 {
+		t.Fatalf("pseudo-version must remain exact in inventory: %+v", got)
+	}
+	if _, ok := byName["golang.org/toolchain"]; ok {
+		t.Fatalf("toolchain directive must not be represented as a downloaded module: %+v", byName)
+	}
+
+	var queried []vulndb.OSVRequest
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path != "/v1/querybatch" {
+			t.Errorf("unexpected request: %s", r.URL.Path)
+			return
+		}
+		var req struct {
+			Queries []vulndb.OSVRequest `json:"queries"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			t.Errorf("decode query: %v", err)
+		}
+		queried = append(queried, req.Queries...)
+		_ = json.NewEncoder(w).Encode(map[string]any{"results": make([]vulndb.OSVResponse, len(req.Queries))})
+	}))
+	t.Cleanup(server.Close)
+	s := &Scanner{
+		config: config.Default(), client: testClient(t, server),
+		ecosystems: map[string]EcosystemScanner{"go": &GoModScanner{ResolveGraph: true}},
+	}
+	if _, err := s.Scan(context.Background(), root, types.ScanOptions{Files: []string{goMod}}); err != nil {
+		t.Fatal(err)
+	}
+	queryTuples := map[string]bool{}
+	for _, query := range queried {
+		queryTuples[query.Package.Name+"@"+query.Version] = true
+	}
+	for _, tuple := range []string{
+		"github.com/acme/lib/v2@2.1.3",
+		"example.com/pseudo@0.0.0-20240102030405-0123456789ab",
+	} {
+		if !queryTuples[tuple] {
+			t.Errorf("Go advisory query tuple missing or altered: want %s in %v", tuple, queryTuples)
+		}
+	}
+	if len(queried) != 2 {
+		t.Fatalf("go.mod toolchain metadata must not create package queries: %+v", queried)
+	}
+}
+
 func TestSC011_GoInventoryUsesSelectedGoModRequirement(t *testing.T) {
 	tmp := t.TempDir()
 	if err := os.WriteFile(filepath.Join(tmp, "go.mod"), []byte("module example.com/demo\n\ngo 1.22\n\nrequire (\n\tgithub.com/acme/lib v1.2.0 // indirect\n)\n"), 0644); err != nil {

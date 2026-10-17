@@ -162,6 +162,9 @@ jobs:
           - id: SC-018
             package: ./internal/scanner/dependencies
             test: TestSC018_LocalWorkspaceReplacementFailsBeforeGraphCommand
+          - id: SC-019
+            package: ./internal/scanner/dependencies
+            test: TestSC019_GoVersionTuplesPreservePseudoVersionsAndMajorPaths
           - id: SC-076
             package: ./internal/scanner
             test: TestSC076_SuppressedObservationsRetainSafeProvenance
